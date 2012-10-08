@@ -432,10 +432,6 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
 
     /**
      * Log state changes coming from the state machine. {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.commons.patterns.fsm.StateChangeListener#stateChanged(com.continuent.tungsten.commons.patterns.fsm.Entity,
-     *      com.continuent.tungsten.commons.patterns.fsm.State,
-     *      com.continuent.tungsten.commons.patterns.fsm.State)
      */
     public void stateChanged(Entity entity, State oldState, State newState)
     {
@@ -455,8 +451,6 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
 
     /**
      * Log events as they are processed in the replicator state machine.
-     * 
-     * @see com.continuent.tungsten.commons.patterns.event.EventCompletionListener#onCompletion(com.continuent.tungsten.commons.patterns.event.EventRequest)
      */
     public Object onCompletion(Event event, EventStatus status)
             throws InterruptedException
@@ -1736,6 +1730,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      * 
      * @see com.continuent.tungsten.replicator.management.OpenReplicatorManagerMBean#clearDynamicProperties()
      */
+    @MethodDesc(description = "Clears the current dynamically-set properties.", usage = "clearDynamicProperties")
     public void clearDynamicProperties() throws Exception
     {
         try
@@ -1748,6 +1743,39 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
             throw new Exception("Clear dynamic properties failed: "
                     + e.toString());
         }
+    }
+
+    /**
+     * Return a copy of current properties. {@inheritDoc}
+     */
+    @MethodDesc(description = "Gets the current properties.", usage = "properties [<key>]")
+    public Map<String, String> properties(
+            @ParamDesc(name = "key", description = "optional key of a single property") String key)
+            throws Exception
+    {
+        Map<String, String> returnProps = propertiesManager.getProperties()
+                .map();
+
+        // First, anonymize any 'password' type properties
+        for (String currentKey : returnProps.keySet())
+        {
+            if (currentKey.toLowerCase().contains("password"))
+                returnProps.put(currentKey, "**********");
+        }
+
+        if (key != null)
+        {
+            Map<String, String> matchingItems = new HashMap<String, String>();
+
+            for (String currentKey : returnProps.keySet())
+            {
+                if (currentKey.contains(key))
+                    matchingItems.put(currentKey, returnProps.get(currentKey));
+            }
+            return matchingItems;
+        }
+
+        return returnProps;
     }
 
     /**
@@ -1776,7 +1804,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      * @see com.continuent.tungsten.replicator.management.OpenReplicatorManagerMBean#setRole(java.lang.String,
      *      java.lang.String)
      */
-    @MethodDesc(description = "Sets the role of the replicator.", usage = "setRole {master | slave | standby} uri")
+    @MethodDesc(description = "Sets the role of the replicator.", usage = "setRole {master | slave | standby} <uri>")
     public void setRole(
             @ParamDesc(name = "role", description = "The role that the replicator is to take, either 'master', 'slave', or 'standby'") String role,
             @ParamDesc(name = "uri", description = "Master connection URI (required for master)") String uri)
@@ -1924,7 +1952,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      * 
      * @see com.continuent.tungsten.replicator.management.OpenReplicatorManagerMBean#statusList(java.lang.String)
      */
-    @MethodDesc(description = "Provides a list of individual components", usage = "statusList name")
+    @MethodDesc(description = "Provides a list of individual components", usage = "statusList <name>")
     public List<Map<String, String>> statusList(
             @ParamDesc(name = "name", description = "Name of the status list") String name)
             throws Exception
@@ -1935,6 +1963,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
     /**
      * Start Replicator Node Manager JMX service.
      */
+    @MethodDesc(description = "Starts the replicator service", usage = "start")
     public void start() throws Exception
     {
         try
@@ -1965,6 +1994,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
     /**
      * Stop Replicator Node Manager JMX service.
      */
+    @MethodDesc(description = "Stops the replicator service", usage = "stop")
     public void stop() throws Exception
     {
         try
@@ -2116,6 +2146,31 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
     }
 
     /**
+     * Invokes purge on underlying replicator plugin. {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.management.OpenReplicatorManagerMBean#purge(java.util.Map)
+     */
+    @MethodDesc(description = "Kill non-replication connections", usage = "purge")
+    public int purge(
+            @ParamDesc(name = "controlParams", description = "Control parameters for purge operation") Map<String, String> controlParams)
+            throws Exception
+    {
+        // TungstenProperties params = new TungstenProperties(controlParams);
+
+        try
+        {
+            logger.info("Received connection purge request");
+            // TODO: return openReplicator.purge(params);
+            return 0;
+        }
+        catch (Exception e)
+        {
+            logger.error("Purge request failed", e);
+            throw new Exception("Purge request failed: " + e.getMessage());
+        }
+    }
+
+    /**
      * Inserts a heartbeat event. {@inheritDoc}
      * 
      * @see com.continuent.tungsten.replicator.management.OpenReplicatorManagerMBean#heartbeat(Map)
@@ -2228,7 +2283,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      * @see com.continuent.tungsten.replicator.management.OpenReplicatorManagerMBean#waitForAppliedSequenceNumber(java.lang.String,
      *      long)
      */
-    @MethodDesc(description = "Waits for a sequence number to be applied", usage = "waitForAppliedSequenceNumber seqno timeout")
+    @MethodDesc(description = "Waits for a sequence number to be applied", usage = "waitForAppliedSequenceNumber <seqno> <timeout>")
     public boolean waitForAppliedSequenceNumber(
             @ParamDesc(name = "seqno", description = "Sequence number to wait for") String seqno,
             @ParamDesc(name = "timeout", description = "Seconds to wait before timing out (0=infinity") long timeout)
@@ -2253,7 +2308,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      * @see com.continuent.tungsten.replicator.management.OpenReplicatorManagerMBean#backup(java.lang.String,
      *      java.lang.String, long)
      */
-    @MethodDesc(description = "Backs up the database", usage = "backup backupAgent storageAgent timeout")
+    @MethodDesc(description = "Backs up the database", usage = "backup <backupAgent> <storageAgent> <timeout>")
     public String backup(
             @ParamDesc(name = "backupAgentName", description = "Backup agent to use or null for default") String backupAgentName,
             @ParamDesc(name = "storageAgentName", description = "Storage agent to use or null for default") String storageAgentName,
@@ -2299,7 +2354,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      * @see com.continuent.tungsten.replicator.management.OpenReplicatorManagerMBean#restore(java.lang.String,
      *      long)
      */
-    @MethodDesc(description = "Restores the database", usage = "restore uri timeout")
+    @MethodDesc(description = "Restores the database", usage = "restore <uri> <timeout>")
     public boolean restore(
             @ParamDesc(name = "uri", description = "URI of backup to restore") String uri,
             @ParamDesc(name = "timeout", description = "Seconds to wait before timing out (0=infinity") long timeout)
@@ -2380,7 +2435,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      * @see com.continuent.tungsten.replicator.management.OpenReplicatorManagerMBean#provision(java.lang.String,
      *      long)
      */
-    @MethodDesc(description = "Provisions from another database", usage = "provision replicatorUri timeout")
+    @MethodDesc(description = "Provisions from another database", usage = "provision <replicatorUri> <timeout>")
     public boolean provision(
             @ParamDesc(name = "replicatorUri", description = "URI of replicator from which to provision") String replicatorUri,
             @ParamDesc(name = "timeout", description = "Seconds to wait before timing out (0=infinity") long timeout)
@@ -2408,7 +2463,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      *      java.lang.String, java.lang.String, int, int)
      */
 
-    @MethodDesc(description = "Perform a cluster-wide consistency check", usage = "consistencyCheck <schema>[.{<table> | *]")
+    @MethodDesc(description = "Perform a cluster-wide consistency check", usage = "consistencyCheck <schema>[.{<table> | *}]")
     public void consistencyCheck(
             @ParamDesc(name = "method", description = "md5") String method,
             @ParamDesc(name = "schemaName", description = "schema to check") String schemaName,
@@ -2439,7 +2494,11 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      * @see com.continuent.tungsten.replicator.management.OpenReplicatorManagerMBean#signal(int,
      *      java.lang.String)
      */
-    public void signal(int signal, String msg) throws Exception
+    @MethodDesc(description = "sends a notification to the replicator manager about state changes", usage = "signal <signal_number> <message>")
+    public void signal(
+            @ParamDesc(name = "signal", description = "Signal number") int signal,
+            @ParamDesc(name = "msg", description = "additional message passed along the signal") String msg)
+            throws Exception
     {
         try
         {
@@ -2692,7 +2751,10 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
     /**
      * Local wrapper of configure to help with unit testing.
      */
-    public void configure(TungstenProperties tp) throws Exception
+    @MethodDesc(description = "Configure properties by either rereading them or setting all properties from outside.", usage = "configure <properties>")
+    public void configure(
+            @ParamDesc(name = "tp", description = "Optional properties to replace replicator.properties") TungstenProperties tp)
+            throws Exception
     {
         /* load new configuration in */
         handleEventSynchronous(new ConfigureEvent(tp));

@@ -980,7 +980,7 @@ public class SimpleBatchApplier implements RawApplier
     }
 
     // Load an open CSV file.
-    private void clearStageTable(CsvInfo info) throws ReplicatorException
+    protected void clearStageTable(CsvInfo info) throws ReplicatorException
     {
         Table table = info.stageTableMetadata;
         if (logger.isDebugEnabled())
@@ -1038,7 +1038,7 @@ public class SimpleBatchApplier implements RawApplier
         {
             if (logger.isDebugEnabled())
             {
-                logger.debug("Executing insert merge command: " + command);
+                logger.debug("Executing merge command: " + command);
             }
             try
             {

@@ -82,6 +82,10 @@ public class CsvInfo
                 .put("%%BASE_TABLE%%", baseTableMetadata.fullyQualifiedName());
         parameters.put("%%BASE_COLUMNS%%", colNames.toString());
         parameters.put("%%STAGE_TABLE%%",
+                stageTableMetadata.getName());
+        parameters.put("%%STAGE_SCHEMA%%",
+                stageTableMetadata.getSchema());
+        parameters.put("%%STAGE_TABLE_FQN%%",
                 stageTableMetadata.fullyQualifiedName());
         parameters.put("%%PKEY%%", pkey);
         parameters.put("%%BASE_PKEY%%", basePkey);

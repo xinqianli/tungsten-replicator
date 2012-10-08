@@ -3,5 +3,5 @@
 # be configured to use UTF8.  This script *must* run on the server.  Tungsten
 # uses drizzle JDBC which does not handle LOAD DATA LOCAL INFILE properly. 
 SET time_zone = '+0:00';
-LOAD DATA INFILE '%%CSV_FILE%%' INTO TABLE %%STAGE_TABLE%% 
+LOAD DATA INFILE '%%CSV_FILE%%' INTO TABLE %%STAGE_TABLE_FQN%% 
   CHARACTER SET utf8 FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"'

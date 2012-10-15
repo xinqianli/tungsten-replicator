@@ -238,12 +238,14 @@ public class CsvTest
         CsvWriter csvWriter = new CsvWriter(sw);
         csvWriter.addColumnName("a");
         csvWriter.addRowIdName("my_row_id");
+        csvWriter.addColumnName("c");
         csvWriter.setWriteHeaders(true);
 
         // Write values and flush to a string we can read again.
         for (int i = 1; i <= 10; i++)
         {
             csvWriter.put("a", new Integer(i).toString());
+            csvWriter.put("c", new Integer(i * 2).toString());
             csvWriter.write();
         }
         csvWriter.flush();
@@ -262,6 +264,8 @@ public class CsvTest
                     csvReader.getString("a"));
             Assert.assertEquals(new Integer(i + 1).toString(),
                     csvReader.getString("my_row_id"));
+            Assert.assertEquals(new Integer(i * 2).toString(),
+                    csvReader.getString("c"));
         }
     }
 

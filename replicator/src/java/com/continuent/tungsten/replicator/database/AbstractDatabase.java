@@ -1100,6 +1100,12 @@ public abstract class AbstractDatabase implements Database
         }
     }
 
+    /**
+     * Stub routine that ignores table type. MySQL databases must override this.
+     * 
+     * @see com.continuent.tungsten.replicator.database.Database#createTable(com.continuent.tungsten.replicator.database.Table,
+     *      boolean, java.lang.String)
+     */
     public void createTable(Table table, boolean replace,
             String tungstenTableType) throws SQLException
     {

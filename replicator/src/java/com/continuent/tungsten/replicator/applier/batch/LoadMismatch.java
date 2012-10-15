@@ -31,5 +31,7 @@ public enum LoadMismatch
     /** Fail if there is a mismatch. */
     fail,
     /** Issue a warning to the log if there is a mismatch. */
-    warn
+    warn, 
+    /** Ignore mismatches. */
+    ignore
 }

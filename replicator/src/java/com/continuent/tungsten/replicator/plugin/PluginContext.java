@@ -165,4 +165,11 @@ public interface PluginContext
      */
     public Future<ReplDBMSHeader> waitForCommitted(long seqno)
             throws InterruptedException;
+
+    /**
+     * Returns the table type used for Tungsten catalog databases.  This value is 
+     * meaningful only for MySQL databases and related data warehouse offspring like 
+     * InfiniDB and InfoBright. 
+     */
+    public String getTungstenTableType();
 }

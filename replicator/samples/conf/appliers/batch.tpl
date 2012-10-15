@@ -10,6 +10,7 @@ replicator.applier.dbms.timezone=GMT+0:00
 #replicator.applier.dbms.charset=UTF-8
 
 # Parameters for loading and merging via stage tables. 
+replicator.applier.dbms.onLoadMismatch=fail
 replicator.applier.dbms.stageColumnPrefix=tungsten_
 replicator.applier.dbms.stageTablePrefix=stage_xxx_
 replicator.applier.dbms.stageDirectory=/tmp/staging

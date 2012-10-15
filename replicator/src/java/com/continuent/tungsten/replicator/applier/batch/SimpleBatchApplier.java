@@ -72,6 +72,7 @@ import com.continuent.tungsten.replicator.dbms.RowIdData;
 import com.continuent.tungsten.replicator.dbms.StatementData;
 import com.continuent.tungsten.replicator.event.DBMSEvent;
 import com.continuent.tungsten.replicator.event.ReplDBMSHeader;
+import com.continuent.tungsten.replicator.event.ReplOptionParams;
 import com.continuent.tungsten.replicator.extractor.mysql.SerialBlob;
 import com.continuent.tungsten.replicator.heartbeat.HeartbeatTable;
 import com.continuent.tungsten.replicator.plugin.PluginContext;
@@ -178,16 +179,19 @@ public class SimpleBatchApplier implements RawApplier
         this.password = password;
     }
 
+    /** Set the name of the connect script. */
     public void setStartupScript(String startupScript)
     {
         this.startupScript = startupScript;
     }
 
+    /** Set the name of the merge script. */
     public void setStageMergeScript(String stageMergeScript)
     {
         this.stageMergeScript = stageMergeScript;
     }
 
+    /** Set the schema prefix for staging tables. */
     public void setStageSchemaPrefix(String stageSchemaPrefix)
     {
         this.stageSchemaPrefix = stageSchemaPrefix;
@@ -198,41 +202,49 @@ public class SimpleBatchApplier implements RawApplier
         this.stageTablePrefix = stageTablePrefix;
     }
 
+    /** Set the default name of the staging table primary key. */
     public void setStagePkeyColumn(String stagePkeyColumn)
     {
         this.stagePkeyColumn = stagePkeyColumn;
     }
 
+    /** Set the prefix for staging table columns. */
     public void setStageColumnPrefix(String stageColumnPrefix)
     {
         this.stageColumnPrefix = stageColumnPrefix;
     }
 
+    /** Set the name of the staging directory. */
     public void setStageDirectory(String stageDirectory)
     {
         this.stageDirectory = stageDirectory;
     }
 
+    /** If true, clean up files automatically. */
     public void setCleanUpFiles(boolean cleanUpFiles)
     {
         this.cleanUpFiles = cleanUpFiles;
     }
 
+    /** Sets the platform charset name. */
     public void setCharset(String charset)
     {
         this.charset = charset;
     }
 
+    /** Sets the timezone. */
     public void setTimezone(String timezone)
     {
         this.timezone = timezone;
     }
 
+    /** Sets the proper handling of a load mismatch. */
     public void setOnLoadMismatch(String onLoadMismatchString)
     {
         this.onLoadMismatch = LoadMismatch.valueOf(onLoadMismatchString);
     }
 
+    /** Sets the configured CSV bean. */
     public void setCsvLoader(CsvLoader csvLoader)
     {
         this.csvLoader = csvLoader;
@@ -253,6 +265,30 @@ public class SimpleBatchApplier implements RawApplier
     {
         long seqno = header.getSeqno();
         ArrayList<DBMSData> dbmsDataValues = event.getData();
+
+        // Apply heartbeat directly, skipping batch loading.
+        String hbName = event
+                .getMetadataOptionValue(ReplOptionParams.HEARTBEAT);
+        if (hbName != null)
+        {
+            try
+            {
+                heartbeatTable.applyHeartbeat(conn, event.getSourceTstamp(),
+                        hbName);
+                heartbeatTable.completeHeartbeat(conn, header.getSeqno(),
+                        event.getEventId());
+                if (doCommit)
+                {
+                    conn.commit();
+                }
+            }
+            catch (SQLException e)
+            {
+                throw new ReplicatorException("Error updating heartbeat table",
+                        e);
+            }
+            return;
+        }
 
         // Iterate through values inferring the database name.
         for (DBMSData dbmsData : dbmsDataValues)
@@ -604,21 +640,24 @@ public class SimpleBatchApplier implements RawApplier
             conn.connect(false);
             statement = conn.createStatement();
 
+            // Get the table type. For MySQL databases this is important.
+            String tableType = context.getTungstenTableType();
+
             // Set up heartbeat table.
             heartbeatTable = new HeartbeatTable(
-                    context.getReplicatorSchemaName(), "");
+                    context.getReplicatorSchemaName(), tableType);
             heartbeatTable.initializeHeartbeatTable(conn);
-            createStageTable(heartbeatTable.getTable(), false);
+            createStageTable(heartbeatTable.getTable(), false, tableType);
 
             // Create consistency table
             Table consistency = ConsistencyTable
                     .getConsistencyTableDefinition(metadataSchema);
-            conn.createTable(consistency, false);
-            createStageTable(consistency, false);
+            conn.createTable(consistency, false, tableType);
+            createStageTable(consistency, false, tableType);
 
             // Set up commit seqno table and fetch the last processed event.
             commitSeqnoTable = new CommitSeqnoTable(conn,
-                    context.getReplicatorSchemaName(), "", false);
+                    context.getReplicatorSchemaName(), tableType, false);
             commitSeqnoTable.prepare(taskId);
             latestHeader = commitSeqnoTable.lastCommitSeqno(taskId);
 
@@ -746,8 +785,8 @@ public class SimpleBatchApplier implements RawApplier
      * @param baseTable Base table for which to create the corresponding staging
      *            tables.
      */
-    private void createStageTable(Table baseTable, boolean dropExisting)
-            throws SQLException
+    private void createStageTable(Table baseTable, boolean dropExisting,
+            String tableType) throws SQLException
     {
         Table stageTable = getStageTable(baseTable);
 
@@ -756,7 +795,7 @@ public class SimpleBatchApplier implements RawApplier
             logger.debug("Creating test staging table: " + stageTable.getName());
             logger.debug("Table details: " + stageTable);
         }
-        conn.createTable(stageTable, dropExisting);
+        conn.createTable(stageTable, dropExisting, tableType);
     }
 
     /**
@@ -779,22 +818,20 @@ public class SimpleBatchApplier implements RawApplier
         stageTable.setTable(stageName);
         stageTable.setSchema(stageSchema);
 
-        // Seqno, and op code columns
-        Column seqnoCol = new Column(stageColumnPrefix + "seqno", Types.INTEGER);
-        stageTable.AddColumn(seqnoCol);
+        // Opcode, seqno, and row_id columns are always first 3 columns.
         Column opCol = new Column(stageColumnPrefix + "opcode", Types.CHAR, 1);
         stageTable.AddColumn(opCol);
+        Column seqnoCol = new Column(stageColumnPrefix + "seqno", Types.INTEGER);
+        stageTable.AddColumn(seqnoCol);
+        Column rowIdCol = new Column(stageColumnPrefix + "row_id",
+                Types.INTEGER);
+        stageTable.AddColumn(rowIdCol);
 
         // Add columns from base table.
         for (Column col : baseTable.getAllColumns())
         {
             stageTable.AddColumn(col);
         }
-
-        // Add row ID column to the end.
-        Column rowIdCol = new Column(stageColumnPrefix + "row_id",
-                Types.INTEGER);
-        stageTable.AddColumn(rowIdCol);
 
         // Return the result.
         return stageTable;
@@ -816,7 +853,7 @@ public class SimpleBatchApplier implements RawApplier
             File file = new File(this.stageDir, key + ".csv");
 
             // Pick the right table to use. For staging tables, we
-            // need to use the stage metadata instead of going direct
+            // need to use the stage metadata instead of going direct.
             Table csvMetadata;
             if (stageTableMetadata == null)
                 csvMetadata = tableMetadata;
@@ -836,14 +873,16 @@ public class SimpleBatchApplier implements RawApplier
 
                 // Populate columns. The last column is the row ID, which is
                 // automatically populated by the CSV writer.
+                String rowIdName = stageColumnPrefix + "row_id";
                 List<Column> columns = csvMetadata.getAllColumns();
                 for (int i = 0; i < columns.size(); i++)
                 {
                     Column col = columns.get(i);
-                    if (i + 1 < columns.size())
-                        writer.addColumnName(col.getName());
+                    String name = col.getName();
+                    if (rowIdName.equals(name))
+                        writer.addRowIdName(name);
                     else
-                        writer.addRowIdName(col.getName());
+                        writer.addColumnName(name);
                 }
 
                 // Create and cache writer information.
@@ -887,10 +926,11 @@ public class SimpleBatchApplier implements RawApplier
             {
                 // Insert the sequence number and opcode.
                 int csvIndex = 1;
-                csv.put(csvIndex++, new Long(seqno).toString());
                 csv.put(csvIndex++, opcode);
+                csv.put(csvIndex++, new Long(seqno).toString());
 
-                // Now add the row data.
+                // Now add the row data. Note that we skip the 3rd column as
+                // that has the row_id value and is filled in automatically.
                 ArrayList<ColumnVal> row = colIterator.next();
                 for (int i = 0; i < row.size(); i++)
                 {
@@ -898,7 +938,7 @@ public class SimpleBatchApplier implements RawApplier
                     ColumnSpec columnSpec = colSpecs.get(i);
                     String value = getCsvString(columnVal, columnSpec);
                     int colIdx = columnSpec.getIndex();
-                    csv.put(colIdx + 2, value);
+                    csv.put(colIdx + 3, value);
                 }
                 csv.write();
             }

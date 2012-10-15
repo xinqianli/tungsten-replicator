@@ -1,6 +1,6 @@
 /**
  * Tungsten: An Application Server for uni/cluster.
- * Copyright (C) 2007-2010 Continuent Inc.
+ * Copyright (C) 2007-2012 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -136,6 +136,11 @@ public class MySQLDatabase extends AbstractDatabase
         }
     }
 
+    /**
+     * This should not be called for MySQL but we have a version of it anyway
+     * because it's better not to have broken code. This will default to the
+     * default engine type.
+     */
     public void createTable(Table t, boolean replace) throws SQLException
     {
         createTable(t, replace, null);
@@ -466,39 +471,58 @@ public class MySQLDatabase extends AbstractDatabase
 
             comma = true;
         }
-        Iterator<Key> j = t.getKeys().iterator();
 
-        while (j.hasNext())
+        // Add primary keys if supported by this table type.
+        if (supportsPrimaryKeys(tableType))
         {
-            Key key = j.next();
-            SQL += ", ";
-            switch (key.getType())
+            Iterator<Key> j = t.getKeys().iterator();
+
+            while (j.hasNext())
             {
-                case Key.Primary :
-                    SQL += "PRIMARY KEY (";
-                    break;
-                case Key.Unique :
-                    SQL += "UNIQUE KEY (";
-                    break;
-                case Key.NonUnique :
-                    SQL += "KEY (";
-                    break;
+                Key key = j.next();
+                SQL += ", ";
+                switch (key.getType())
+                {
+                    case Key.Primary :
+                        SQL += "PRIMARY KEY (";
+                        break;
+                    case Key.Unique :
+                        SQL += "UNIQUE KEY (";
+                        break;
+                    case Key.NonUnique :
+                        SQL += "KEY (";
+                        break;
+                }
+                i = key.getColumns().iterator();
+                comma = false;
+                while (i.hasNext())
+                {
+                    Column c = i.next();
+                    SQL += (comma ? ", " : "") + c.getName();
+                    comma = true;
+                }
+                SQL += ")";
             }
-            i = key.getColumns().iterator();
-            comma = false;
-            while (i.hasNext())
-            {
-                Column c = i.next();
-                SQL += (comma ? ", " : "") + c.getName();
-                comma = true;
-            }
-            SQL += ")";
         }
         SQL += ")";
         if (tableType != null && tableType.length() > 0)
             SQL += " ENGINE=" + tableType;
         SQL += " CHARSET=utf8";
         execute(SQL);
+    }
+
+    // Returns true if the table type supports primary keys.
+    protected boolean supportsPrimaryKeys(String tableType)
+    {
+        if (tableType == null)
+            return false;
+        String lowerTableType = tableType.toLowerCase();
+        if ("brighthouse".equals(lowerTableType))
+            return false;
+        else if ("infinidb".equals(lowerTableType))
+            return false;
+        else
+            return true;
     }
 
     /**

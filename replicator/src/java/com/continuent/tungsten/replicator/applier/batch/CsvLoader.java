@@ -39,7 +39,7 @@ public interface CsvLoader
      * 
      * @param conn JDBC connection to the DBMS
      * @param info Information on CSV file and table to which it applies
-     * @param onLoadMisMatch How to handle a mismatch between actual rows loaded
+     * @param onLoadMismatch How to handle a mismatch between actual rows loaded
      *            to DBMS and rows in the CSV file
      * @throws ReplicatorException Thrown if load fails
      */

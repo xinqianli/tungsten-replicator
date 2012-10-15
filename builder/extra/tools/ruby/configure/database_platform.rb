@@ -214,7 +214,7 @@ class ConfigureDatabasePlatform
   end
   
   def get_allowed_table_engines
-    ["innodb"]
+    ["innodb","infinidb","brighthouse"]
   end
   
   def self.build(scheme, host, port, username, password, config)

@@ -88,7 +88,7 @@ public class BatchScript
     /**
      * Loads a set of raw commands from an input stream.
      * 
-     * @param scriptFile File containing script
+     * @param source File containing script
      * @param reader Reader from which to read unparameterized script
      * @throws IOException Thrown if there is an I/O error during reading
      */

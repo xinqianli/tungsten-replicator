@@ -50,6 +50,7 @@ import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.commons.csv.CsvException;
 import com.continuent.tungsten.commons.csv.CsvWriter;
+import com.continuent.tungsten.commons.exec.ProcessExecutor;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.applier.RawApplier;
 import com.continuent.tungsten.replicator.consistency.ConsistencyException;
@@ -118,6 +119,7 @@ public class SimpleBatchApplier implements RawApplier
     protected String                    timezone             = "GMT-0:00";
     protected LoadMismatch              onLoadMismatch       = LoadMismatch.fail;
     protected CsvLoader                 csvLoader;
+    protected boolean                   showCommands;
 
     // Load file directory for this task.
     private File                        stageDir;
@@ -133,15 +135,12 @@ public class SimpleBatchApplier implements RawApplier
     protected Map<String, List<String>> loadScripts          = new HashMap<String, List<String>>();
 
     // Cached merge commands.
-    private SqlScriptGenerator          mergeScriptGenerator = new SqlScriptGenerator();
-    private Map<String, List<String>>   mergeScripts         = new HashMap<String, List<String>>();
+    private BatchScript                 mergeScript          = new BatchScript();
 
     // Latest event.
     private ReplDBMSHeader              latestHeader;
 
-    // Table metadata for base tables. We have to separate delete metadata from
-    // normal metadata, as delete metadata is generated differently using only
-    // keys supplied in a row delete operation.
+    // Table metadata for base tables.
     private TableMetadataCache          fullMetadataCache;
 
     // DBMS connection information.
@@ -248,6 +247,12 @@ public class SimpleBatchApplier implements RawApplier
     public void setCsvLoader(CsvLoader csvLoader)
     {
         this.csvLoader = csvLoader;
+    }
+
+    /** If true, show commands in the log when loading batches. */
+    public void setShowCommands(boolean showCommands)
+    {
+        this.showCommands = showCommands;
     }
 
     /**
@@ -603,8 +608,9 @@ public class SimpleBatchApplier implements RawApplier
                     + outputCharset.toString());
         }
 
-        // Initialize script generator for merge operations.
-        mergeScriptGenerator = initializeGenerator(stageMergeScript);
+        // Initialize script for merge operations.
+        mergeScript = new BatchScript();
+        mergeScript.load(new File(stageMergeScript));
 
         // Set up the staging directory.
         File staging = new File(stageDirectory);
@@ -863,6 +869,19 @@ public class SimpleBatchApplier implements RawApplier
             // Now generate the CSV writer.
             try
             {
+                // Ensure the file does not exist. This cleans up from
+                // previous transactions.
+                if (file.exists())
+                {
+                    file.delete();
+                }
+                if (file.exists())
+                {
+                    throw new ReplicatorException(
+                            "Unable to delete CSV file prior to loading new data: "
+                                    + file.getAbsolutePath());
+                }
+
                 // Generate a CSV writer on the file.
                 FileOutputStream outputStream = new FileOutputStream(file);
                 OutputStreamWriter streamWriter = new OutputStreamWriter(
@@ -1064,40 +1083,84 @@ public class SimpleBatchApplier implements RawApplier
         }
 
         // Get the commands(s) to merge from stage table to base table.
-        List<String> commands = mergeScripts.get(base.fullyQualifiedName());
-        if (commands == null)
-        {
-            // If we do not have commands yet, generate them.
-            Map<String, String> parameters = info.getSqlParameters();
-            commands = mergeScriptGenerator.getParameterizedScript(parameters);
-            mergeScripts.put(base.fullyQualifiedName(), commands);
-        }
+        Map<String, String> parameters = info.getSqlParameters();
+        List<BatchCommand> commands = mergeScript
+                .getParameterizedScript(parameters);
 
         // Execute merge commands one by one.
-        for (String command : commands)
+        for (BatchCommand command : commands)
         {
             if (logger.isDebugEnabled())
             {
-                logger.debug("Executing merge command: " + command);
+                logger.debug("Executing merge command: " + command.toString());
             }
-            try
+            String commandText = command.getCommand();
+            if (this.showCommands)
             {
-                long start = System.currentTimeMillis();
-                int rows = statement.executeUpdate(command);
-                double interval = (System.currentTimeMillis() - start) / 1000.0;
+                logger.info("Batch Command: " + commandText);
+            }
+
+            // Process command.
+            long start = System.currentTimeMillis();
+            if (commandText.startsWith("!"))
+            {
+                // Check for "bang" with no command following...
+                if (commandText.length() <= 1)
+                {
+                    // This must be ignored.
+                    continue;
+                }
+
+                String osCommandText = commandText.substring(1);
+                String[] osArray = {"sh", "-c", osCommandText};
+                ProcessExecutor pe = new ProcessExecutor();
+                pe.setCommands(osArray);
                 if (logger.isDebugEnabled())
                 {
-                    logger.debug("Execution completed: rows updated=" + rows
-                            + " duration=" + interval + "s");
+                    logger.debug("Executing OS command: " + osCommandText);
+                }
+                pe.run();
+                if (logger.isDebugEnabled())
+                {
+                    logger.debug("OS command stdout: " + pe.getStdout());
+                    logger.debug("OS command stderr: " + pe.getStderr());
+                    logger.debug("OS command exit value: " + pe.getExitValue());
+                }
+                if (!pe.isSuccessful())
+                {
+                    logger.error("OS command failed: command=" + osCommandText
+                            + " rc=" + pe.getExitValue() + " stdout="
+                            + pe.getStdout() + " stderr=" + pe.getStderr());
+                    throw new ReplicatorException("OS command failed: command="
+                            + osCommandText);
                 }
             }
-            catch (SQLException e)
+            else
             {
-                ReplicatorException re = new ReplicatorException(
-                        "Unable to merge data from stage table: "
-                                + stage.fullyQualifiedName(), e);
-                re.setExtraData(command);
-                throw re;
+                // SQL command.
+                try
+                {
+                    int rows = statement.executeUpdate(commandText);
+                    if (logger.isDebugEnabled())
+                    {
+                        logger.debug("SQL execution completed: rows updated="
+                                + rows);
+                    }
+                }
+                catch (SQLException e)
+                {
+                    ReplicatorException re = new ReplicatorException(
+                            "Unable to merge data to base table: "
+                                    + base.fullyQualifiedName(), e);
+                    re.setExtraData(command.toString());
+                    throw re;
+                }
+            }
+
+            double interval = (System.currentTimeMillis() - start) / 1000.0;
+            if (logger.isDebugEnabled())
+            {
+                logger.debug("Execution completed: duration=" + interval + "s");
             }
         }
     }

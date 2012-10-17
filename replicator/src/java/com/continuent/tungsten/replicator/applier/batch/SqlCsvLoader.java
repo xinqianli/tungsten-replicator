@@ -108,6 +108,10 @@ public class SqlCsvLoader implements CsvLoader
             // Execute a loop for each load command.
             for (String loadCommand : loadCommands)
             {
+                // Skip empty commands.
+                if (loadCommand.trim().length() == 0)
+                    continue;
+
                 try
                 {
                     if (logger.isDebugEnabled())

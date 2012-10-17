@@ -17,6 +17,10 @@ replicator.applier.dbms.stageDirectory=/tmp/staging
 replicator.applier.dbms.stageMergeScript=${replicator.home.dir}/samples/scripts/batch/@{SERVICE.BATCH_LOAD_TEMPLATE}-merge.sql
 replicator.applier.dbms.cleanUpFiles=false
 
+# Enable to log batch script commands as they are executed.  (Generates
+# potentially large amount of output.)
+replicator.applier.dbms.showCommands=false
+
 # Parameters for CSV Loader bean. 
 replicator.applier.dbms.csvLoader=com.continuent.tungsten.replicator.applier.batch.SqlCsvLoader
 replicator.applier.dbms.csvLoader.stageLoadScript=${replicator.home.dir}/samples/scripts/batch/@{SERVICE.BATCH_LOAD_TEMPLATE}-load.sql

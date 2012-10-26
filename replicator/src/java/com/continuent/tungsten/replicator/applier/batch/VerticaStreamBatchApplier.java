@@ -27,12 +27,12 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
+
 import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.replicator.ReplicatorException;
-import com.continuent.tungsten.replicator.database.Table;
 
 /**
  * Implements an applier that bulk loads data into a Vertica database via stream
@@ -55,16 +55,18 @@ public class VerticaStreamBatchApplier extends SimpleBatchApplier
         int rowsToLoad = info.writer.getRowCount();
 
         // Generate the load command(s).
-        Table base = info.baseTableMetadata;
-        List<String> loadCommands = loadScripts.get(base.fullyQualifiedName());
-        if (loadCommands == null)
-        {
-            // If we do not have load commands yet, generate them.
-            Map<String, String> parameters = info.getSqlParameters();
-            loadCommands = loadScriptGenerator
-                    .getParameterizedScript(parameters);
-            loadScripts.put(base.fullyQualifiedName(), loadCommands);
-        }
+        List<String> loadCommands = new ArrayList<String>();
+        
+        // Table base = info.baseTableMetadata; 
+        // List<String> loadCommands = loadScripts.get(base.fullyQualifiedName());
+        // if (loadCommands == null)
+        // {
+     //     // If we do not have load commands yet, generate them.
+     //     Map<String, String> parameters = info.getSqlParameters();
+     //     loadCommands = loadScriptGenerator
+     //             .getParameterizedScript(parameters);
+     //     loadScripts.put(base.fullyQualifiedName(), loadCommands);
+     //    }
 
         // Execute aforesaid load commands.
         int commandCount = 0;

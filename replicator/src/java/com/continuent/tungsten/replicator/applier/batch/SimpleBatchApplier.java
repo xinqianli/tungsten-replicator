@@ -118,7 +118,6 @@ public class SimpleBatchApplier implements RawApplier
     protected String                    charset              = "UTF-8";
     protected String                    timezone             = "GMT-0:00";
     protected LoadMismatch              onLoadMismatch       = LoadMismatch.fail;
-    protected CsvLoader                 csvLoader;
     protected boolean                   showCommands;
 
     // Load file directory for this task.
@@ -129,10 +128,6 @@ public class SimpleBatchApplier implements RawApplier
 
     // Open CVS files in current transaction.
     private Map<String, CsvInfo>        openCsvFiles         = new TreeMap<String, CsvInfo>();
-
-    // Cached load commands.
-    protected SqlScriptGenerator        loadScriptGenerator  = new SqlScriptGenerator();
-    protected Map<String, List<String>> loadScripts          = new HashMap<String, List<String>>();
 
     // Cached merge commands.
     private BatchScript                 mergeScript          = new BatchScript();
@@ -241,12 +236,6 @@ public class SimpleBatchApplier implements RawApplier
     public void setOnLoadMismatch(String onLoadMismatchString)
     {
         this.onLoadMismatch = LoadMismatch.valueOf(onLoadMismatchString);
-    }
-
-    /** Sets the configured CSV bean. */
-    public void setCsvLoader(CsvLoader csvLoader)
-    {
-        this.csvLoader = csvLoader;
     }
 
     /** If true, show commands in the log when loading batches. */
@@ -433,7 +422,6 @@ public class SimpleBatchApplier implements RawApplier
         for (CsvInfo info : openCsvFiles.values())
         {
             clearStageTable(info);
-            load(info);
             mergeFromStageTable(info);
             loadCount++;
         }
@@ -471,8 +459,8 @@ public class SimpleBatchApplier implements RawApplier
         // Clear the CSV file cache.
         openCsvFiles.clear();
 
-        // Clear the load directories.
-        if (this.cleanUpFiles)
+        // Clear the load directories if desired. 
+        if (cleanUpFiles)
             purgeDirIfExists(stageDir, false);
     }
 
@@ -1013,27 +1001,6 @@ public class SimpleBatchApplier implements RawApplier
         catch (IOException e)
         {
             throw new ReplicatorException("Unable to close CSV file: "
-                    + info.file.getAbsolutePath());
-        }
-    }
-
-    /**
-     * Load an open CSV file.
-     */
-    protected void load(CsvInfo info) throws ReplicatorException
-    {
-        if (logger.isDebugEnabled())
-        {
-            logger.debug("Loading CSV file: " + info.file.getAbsolutePath());
-        }
-
-        // Invoke the CSV loader.
-        csvLoader.load(conn, info, onLoadMismatch);
-
-        // Delete the load file if we are done with it.
-        if (cleanUpFiles && !info.file.delete())
-        {
-            logger.warn("Unable to delete load file: "
                     + info.file.getAbsolutePath());
         }
     }

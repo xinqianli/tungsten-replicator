@@ -1,5 +1,10 @@
 # Merge script for MySQL. 
 #
+# Load CSV to staging table.  This script *must* run on the server.  Tungsten
+# uses drizzle JDBC which does not handle LOAD DATA LOCAL INFILE properly. 
+LOAD DATA INFILE '%%CSV_FILE%%' INTO TABLE %%STAGE_TABLE_FQN%% 
+  CHARACTER SET utf8 FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"'
+
 # Delete rows.  This query applies all deletes that match, need it or not. 
 # The inner join syntax used avoids an expensive scan of the base table 
 # by putting it second in the join order. 

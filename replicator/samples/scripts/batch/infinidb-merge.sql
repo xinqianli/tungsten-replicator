@@ -1,8 +1,14 @@
 # Merge script for InfiniDB.
-#
+
+# Either call cpimport using the full path, or by putting it into PATH.
+# Please note that separator and enclosing character should NOT be quoted.
+# E.G. cpimport -j 3000 -E '"' should be written cpimport -j 3000 -E "
+!/usr/local/bin/cpimport %%STAGE_SCHEMA%% %%STAGE_TABLE%% %%CSV_FILE%% -s , -E "
+
 # Delete rows.  This query applies all deletes that match, need it or not.
 DELETE FROM %%BASE_TABLE%%
-  WHERE %%BASE_TABLE%%.%%PKEY%% IN (SELECT %%PKEY%% FROM %%STAGE_TABLE_FQN%% WHERE tungsten_opcode = 'D')
+  WHERE %%BASE_TABLE%%.%%PKEY%% 
+    IN (SELECT %%PKEY%% FROM %%STAGE_TABLE_FQN%% WHERE tungsten_opcode = 'D')
 
 # Insert rows.  This query loads each inserted row provided that the
 # insert is (a) the last insert processed and (b) is not followed by a

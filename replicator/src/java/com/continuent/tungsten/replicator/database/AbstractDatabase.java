@@ -130,7 +130,7 @@ public abstract class AbstractDatabase implements Database
      * @param c Column for which specification is required
      * @return String containing specification
      */
-    abstract protected String columnToTypeString(Column c);
+    abstract protected String columnToTypeString(Column c, String tableType);
 
     /**
      * {@inheritDoc}
@@ -728,7 +728,7 @@ public abstract class AbstractDatabase implements Database
         {
             Column c = i.next();
             SQL += (comma ? ", " : "") + c.getName() + " "
-                    + columnToTypeString(c)
+                    + columnToTypeString(c, null)
                     + (c.isNotNull() ? " NOT NULL" : "");
             comma = true;
         }

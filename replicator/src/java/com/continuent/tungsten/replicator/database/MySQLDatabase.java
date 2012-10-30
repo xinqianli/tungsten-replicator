@@ -56,7 +56,7 @@ public class MySQLDatabase extends AbstractDatabase
         dbDriver = "com.mysql.jdbc.Driver";
     }
 
-    protected String columnToTypeString(Column c)
+    protected String columnToTypeString(Column c, String tableType)
     {
         switch (c.getType())
         {
@@ -82,6 +82,9 @@ public class MySQLDatabase extends AbstractDatabase
                 return "DATETIME";
 
             case Types.TIMESTAMP :
+                if (tableType != null
+                        && "infinidb".equals(tableType.toLowerCase()))
+                    return "DATETIME";
                 return "TIMESTAMP";
 
             case Types.CLOB :
@@ -465,9 +468,13 @@ public class MySQLDatabase extends AbstractDatabase
         while (i.hasNext())
         {
             Column c = i.next();
-            SQL += (comma ? ", " : "") + c.getName() + " "
-                    + columnToTypeString(c)
-                    + (c.isNotNull() ? " NOT NULL" : " NULL");
+            SQL += (comma ? ", " : "")
+                    + c.getName()
+                    + " "
+                    + columnToTypeString(c, tableType)
+                    + (supportsNotNull(tableType) ? (c.isNotNull()
+                            ? " NOT NULL"
+                            : " NULL") : "");
 
             comma = true;
         }
@@ -507,7 +514,9 @@ public class MySQLDatabase extends AbstractDatabase
         SQL += ")";
         if (tableType != null && tableType.length() > 0)
             SQL += " ENGINE=" + tableType;
-        SQL += " CHARSET=utf8";
+
+        if (supportsCharset(tableType))
+            SQL += " CHARSET=utf8";
         execute(SQL);
     }
 
@@ -520,6 +529,30 @@ public class MySQLDatabase extends AbstractDatabase
         if ("brighthouse".equals(lowerTableType))
             return false;
         else if ("infinidb".equals(lowerTableType))
+            return false;
+        else
+            return true;
+    }
+
+    // Returns true if the table type supports primary keys.
+    protected boolean supportsCharset(String tableType)
+    {
+        if (tableType == null)
+            return true;
+        String lowerTableType = tableType.toLowerCase();
+        if ("infinidb".equals(lowerTableType))
+            return false;
+        else
+            return true;
+    }
+
+    // Returns true if the table type supports primary keys.
+    protected boolean supportsNotNull(String tableType)
+    {
+        if (tableType == null)
+            return true;
+        String lowerTableType = tableType.toLowerCase();
+        if ("infinidb".equals(lowerTableType))
             return false;
         else
             return true;

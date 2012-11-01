@@ -96,6 +96,9 @@ function filter(event)
         }
     }
 
-    // Set the shard ID. 
+    // Set the shard ID.  A null value is converted to #UNKNOWN. 
+    if (proposedShardId == null)
+        proposedShardId = "#UNKNOWN";
+
     event.setShardId(proposedShardId);
 }

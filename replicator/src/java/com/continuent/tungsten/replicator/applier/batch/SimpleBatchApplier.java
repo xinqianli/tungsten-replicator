@@ -284,6 +284,15 @@ public class SimpleBatchApplier implements RawApplier
             return;
         }
 
+        // Process consistency checks.  These are currently not supported. 
+        String consistencyWhere = event
+                .getMetadataOptionValue(ReplOptionParams.CONSISTENCY_WHERE);
+        if (consistencyWhere != null)
+        {
+            logger.warn("Consistency checks are not supported: where clause=" + consistencyWhere);
+            return;
+        }
+
         // Iterate through values inferring the database name.
         for (DBMSData dbmsData : dbmsDataValues)
         {
@@ -459,7 +468,7 @@ public class SimpleBatchApplier implements RawApplier
         // Clear the CSV file cache.
         openCsvFiles.clear();
 
-        // Clear the load directories if desired. 
+        // Clear the load directories if desired.
         if (cleanUpFiles)
             purgeDirIfExists(stageDir, false);
     }
@@ -545,8 +554,6 @@ public class SimpleBatchApplier implements RawApplier
         metadataSchema = context.getReplicatorSchemaName();
         consistencyTable = metadataSchema + "." + ConsistencyTable.TABLE_NAME;
         consistencySelect = "SELECT * FROM " + consistencyTable + " ";
-
-        // Check parameters.
     }
 
     // Ensure value is not null.
@@ -641,13 +648,11 @@ public class SimpleBatchApplier implements RawApplier
             heartbeatTable = new HeartbeatTable(
                     context.getReplicatorSchemaName(), tableType);
             heartbeatTable.initializeHeartbeatTable(conn);
-            createStageTable(heartbeatTable.getTable(), false, tableType);
 
             // Create consistency table
             Table consistency = ConsistencyTable
                     .getConsistencyTableDefinition(metadataSchema);
             conn.createTable(consistency, false, tableType);
-            createStageTable(consistency, false, tableType);
 
             // Set up commit seqno table and fetch the last processed event.
             commitSeqnoTable = new CommitSeqnoTable(conn,
@@ -771,25 +776,6 @@ public class SimpleBatchApplier implements RawApplier
             conn.close();
             conn = null;
         }
-    }
-
-    /**
-     * Creates staging tables for the base table.
-     * 
-     * @param baseTable Base table for which to create the corresponding staging
-     *            tables.
-     */
-    private void createStageTable(Table baseTable, boolean dropExisting,
-            String tableType) throws SQLException
-    {
-        Table stageTable = getStageTable(baseTable);
-
-        if (logger.isDebugEnabled())
-        {
-            logger.debug("Creating test staging table: " + stageTable.getName());
-            logger.debug("Table details: " + stageTable);
-        }
-        conn.createTable(stageTable, dropExisting, tableType);
     }
 
     /**

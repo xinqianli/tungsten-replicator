@@ -284,12 +284,13 @@ public class SimpleBatchApplier implements RawApplier
             return;
         }
 
-        // Process consistency checks.  These are currently not supported. 
+        // Process consistency checks. These are currently not supported.
         String consistencyWhere = event
                 .getMetadataOptionValue(ReplOptionParams.CONSISTENCY_WHERE);
         if (consistencyWhere != null)
         {
-            logger.warn("Consistency checks are not supported: where clause=" + consistencyWhere);
+            logger.warn("Consistency checks are not supported: where clause="
+                    + consistencyWhere);
             return;
         }
 
@@ -361,13 +362,13 @@ public class SimpleBatchApplier implements RawApplier
                     {
                         // Fetch column names and values.
                         List<ColumnSpec> keySpecs = orc.getKeySpec();
-                        // List<ColumnSpec> colSpecs = orc.getColumnSpec();
+                        List<ColumnSpec> colSpecs = orc.getColumnSpec();
                         ArrayList<ArrayList<ColumnVal>> keyValues = orc
                                 .getKeyValues();
 
                         // Get information about the table definition.
                         Table tableMetadata = this.getTableMetadata(schema,
-                                table, keySpecs, keySpecs);
+                                table, colSpecs, keySpecs);
 
                         // Insert each column into the CSV file.
                         writeValues(seqno, tableMetadata, keySpecs, keyValues,

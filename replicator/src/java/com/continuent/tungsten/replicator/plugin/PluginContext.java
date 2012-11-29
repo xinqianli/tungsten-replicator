@@ -25,7 +25,7 @@ package com.continuent.tungsten.replicator.plugin;
 import java.util.List;
 import java.util.concurrent.Future;
 
-import com.continuent.tungsten.commons.config.TungstenProperties;
+import com.continuent.tungsten.common.config.TungstenProperties;
 import com.continuent.tungsten.fsm.event.EventDispatcher;
 import com.continuent.tungsten.replicator.conf.FailurePolicy;
 import com.continuent.tungsten.replicator.conf.ReplicatorMonitor;
@@ -172,4 +172,18 @@ public interface PluginContext
      * InfiniDB and InfoBright. 
      */
     public String getTungstenTableType();
+
+    /**
+     * Registers the transaction source (if any) for the head of the current
+     * pipeline. Should be used by head stage only to avoid confusion. For best
+     * usability, head stages should set this as soon as it is known.
+     * 
+     * @param source Typical value is a URI of some kind
+     */
+    public void setPipelineSource(String source);
+
+    /**
+     * Returns the transaction source of the head stage in the pipeline.
+     */
+    public String getPipelineSource();
 }

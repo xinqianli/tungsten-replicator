@@ -31,8 +31,8 @@ import java.util.concurrent.Future;
 import org.apache.log4j.Logger;
 import org.apache.log4j.MDC;
 
-import com.continuent.tungsten.commons.config.PropertyException;
-import com.continuent.tungsten.commons.config.TungstenProperties;
+import com.continuent.tungsten.common.config.PropertyException;
+import com.continuent.tungsten.common.config.TungstenProperties;
 import com.continuent.tungsten.fsm.event.EventDispatcher;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.event.ReplDBMSHeader;
@@ -127,6 +127,9 @@ public class ReplicatorRuntime implements PluginContext
 
     /** If true this replication service is taking over for a native slave. */
     private boolean                           nativeSlaveTakeover;
+
+    /** Source of the head pipeline stage, usually a URI of some kind. */
+    private String                            pipelineSource;
 
     /**
      * Creates a new Runtime instance.
@@ -1157,5 +1160,25 @@ public class ReplicatorRuntime implements PluginContext
     public boolean nativeSlaveTakeover()
     {
         return nativeSlaveTakeover;
+    }
+
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.plugin.PluginContext#setPipelineSource(java.lang.String)
+     */
+    public void setPipelineSource(String source)
+    {
+        this.pipelineSource = source;
+    }
+
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.plugin.PluginContext#setPipelineSource(java.lang.String)
+     */
+    public String getPipelineSource()
+    {
+        return this.pipelineSource;
     }
 }

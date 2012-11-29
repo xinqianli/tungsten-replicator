@@ -48,9 +48,9 @@ import javax.sql.rowset.serial.SerialException;
 
 import org.apache.log4j.Logger;
 
-import com.continuent.tungsten.commons.csv.CsvException;
-import com.continuent.tungsten.commons.csv.CsvWriter;
-import com.continuent.tungsten.commons.exec.ProcessExecutor;
+import com.continuent.tungsten.common.csv.CsvException;
+import com.continuent.tungsten.common.csv.CsvWriter;
+import com.continuent.tungsten.common.exec.ProcessExecutor;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.applier.RawApplier;
 import com.continuent.tungsten.replicator.consistency.ConsistencyException;

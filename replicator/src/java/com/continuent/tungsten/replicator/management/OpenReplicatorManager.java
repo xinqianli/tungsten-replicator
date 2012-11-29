@@ -45,15 +45,15 @@ import javax.management.NotificationBroadcasterSupport;
 
 import org.apache.log4j.Logger;
 
-import com.continuent.tungsten.commons.cluster.resource.OpenReplicatorParams;
-import com.continuent.tungsten.commons.cluster.resource.physical.Replicator;
-import com.continuent.tungsten.commons.cluster.resource.physical.ReplicatorCapabilities;
-import com.continuent.tungsten.commons.config.PropertyException;
-import com.continuent.tungsten.commons.config.TungstenProperties;
-import com.continuent.tungsten.commons.jmx.DynamicMBeanHelper;
-import com.continuent.tungsten.commons.jmx.JmxManager;
-import com.continuent.tungsten.commons.jmx.MethodDesc;
-import com.continuent.tungsten.commons.jmx.ParamDesc;
+import com.continuent.tungsten.common.cluster.resource.OpenReplicatorParams;
+import com.continuent.tungsten.common.cluster.resource.physical.Replicator;
+import com.continuent.tungsten.common.cluster.resource.physical.ReplicatorCapabilities;
+import com.continuent.tungsten.common.config.PropertyException;
+import com.continuent.tungsten.common.config.TungstenProperties;
+import com.continuent.tungsten.common.jmx.DynamicMBeanHelper;
+import com.continuent.tungsten.common.jmx.JmxManager;
+import com.continuent.tungsten.common.jmx.MethodDesc;
+import com.continuent.tungsten.common.jmx.ParamDesc;
 import com.continuent.tungsten.fsm.core.Action;
 import com.continuent.tungsten.fsm.core.Entity;
 import com.continuent.tungsten.fsm.core.EntityAdapter;
@@ -2146,7 +2146,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
     }
 
     /**
-     * Invokes purge on underlying replicator plugin. {@inheritDoc}
+     * Invoke purge on underlying replicator plugin. {@inheritDoc}
      * 
      * @see com.continuent.tungsten.replicator.management.OpenReplicatorManagerMBean#purge(java.util.Map)
      */
@@ -2155,13 +2155,12 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
             @ParamDesc(name = "controlParams", description = "Control parameters for purge operation") Map<String, String> controlParams)
             throws Exception
     {
-        // TungstenProperties params = new TungstenProperties(controlParams);
+        TungstenProperties params = new TungstenProperties(controlParams);
 
         try
         {
             logger.info("Received connection purge request");
-            // TODO: return openReplicator.purge(params);
-            return 0;
+            return openReplicator.purge(params);
         }
         catch (Exception e)
         {

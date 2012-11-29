@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2009 Continuent Inc.
+ * Copyright (C) 2007-2012 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -26,8 +26,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.continuent.tungsten.commons.cluster.resource.physical.ReplicatorCapabilities;
-import com.continuent.tungsten.commons.config.TungstenProperties;
+import com.continuent.tungsten.common.cluster.resource.physical.ReplicatorCapabilities;
+import com.continuent.tungsten.common.config.TungstenProperties;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.conf.ReplicatorRuntime;
 
@@ -133,6 +133,22 @@ public interface OpenReplicatorPlugin
      */
     public boolean waitForAppliedEvent(String event, long timeout)
             throws Exception;
+
+    /**
+     * Kill logins other than the connection(s) used for replication.  This works
+     * on the master only. 
+     * <p/>
+     * The following control parameters are accepted:
+     * <ul>
+     * <li>timeout - Number of seconds to wait for kill operations to complete</li>
+     * </ul>
+     * 
+     * @param params 0 or more control parameters expressed as name-value
+     *            pairs
+     * @return Number of sessions terminated
+     * @throws Exception Thrown if we timeout or are canceled
+     */
+    public int purge(TungstenProperties params) throws Exception;
 
     /**
      * Returns the current replicator status as a set of name-value pairs.

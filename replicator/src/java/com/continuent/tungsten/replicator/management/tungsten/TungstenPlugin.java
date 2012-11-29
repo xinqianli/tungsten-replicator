@@ -36,7 +36,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
@@ -45,11 +47,12 @@ import javax.management.NotificationBroadcasterSupport;
 
 import org.apache.log4j.Logger;
 
-import com.continuent.tungsten.commons.cluster.resource.OpenReplicatorParams;
-import com.continuent.tungsten.commons.cluster.resource.physical.Replicator;
-import com.continuent.tungsten.commons.cluster.resource.physical.ReplicatorCapabilities;
-import com.continuent.tungsten.commons.config.TungstenProperties;
-import com.continuent.tungsten.commons.config.WildcardPattern;
+import com.continuent.tungsten.common.cluster.resource.OpenReplicatorParams;
+import com.continuent.tungsten.common.cluster.resource.physical.Replicator;
+import com.continuent.tungsten.common.cluster.resource.physical.ReplicatorCapabilities;
+import com.continuent.tungsten.common.concurrent.SimpleJobService;
+import com.continuent.tungsten.common.config.TungstenProperties;
+import com.continuent.tungsten.common.config.WildcardPattern;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.channel.ChannelAssignmentService;
 import com.continuent.tungsten.replicator.conf.ReplicatorConf;
@@ -93,14 +96,17 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
         implements
             OpenReplicatorPlugin
 {
-    private static Logger         logger     = Logger.getLogger(TungstenPlugin.class);
+    private static Logger             logger     = Logger.getLogger(TungstenPlugin.class);
 
     // Configuration is stored in the ReplicatorRuntime
-    private TungstenProperties    properties = null;
-    private ReplicatorRuntime     runtime;
-    private Pipeline              pipeline;
-    private OpenReplicatorContext context;
-    private ShardManager          shardManager;
+    private TungstenProperties        properties = null;
+    private ReplicatorRuntime         runtime;
+    private Pipeline                  pipeline;
+    private OpenReplicatorContext     context;
+    private ShardManager              shardManager;
+
+    // Job services.
+    private SimpleJobService<Integer> purgeService;
 
     /**
      * Set event dispatcher and instantiate the Tungsten monitor. {@inheritDoc}
@@ -116,8 +122,8 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
         @SuppressWarnings("unused")
         ReplicatorMonitor monitor = ReplicatorMonitor.getInstance();
 
-        // KLUDGE: Do we really need this now?
-        // JmxManager.registerMBean(monitor, ReplicatorMonitor.class);
+        // Initialize job service(s).
+        purgeService = new SimpleJobService<Integer>("purge-task", 25, 10, 10);
     }
 
     /**
@@ -141,6 +147,9 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
                     "Replicator service shutdown failed due to underlying error: "
                             + e);
         }
+
+        // Clean up job service(s).
+        purgeService.shutdownNow();
     }
 
     /**
@@ -287,7 +296,7 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
     /**
      * {@inheritDoc}
      * 
-     * @see com.continuent.tungsten.replicator.management.OpenReplicatorPlugin#configure(com.continuent.tungsten.commons.config.TungstenProperties)
+     * @see com.continuent.tungsten.replicator.management.OpenReplicatorPlugin#configure(com.continuent.tungsten.common.config.TungstenProperties)
      */
     public void configure(TungstenProperties properties)
             throws ReplicatorException
@@ -563,7 +572,7 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
      * Performs a deferred shutdown. All deferred operations then enqueue a
      * GoOfflineEvent to do a hard shutdown.
      * 
-     * @see com.continuent.tungsten.replicator.management.OpenReplicatorPlugin#offlineDeferred(com.continuent.tungsten.commons.config.TungstenProperties)
+     * @see com.continuent.tungsten.replicator.management.OpenReplicatorPlugin#offlineDeferred(com.continuent.tungsten.common.config.TungstenProperties)
      */
     public void offlineDeferred(TungstenProperties params) throws Exception
     {
@@ -645,7 +654,7 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
     /**
      * Starts a heartbeat event. {@inheritDoc}
      * 
-     * @see com.continuent.tungsten.replicator.management.OpenReplicatorPlugin#heartbeat(com.continuent.tungsten.commons.config.TungstenProperties)
+     * @see com.continuent.tungsten.replicator.management.OpenReplicatorPlugin#heartbeat(com.continuent.tungsten.common.config.TungstenProperties)
      */
     public boolean heartbeat(TungstenProperties params) throws Exception
     {
@@ -716,6 +725,72 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
     /**
      * Wait for a particular event to be committed on the slave.
      * 
+     * @param params 0 or more control parameters expressed as name-value pairs
+     * @return Number of sessions terminated
+     * @throws Exception Thrown if we timeout
+     */
+    public int purge(TungstenProperties params) throws Exception
+    {
+        long timeout = params.getLong("timeout", "60", true);
+        String role = properties.getString(ReplicatorConf.ROLE);
+
+        // Check constraints.
+        if (timeout < 0)
+            throw new Exception("Timeout value may not be less than 0: "
+                    + timeout);
+        if (!"master".equals(role))
+            throw new Exception("Purge only allowed on master: current role="
+                    + role);
+
+        // Spawn the task.
+        Future<Integer> purgeFuture = null;
+        int killCount = 0;
+        try
+        {
+            PurgeTask task = new PurgeTask(properties);
+            purgeFuture = purgeService.submit(task);
+            killCount = purgeFuture.get(timeout, TimeUnit.SECONDS);
+            logger.info(String.format("Purged %d user sessions", killCount));
+            return killCount;
+        }
+        catch (RejectedExecutionException e)
+        {
+            String message = "Unable to submit purge task: " + e.getMessage();
+            logger.error(message, e);
+            throw new Exception(message);
+        }
+        catch (TimeoutException e)
+        {
+            String message = "Purge task timed out after killing " + killCount
+                    + " user sessions; timeout=" + timeout;
+            logger.error(message, e);
+            throw new Exception(message);
+        }
+        catch (InterruptedException e)
+        {
+            String message = "Purge task was interrupted after killing "
+                    + killCount + " user sessions; timeout=" + timeout;
+            logger.error(message, e);
+            throw new Exception(message);
+        }
+        catch (ExecutionException e)
+        {
+            String message = "Purge task failed: " + e.getMessage();
+            logger.error(message, e);
+            throw new Exception(message);
+        }
+        finally
+        {
+            if (purgeFuture != null)
+            {
+                purgeFuture.cancel(true);
+            }
+        }
+    }
+
+    /**
+     * Wait for a particular event to be applied on the slave.
+     * 
      * @param event Event to wait for
      * @param timeout Number of seconds to wait. 0 is indefinite.
      * @return true if requested sequence number or greater applied, else false
@@ -780,6 +855,7 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
         statusProps.setDouble(Replicator.APPLIED_LATENCY, -1.0);
         statusProps.setString(Replicator.CURRENT_EVENT_ID, "NONE");
         statusProps.setString(Replicator.OFFLINE_REQUESTS, "NONE");
+        statusProps.setString(Replicator.PIPELINE_SOURCE, "UNKNOWN");
 
         // The following logic avoids race conditions that may cause
         // different sources of information to be null.
@@ -791,6 +867,11 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
             pipeline = runtime.getPipeline();
             extensions = runtime.getExtensionNames();
             type = (runtime.isRemoteService() ? "remote" : "local");
+
+            String pipelineSource = runtime.getPipelineSource();
+            if (pipelineSource != null)
+                statusProps.setString(Replicator.PIPELINE_SOURCE,
+                        pipelineSource);
         }
         ReplDBMSHeader lastEvent = null;
         if (pipeline != null)

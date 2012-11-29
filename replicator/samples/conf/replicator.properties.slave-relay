@@ -228,6 +228,9 @@ replicator.extractor.thl-remote.connectUri=${replicator.master.connect.uri}
 replicator.extractor.thl-remote.checkSerialization=true
 # Set requested interval in milliseconds for heartbeat events from remote THL.
 replicator.extractor.thl-remote.heartbeatInterval=3000
+# Set preferred THL server role.  Common values are master, slave, or empty 
+# (i.e., no value).
+replicator.extractor.thl-remote.preferredRole=@{REPL_MASTER_PREFERRED_ROLE}
 
 ############
 # APPLIERS #
@@ -253,7 +256,7 @@ replicator.applier.thl-applier.storeName=thl
 # to avoid replication errors. 
 replicator.service.channel-assignment=com.continuent.tungsten.replicator.channel.ChannelAssignmentService
 replicator.service.channel-assignment.url=@{APPLIER.REPL_DBTHLURL}
-replicator.service.channel-assignment.channels=@{REPL_SVC_CHANNELS}
+replicator.service.channel-assignment.channels=${replicator.global.apply.channels}
 
 ####################################################
 # ERROR-HANDLING AND CONSISTENCY-CHECKING POLICIES #

@@ -26,7 +26,7 @@ import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
 
-import com.continuent.tungsten.commons.csv.CsvWriter;
+import com.continuent.tungsten.common.csv.CsvWriter;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.database.Column;
 import com.continuent.tungsten.replicator.database.Table;

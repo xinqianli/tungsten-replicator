@@ -35,7 +35,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 import org.apache.log4j.Logger;
 
-import com.continuent.tungsten.commons.commands.FileCommands;
+import com.continuent.tungsten.common.commands.FileCommands;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.conf.FailurePolicy;
 import com.continuent.tungsten.replicator.conf.ReplicatorRuntime;
@@ -1209,6 +1209,14 @@ public class MySQLExtractor implements RawExtractor
                 logger.info("Using relay log directory as source of binlogs: "
                         + relayLogDir);
                 binlogDir = relayLogDir;
+                
+                // Note the source of our binlog data. 
+                context.setPipelineSource(url);
+            }
+            else
+            {
+                // Logs are coming from binlog dir. 
+                context.setPipelineSource(binlogDir);
             }
         }
         else if (MODE_SLAVE_RELAY.equals(binlogMode))

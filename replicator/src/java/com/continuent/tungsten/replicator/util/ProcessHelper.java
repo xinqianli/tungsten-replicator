@@ -28,7 +28,7 @@ import java.util.List;
 
 import org.apache.log4j.Logger;
 
-import com.continuent.tungsten.commons.exec.ProcessExecutor;
+import com.continuent.tungsten.common.exec.ProcessExecutor;
 import com.continuent.tungsten.replicator.backup.BackupException;
 
 /**

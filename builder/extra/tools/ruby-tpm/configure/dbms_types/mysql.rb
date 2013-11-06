@@ -1745,6 +1745,12 @@ class MySQLTriggerCheck < ConfigureValidationCheck
       warning("Triggers exist within this instance this can cause problems with replication")
     end
   end
+  
+  def enabled?
+    has_is = get_applier_datasource.get_value("show schemas like 'information_schema'");
+    
+    super() && (has_is == "information_schema")
+  end
 end
 
 class MySQLMyISAMCheck < ConfigureValidationCheck
@@ -1757,9 +1763,15 @@ class MySQLMyISAMCheck < ConfigureValidationCheck
 
   def validate
     info("Checking for MySQL MyISAM tables")
-    if get_applier_datasource.get_value("select count(*) from information_schema.TABLES where table_schema not in ('mysql','information_schema') and engine='MyISAM'").to_i > 0
+    if get_applier_datasource.get_value("select count(*) from information_schema.TABLES where table_schema not in ('mysql','information_schema','performance_schema') and lcase(engine) in ('myisam','maria', 'aria')").to_i > 0
       warning("MyISAM tables exist within this instance - These tables are not crash safe and may lead to data loss in a failover")
     end
+  end
+  
+  def enabled?
+    has_is = get_applier_datasource.get_value("show schemas like 'information_schema'");
+    
+    super() && (has_is == "information_schema")
   end
 end
 

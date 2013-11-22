@@ -157,9 +157,6 @@ extra_replicator=${source_community_extra}/replicator
 extra_cluster_home=${source_community_extra}/cluster-home
 extra_tools=${source_community_extra}/tools
 
-jars_commons=${source_commons}/build/jars
-lib_commons=${source_commons}/lib
-
 ##########################################################################
 # Handle platform differences.  This script works on MacOSX & Linux.
 ##########################################################################
@@ -314,10 +311,6 @@ echo "# Copying in Ruby configuration libraries"
 cp -r $extra_cluster_home/lib $cluster_home
 cp -r $extra_cluster_home/samples $cluster_home
 
-echo "# Copying in oss-commons libraries"
-cp -r $jars_commons/* $cluster_home/lib
-cp -r $lib_commons/* $cluster_home/lib
-
 echo "### Creating tools"
 tools_dir=$reldir/tools
 mkdir -p $tools_dir
@@ -332,10 +325,6 @@ then
 	cp $extra_tools/tpm $tools_dir
 	rsync -Ca $extra_tools/ruby-tpm $tools_dir
 fi
-
-echo "### Deleting duplicate librairies in Bristlecone ###"
-echo "# tungsten-common"
-rm -vf $reldir/bristlecone/lib/tungsten-common*.jar
 
 ##########################################################################
 # Create manifest file.
@@ -464,10 +453,8 @@ echo    "}" >> $manifestJSON
 #echo "### Copying in extra sample scripts"
 #cp -r $extra_ent_replicator/samples $reldir_replicator
 
-##########################################################################
-# Create the bash auto-completion file 
-##########################################################################
-$reldir/tools/tpm write-completion
+echo "### Removing old protobuf libraries"
+mv $reldir_replicator/lib/protobuf-java-2.2.0.jar $reldir_replicator/lib/protobuf-java-2.2.0.jar.old
 
 cat $manifest
 

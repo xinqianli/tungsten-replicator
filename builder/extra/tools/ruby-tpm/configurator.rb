@@ -74,13 +74,6 @@ class String
       self[index]
     end
   end
-  
-  def include_alias?(a)
-    self.split(",").map{
-      |entry|
-      to_identifier(entry)
-    }.include?(a)
-  end
 end
 
 class Logger
@@ -186,11 +179,6 @@ class Configurator
     stop_alive_thread()
     
     if @log
-      begin
-        @log.chmod(0666)
-      rescue
-      end
-      
       @log.close
       @log = nil
     end
@@ -1091,8 +1079,7 @@ class Configurator
               version = version + "-#{parsed['hudson']['buildNumber']}"
             end
             @release_details = {
-              "version" => version,
-              "product" => parsed['product']
+              "version" => version
             }
             
             release_info = cmd_result("grep RELEASE #{get_manifest_file_path()}")
@@ -1157,12 +1144,6 @@ class Configurator
     tungsten_base_path ||= get_base_path()
     
     "#{tungsten_base_path}/tungsten-replicator/bin/thl"
-  end
-  
-  def get_tpm_path(tungsten_base_path = nil)
-    tungsten_base_path ||= get_base_path()
-    
-    "#{tungsten_base_path}/tools/tpm"
   end
   
   def svc_is_running?(cmd)

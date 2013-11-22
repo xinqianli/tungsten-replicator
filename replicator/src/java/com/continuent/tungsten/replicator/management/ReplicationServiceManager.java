@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Robert Hodges
- * Contributor(s): Linas Virbalas, Stephane Giron
+ * Contributor(s): Linas Virbalas
  */
 
 package com.continuent.tungsten.replicator.management;
@@ -67,10 +67,6 @@ public class ReplicationServiceManager
         implements
             ReplicationServiceManagerMBean
 {
-    public static final String                         CONFIG_SERVICES       = "services.properties";
-    public static final String                         CONFIG_FILE_PREFIX    = "static-";
-    public static final String                         CONFIG_FILE_SUFFIX    = ".properties";
-    
     private static Logger                               logger                = Logger.getLogger(ReplicationServiceManager.class);
     private TungstenProperties                          serviceProps          = null;
     private TreeMap<String, OpenReplicatorManagerMBean> replicators           = new TreeMap<String, OpenReplicatorManagerMBean>();
@@ -81,6 +77,9 @@ public class ReplicationServiceManager
 
     private String                                      managerRMIHost        = null;
     private int                                         managerRMIPort        = -1;
+
+    private static final String                         CONFIG_FILE_PREFIX    = "static-";
+    private static final String                         CONFIG_FILE_SUFFIX    = ".properties";
 
     /**
      * Creates a new <code>ReplicatorManager</code> object
@@ -100,7 +99,7 @@ public class ReplicationServiceManager
     {
         // Find and load the service.properties file.
         File confDir = ReplicatorRuntimeConf.locateReplicatorConfDir();
-        File propsFile = new File(confDir, CONFIG_SERVICES);
+        File propsFile = new File(confDir, "services.properties");
         serviceProps = PropertiesManager.loadProperties(propsFile);
 
         // Get Authentication and encryption parameters for JMX and set SSL
@@ -109,11 +108,7 @@ public class ReplicationServiceManager
         try
         {
             logger.info("Loading security information");
-            AuthenticationInfo authenticationInfo = SecurityHelper
-                    .loadAuthenticationInformation(); // Load security
-                                                      // information and set
-                                                      // critical properties as
-                                                      // system properties
+            AuthenticationInfo authenticationInfo = SecurityHelper.loadAuthenticationInformation();     // Load security information and set critical properties as system properties
             jmxProperties = authenticationInfo.getAsTungstenProperties();
         }
         catch (ConfigurationException ce)
@@ -311,7 +306,7 @@ public class ReplicationServiceManager
      * @see com.continuent.tungsten.replicator.management.ReplicationServiceManagerMBean#startService(java.lang.String)
      */
     @MethodDesc(description = "Start individual replication service", usage = "startService name")
-    public boolean loadService(
+    public boolean startService(
             @ParamDesc(name = "name", description = "service name") String name)
             throws Exception
     {
@@ -338,7 +333,7 @@ public class ReplicationServiceManager
      * @see com.continuent.tungsten.replicator.management.ReplicationServiceManagerMBean#stopService(java.lang.String)
      */
     @MethodDesc(description = "Stop individual replication service", usage = "stopService name")
-    public boolean unloadService(
+    public boolean stopService(
             @ParamDesc(name = "name", description = "service name") String name)
             throws Exception
     {
@@ -369,21 +364,9 @@ public class ReplicationServiceManager
             @ParamDesc(name = "name", description = "service name") String name)
             throws Exception
     {
-        return resetService(name, null);
-    }
-
-    /**
-     * Resets a replication service. {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.management.ReplicationServiceManagerMBean#resetService(java.lang.String)
-     */
-    @MethodDesc(description = "Reset individual replication service", usage = "resetService name")
-    public Map<String, String> resetService(
-            @ParamDesc(name = "name", description = "service name") String name,
-            @ParamDesc(name = "controlParams", description = "0 or more control parameters expressed as name-value pairs") Map<String, String> controlParams)
-            throws Exception
-    {
         loadServiceConfigurations();
+
+        Map<String, String> progress = new LinkedHashMap<String, String>();
 
         // Make sure we have heard of this replicator.
         if (!serviceConfigurations.keySet().contains(name))
@@ -393,62 +376,18 @@ public class ReplicationServiceManager
 
         // If the replicator is started, we cannot delete it.
         OpenReplicatorManagerMBean orm = replicators.get(name);
-        if (orm != null && !orm.getState().startsWith("OFFLINE"))
+        if (orm != null)
         {
-            throw new Exception("Replication service " + name
-                    + " must be offline before resetting.\n"
-                    + "(Use 'trepctl -service " + name + " offline' first)");
+            throw new Exception(
+                    "Must stop replication service before trying to reset: "
+                            + name);
         }
 
         // Get service information.
+        logger.info("Resetting replication service: name=" + name);
         TungstenProperties serviceProps = serviceConfigurations.get(name);
         TungstenProperties.substituteSystemValues(serviceProps.getProperties());
 
-        Map<String, String> progress = new LinkedHashMap<String, String>();
-
-        String option = null;
-        if (controlParams != null)
-            option = controlParams.get("option");
-
-        if (option == null || option.equalsIgnoreCase("-all"))
-        {
-            logger.info("Resetting replication service: name=" + name);
-
-            resetDatabase(serviceProps, progress);
-
-            resetTHL(serviceProps, progress);
-
-            resetRelay(serviceProps, progress);
-        }
-        else if (option.equalsIgnoreCase("-thl"))
-        {
-            logger.info("Resetting THL for service " + name);
-            resetTHL(serviceProps, progress);
-
-        }
-        else if (option.equalsIgnoreCase("-relay"))
-        {
-            logger.info("Resetting relay logs for service " + name);
-            resetRelay(serviceProps, progress);
-        }
-        else if (option.equalsIgnoreCase("-db"))
-        {
-            logger.info("Resetting database for service " + name);
-            resetDatabase(serviceProps, progress);
-        }
-        else
-        {
-            logger.info("Unimplemented reset option : " + option);
-        }
-
-        logger.info("\n" + CLUtils.formatMap("progress", progress, "", false)
-                + "\n");
-        return progress;
-    }
-
-    private void resetDatabase(TungstenProperties serviceProps,
-            Map<String, String> progress)
-    {
         // Remove schema.
         String schemaName = serviceProps.getString("replicator.schema");
         String userName = serviceProps.getString("replicator.global.db.user");
@@ -460,8 +399,8 @@ public class ReplicationServiceManager
 
         try
         {
-            db = DatabaseFactory.createDatabase(url, userName, password, true);
-            db.connect(false);
+            db = DatabaseFactory.createDatabase(url, userName, password);
+            db.connect();
             progress.put("drop schema", schemaName);
             db.dropSchema(schemaName);
             db.close();
@@ -476,15 +415,21 @@ public class ReplicationServiceManager
             if (db != null)
                 db.close();
         }
-    }
 
-    private void resetRelay(TungstenProperties serviceProps,
-            Map<String, String> progress)
-    {
+        // Remove THL files.
+        String logDirName = serviceProps
+                .getString("replicator.store.thl.log_dir");
+        File logDir = new File(logDirName);
+
+        if (!removeDirectory(logDir, progress))
+        {
+            logger.error(String.format("Could not remove the log directory %s",
+                    logDirName));
+        }
+
         // Remove relay logs, if present.
         String relayLogDirName = serviceProps
                 .getString("replicator.extractor.dbms.relayLogDir");
-
         if (relayLogDirName != null)
         {
             File relayLogDir = new File(relayLogDirName);
@@ -493,25 +438,13 @@ public class ReplicationServiceManager
             {
                 logger.error(String.format(
                         "Could not remove the relay log directory %s",
-                        relayLogDirName));
+                        logDirName));
             }
         }
-    }
 
-    private void resetTHL(TungstenProperties serviceProps,
-            Map<String, String> progress)
-    {
-        // Remove THL files.
-        String logDirName = serviceProps
-                .getString("replicator.store.thl.log_dir");
-
-        File logDir = new File(logDirName);
-
-        if (!removeDirectory(logDir, progress))
-        {
-            logger.error(String.format("Could not remove the log directory %s",
-                    logDirName));
-        }
+        logger.info("\n" + CLUtils.formatMap("progress", progress, "", false)
+                + "\n");
+        return progress;
     }
 
     /**
@@ -715,6 +648,7 @@ public class ReplicationServiceManager
         }
     }
 
+
     // Utility routine to start a replication service.
     private void stopReplicationService(String name) throws Exception
     {
@@ -737,7 +671,7 @@ public class ReplicationServiceManager
     /**
      * Returns the hostname to be used to bind ports for RMI use.
      */
-    public static String getHostName(TungstenProperties properties)
+    private static String getHostName(TungstenProperties properties)
     {
         String defaultHost = properties.getString(ReplicatorConf.RMI_HOST);
         String hostName = System.getProperty(ReplicatorConf.RMI_HOST,

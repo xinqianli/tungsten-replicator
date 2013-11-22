@@ -864,50 +864,42 @@ public class MySQLIOs
                 }
                 queryResult = MySQLPacket.mysqlReadPacket(socketInput, true);// EOF
                 queryResult = MySQLPacket.mysqlReadPacket(socketInput, true);
-                while (!queryResult.isEOF() && !queryResult.isError())
+                for (int i = 0; i < numberOfColumns; i++)
                 {
-                    for (int i = 0; i < numberOfColumns; i++)
+                    String row = queryResult.getLenEncodedString(false);
+                    if (logger.isDebugEnabled())
                     {
-                        String row = queryResult.getLenEncodedString(false);
-                        if (logger.isDebugEnabled())
+                        logger.debug("Got Row: " + row);
+                    }
+                    byte type = columnTypes.get(i);
+                    // Time and dates must be converted to long (# of ms since
+                    // epoch)
+                    if (type == MySQLConstants.MYSQL_TYPE_DATE
+                            || type == MySQLConstants.MYSQL_TYPE_DATETIME
+                            || type == MySQLConstants.MYSQL_TYPE_NEWDATE
+                            || type == MySQLConstants.MYSQL_TYPE_TIMESTAMP)
+                    {
+                        SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd");
+                        // timestamps that contain hour info
+                        if (row.length() > 11)
                         {
-                            logger.debug("Got Row: " + row);
+                            f = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
                         }
-                        byte type = columnTypes.get(i);
-                        // Time and dates must be converted to long (# of ms
-                        // since epoch)
-                        if (type == MySQLConstants.MYSQL_TYPE_DATE
-                                || type == MySQLConstants.MYSQL_TYPE_DATETIME
-                                || type == MySQLConstants.MYSQL_TYPE_NEWDATE
-                                || type == MySQLConstants.MYSQL_TYPE_TIMESTAMP)
+                        try
                         {
-                            SimpleDateFormat f = new SimpleDateFormat(
-                                    "yyyy-MM-dd");
-                            // timestamps that contain hour info
-                            if (row.length() > 11)
-                            {
-                                f = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-                            }
-                            try
-                            {
-                                java.util.Date d = f.parse(row);
-                                resultSet.setLong(columnNames.get(i),
-                                        d.getTime());
-                            }
-                            catch (ParseException pe)
-                            {
-                                // Don't throw an error but keep it safe:
-                                resultSet.setLong(columnNames.get(i), 0L);
-                            }
+                            java.util.Date d = f.parse(row);
+                            resultSet.setLong(columnNames.get(i), d.getTime());
                         }
-                        else
+                        catch (ParseException pe)
                         {
-                            resultSet.setString(columnNames.get(i), row);
+                            // Don't throw an error but keep it safe:
+                            resultSet.setLong(columnNames.get(i), 0L);
                         }
                     }
-                    queryResult = MySQLPacket
-                            .mysqlReadPacket(socketInput, true);
-
+                    else
+                    {
+                        resultSet.setString(columnNames.get(i), row);
+                    }
                 }
 
                 statusMessage = String.format("Query to %s:%d succeeded.",

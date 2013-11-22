@@ -41,7 +41,8 @@ public class SocketHelper
     public void loadSecurityProperties() throws ConfigurationException
     {
         AuthenticationInfo authInfo = SecurityHelper
-                .loadAuthenticationInformation("sample.security.properties");
+                .loadAuthenticationInformation("sample.security.properties",
+                        AuthenticationInfo.AUTH_USAGE.CLIENT_SIDE);
         // Validate security settings.
         if (authInfo == null)
         {

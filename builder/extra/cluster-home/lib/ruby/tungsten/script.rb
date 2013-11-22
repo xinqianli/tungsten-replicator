@@ -4,25 +4,11 @@ module TungstenScript
   NAGIOS_CRITICAL=2
   
   def run
-    begin
-      prepare()
-      main()
-    rescue => e
-      TU.exception(e)
-    end
-    
-    if TU.is_valid?()
-      cleanup(0)
-    else
-      cleanup(1)
-    end
+    main()
+    cleanup(0)
   end
   
   def initialize
-    # A tracking variable that will be set to true when the object is fully
-    # initizlied
-    @initialized = false
-    
     # Does this script required to run against an installed Tungsten directory
     @require_installed_directory = true
     
@@ -46,30 +32,18 @@ module TungstenScript
     
     begin
       configure()
-      @option_definitions.each{
-        |option_key,definition|
-        if definition.has_key?(:default)
-          opt(option_key, definition[:default])
-        end
-      }
     
       if TU.display_help?()
         display_help()
         cleanup(0)
       end
-      
+    
       parse_options()
     
-      if @options[:autocomplete] == true
-        display_autocomplete()
-        cleanup(0)
-      end
-      
       unless TU.is_valid?()
         cleanup(1)
       end
     
-      TU.debug("Command: #{@command}")
       TU.debug("Options:")
       @options.each{
         |k,v|
@@ -81,19 +55,10 @@ module TungstenScript
       unless TU.is_valid?()
         cleanup(1)
       end
-      
-      if @options[:validate] == true
-        cleanup(0)
-      end
     rescue => e
       TU.exception(e)
       cleanup(1)
     end
-    
-    @initialized = true
-  end
-  
-  def prepare
   end
   
   def command
@@ -101,23 +66,6 @@ module TungstenScript
   end
   
   def configure
-    add_option(:validate, {
-      :on => "--validate",
-      :default => false,
-      :help => "Only run the script validation"
-    })
-    
-    add_option(:force, {
-      :on => "--force",
-      :default => false,
-      :help => "Continue operation even if script validation fails"
-    })
-    
-    add_option(:autocomplete, {
-      :on => "--autocomplete",
-      :default => false,
-      :hidden => true
-    })
   end
   
   def opt(option_key, value = nil)
@@ -139,7 +87,7 @@ module TungstenScript
         if @command != nil
           raise "Multiple commands have been specified as the default"
         end
-        @command = command_key.to_s()
+        @command = command_key
       end
 
       @command_definitions[command_key] = definition
@@ -174,34 +122,29 @@ module TungstenScript
         definition[:parse] = parse
       end
 
+      if definition.has_key?(:default)
+        opt(option_key, definition[:default])
+      end
+
       @option_definitions[option_key] = definition
     rescue => e
       TU.exception(e)
     end
   end
   
-  def set_option_default(option_key, default = nil)
-    unless @option_definitions.has_key?(option_key)
-      raise "Unable to set option default for #{:option_key.to_s()} because the option is not defined."
+  def parse_options
+    if @command_definitions.size() > 0 && TU.remaining_arguments.size() > 0
+      if @command_definitions.has_key?(TU.remaining_arguments[0].to_sym())
+        @command = TU.remaining_arguments.shift()
+      end
     end
     
-    @option_definitions[option_key][:default] = default
-  end
-  
-  def parse_options
     opts = OptionParser.new()
     
     @option_definitions.each{
       |option_key,definition|
       
       args = definition[:on]
-      if definition[:aliases] != nil && definition[:aliases].is_a?(Array)
-        definition[:aliases].each{
-          |arg_alias|
-          args << arg_alias
-        }
-      end
-      
       opts.on(*args) {
         |val|
                 
@@ -222,21 +165,10 @@ module TungstenScript
     }
     
     TU.run_option_parser(opts)
-    
-    if @command_definitions.size() > 0 && TU.remaining_arguments.size() > 0
-      if @command_definitions.has_key?(TU.remaining_arguments[0].to_sym())
-        @command = TU.remaining_arguments.shift()
-      end
-    end
   end
   
   def parse_integer_option(val)
-    v = val.to_i()
-    unless v.to_s() == val
-      raise MessageError.new("Unable to parse '#{val}' as an integer")
-    end
-    
-    return v
+    val.to_i()
   end
   
   def parse_float_option(val)
@@ -249,30 +181,27 @@ module TungstenScript
     elsif val == "false"
       false
     else
-      raise MessageError.new("Unable to parse value '#{val}' as a boolean")
+      raise MessageError.new("Unable to parse value '#{val}'")
     end
   end
   
   def validate
     if require_installed_directory?()
       if TI == nil
-        raise "Unable to run #{$0} without the '--directory' argument pointing to an active Tungsten installation"
+        TU.error("Unable to run #{$0} without the '--directory' argument pointing to an active Tungsten installation")
       else
         TI.inherit_path()
       end
     end
     
-    if require_command?() && @command_definitions.size() > 0 && @command == nil
+    if @command_definitions.size() > 0 && @command == nil
       TU.error("A command was not given for this script. Valid commands are #{@command_definitions.keys().join(', ')} and must be the first argument.")
     end
   end
   
   def display_help
     unless description() == nil
-      description().split("<br>").each{
-        |section|
-        TU.output(TU.wrapped_lines(section))
-      }
+      TU.output(TU.wrapped_lines(description()))
       TU.output("")
     end
     
@@ -281,10 +210,9 @@ module TungstenScript
     if @command_definitions.size() > 0
       TU.write_header("Script Commands", nil)
       
-      commands = @command_definitions.keys().sort { |a, b| a.to_s <=> b.to_s }
-      commands.each{
-        |command_key|
-        definition = @command_definitions[command_key]
+      @command_definitions.each{
+        |command_key,definition|
+        
         if definition[:default] == true
           default = "default"
         else
@@ -300,10 +228,6 @@ module TungstenScript
     @option_definitions.each{
       |option_key,definition|
       
-      if definition[:hidden] == true
-        next
-      end
-      
       if definition[:help].is_a?(Array)
         help = definition[:help].shift()
         additional_help = definition[:help]
@@ -317,48 +241,12 @@ module TungstenScript
     }
   end
   
-  def display_autocomplete
-    values = TU.get_autocomplete_arguments()
-    if @command_definitions.size() > 0
-      @command_definitions.each{
-        |command_key,definition|
-        values << command_key.to_s()
-      }
-    end
-    
-    @option_definitions.each{
-      |option_key,definition|
-      
-      if definition[:hidden] == true
-        next
-      end
-      
-      values = values + definition[:on]
-    }
-    
-    values.map!{
-      |v|
-      parts = v.split(" ")
-      if parts.size() == 2
-        "#{parts[0]}="
-      else
-        v
-      end
-    }
-    
-    puts values.join(" ")
-  end
-  
   def require_installed_directory?(v = nil)
     if (v != nil)
       @require_installed_directory = v
     end
     
     @require_installed_directory
-  end
-  
-  def require_command?
-    true
   end
   
   def description(v = nil)
@@ -373,26 +261,17 @@ module TungstenScript
     nil
   end
   
-  def initialized?
-    @initialized
-  end
-  
   def cleanup(code = 0)
-    begin
-      if initialized?() && script_log_path() != nil
-        TU.mkdir_if_absent(File.dirname(script_log_path()))
-        File.open(script_log_path(), "w") {
-          |f|
-          TU.log().rewind()
-          f.puts(TU.log().read())
-        }
-      end
-    rescue
+    if TU.display_help?() != true && script_log_path() != nil
+      File.open(script_log_path(), "w") {
+        |f|
+        TU.log().rewind()
+        f.puts(TU.log().read())
+      }
     end
     
     TU.debug("Finish #{$0} #{ARGV.join(' ')}")
-    TU.debug("RC: #{code}")
-    TU.exit(code)
+    exit(code)
   end
   
   def nagios_ok(msg)
@@ -408,510 +287,5 @@ module TungstenScript
   def nagios_critical(msg)
     puts "CRITICAL: #{msg}"
     cleanup(NAGIOS_CRITICAL)
-  end
-  
-  def sudo_prefix
-    if ENV['USER'] == "root" || TI.setting("root_command_prefix") != "true"
-      return ""
-    else
-      return "sudo -n "
-    end
-  end
-end
-
-# Require the script to specify a default replication service. If there is a 
-# single replication service, that will be used as the default. If there are
-# multiple, the user must specify --service.
-module SingleServiceScript
-  def configure
-    super()
-    
-    if TI
-      if TI.replication_services.size() > 1
-        default_service = nil
-      else
-        default_service = TI.default_dataservice()
-      end
-      
-      add_option(:service, {
-        :on => "--service String",
-        :help => "Replication service to read information from",
-        :default => default_service
-      })
-    end
-  end
-  
-  def validate
-    super()
-  
-    if @options[:service] == nil
-      TU.error("You must specify a dataservice for this command with the --service argument")
-    end
-  end
-end
-
-# Require all replication services to be OFFLINE before proceeding with the 
-# main() method. The user can add --offline to have this done for them, and
-# --online to bring them back ONLINE when the script finishes cleanly.
-module OfflineServicesScript
-  def configure
-    super()
-    
-    add_option(:clear_logs, {
-      :on => "--clear-logs",
-      :default => false,
-      :help => "Delete all THL and relay logs for the service"
-    })
-    
-    add_option(:offline, {
-      :on => "--offline",
-      :help => "Put required replication services offline before processing",
-      :default => false
-    })
-    
-    add_option(:offline_timeout, {
-      :on => "--offline-timeout Integer",
-      :help => "Put required replication services offline before processing",
-      :parse => method(:parse_integer_option),
-      :default => 60
-    })
-    
-    add_option(:online, {
-      :on => "--online",
-      :help => "Put required replication services online after successful processing",
-      :default => false
-    })
-  end
-  
-  def validate
-    super()
-    
-    # Some scripts may disable the OFFLINE requirement depending on other 
-    # arguments. These methods give them hooks to make that decision dynamic.
-    if allow_service_state_change?() && require_offline_services?()
-      # Check the state of each replication service
-      get_offline_services_list().each{
-        |ds|
-        if TI.trepctl_value(ds, "state") =~ /ONLINE/
-          TU.error("The replication service '#{ds}' must be OFFLINE to run this command. You can add the --offline argument to do this automatically.")
-        end
-      }
-    end
-    
-    unless @options[:offline_timeout] > 0
-      TU.error("The --offline-timeout must be a number greater than zero")
-    end
-  end
-  
-  def prepare
-    super()
-    
-    if TU.is_valid?()
-      begin
-        if allow_service_state_change?() == true && @options[:offline] == true
-          ds_list = get_offline_services_list()
-          
-          # Put each replication service OFFLINE in parallel waiting for the
-          # command to complete
-          TU.notice("Put #{ds_list.join(",")} replication #{TU.pluralize(ds_list, "service", "services")} offline")
-          
-          threads = []
-          begin
-            Timeout::timeout(@options[:offline_timeout]) {
-              ds_list.each{
-                |ds|
-                threads << Thread.new{
-                  if TI.is_manager?()
-                    begin
-                      status = TI.status(ds)
-                      unless status.is_replication?() == true
-                        get_manager_api.call("#{ds}/#{TI.hostname()}", 'shun')
-                        TU.cmd_result("#{TI.trepctl(ds)} offline")
-                      else
-                        TU.cmd_result("#{TI.trepctl(ds)} offline")
-                      end
-                    rescue => e
-                      TU.exception(e)
-                      raise("Unable to put replication services offline")
-                    end
-                  else
-                    TU.cmd_result("#{TI.trepctl(ds)} offline")
-                  end
-                }
-              }
-              threads.each{|t| t.join() }
-            }
-          rescue Timeout::Error
-            raise("The replication #{TU.pluralize(ds_list, "service", "services")} #{TU.pluralize(ds_list, "is", "are")} taking too long to go offline. Check the status for more information or use the --offline-timeout argument.")
-          end
-        end
-      rescue => e
-        TU.exception(e)
-      end
-    end
-  end
-  
-  def cleanup(code = 0)
-    if initialized?() == true && TI != nil && code == 0
-      begin
-        if allow_service_state_change?() == true && @options[:online] == true
-          cleanup_services(true, @options[:clear_logs])
-        elsif @options[:clear_logs] == true
-          cleanup_services(false, @options[:clear_logs])
-        end
-      rescue => e
-        TU.exception(e)
-        code = 1
-      end
-    end
-    
-    super(code)
-  end
-  
-  def cleanup_services(online = false, clear_logs = false)
-    ds_list = get_offline_services_list()
-
-    # Put each replication service ONLINE in parallel waiting for the
-    # command to complete
-    if online == true
-      TU.notice("Put the #{ds_list.join(",")} replication #{TU.pluralize(ds_list, "service", "services")} online")
-    end
-    
-    # Emptying the THL and relay logs makes sure that we are starting with 
-    # a fresh directory as if `datasource <hostname> restore` was run.
-    if clear_logs == true
-      TU.notice("Clear THL and relay logs for the #{ds_list.join(",")} replication #{TU.pluralize(ds_list, "service", "services")}")
-    end
-    
-    threads = []
-    begin
-      Timeout::timeout(@options[:offline_timeout]) {
-        ds_list.each{
-          |ds|
-          threads << Thread.new{
-            if clear_logs == true
-              dir = TI.setting(TI.setting_key(REPL_SERVICES, ds, "repl_thl_directory"))
-              if File.exists?(dir)
-                TU.cmd_result("rm -rf #{dir}/*")
-              end
-              dir = TI.setting(TI.setting_key(REPL_SERVICES, ds, "repl_relay_directory"))
-              if File.exists?(dir)
-                TU.cmd_result("rm -rf #{dir}/*")
-              end
-            end
-            
-            if online == true
-              if TI.is_manager?()
-                begin
-                  status = TI.status(ds)
-                  unless status.is_replication?() == true
-                    get_manager_api.call("#{ds}/#{TI.hostname()}", 'recover')
-                  else
-                    TU.cmd_result("#{TI.trepctl(ds)} online")
-                  end
-                rescue => e
-                  TU.exception(e)
-                  raise("Unable to put replication services online")
-                end
-              else
-                TU.cmd_result("#{TI.trepctl(ds)} online")
-              end
-            end
-          }
-        }
-
-        threads.each{|t| t.join() }
-      }
-    rescue Timeout::Error
-      TU.error("The replication #{TU.pluralize(ds_list, "service", "services")} #{TU.pluralize(ds_list, "is", "are")} taking too long to cleanup. Check the replicator status for more information.")
-    end
-  end
-  
-  # All replication services must be OFFLINE
-  def get_offline_services_list
-    TI.replication_services()
-  end
-  
-  def require_offline_services?
-    if @options[:offline] == true
-      false
-    else
-      true
-    end
-  end
-  
-  def allow_service_state_change?
-    if TI == nil
-      return false
-    end
-
-    if TI.is_replicator?() && TI.is_running?("replicator")
-      true
-    else
-      false
-    end
-  end
-  
-  def get_manager_api
-    if @api == nil && TI != nil
-      @api = TungstenAPI::TungstenDataserviceManager.new(TI.mgr_api_uri())
-    end
-    
-    @api
-  end
-end
-
-# Only require a single replication service to be OFFLINE
-module OfflineSingleServiceScript
-  include SingleServiceScript
-  include OfflineServicesScript
-  
-  def get_offline_services_list
-    [@options[:service]]
-  end
-end
-
-# Group all MySQL validation and methods into a single module
-module MySQLServiceScript
-  include SingleServiceScript
-  
-  # Allow scripts to turn off MySQL validation of the local server
-  def require_local_mysql_service?
-    false
-  end
-  
-  def validate
-    super()
-    
-    if @options[:service].to_s() == ""
-      return
-    end
-    
-    if @options[:mysqlhost] == nil
-      @options[:mysqlhost] = TI.setting(TI.setting_key(REPL_SERVICES, @options[:service], "repl_datasource_host"))
-    end
-    if @options[:mysqlport] == nil
-      @options[:mysqlport] = TI.setting(TI.setting_key(REPL_SERVICES, @options[:service], "repl_datasource_port"))
-    end
-    
-    if @options[:my_cnf] == nil
-      @options[:my_cnf] = TI.setting(TI.setting_key(REPL_SERVICES, @options[:service], "repl_datasource_mysql_service_conf"))
-    end
-    if @options[:my_cnf] == nil
-      TU.error "Unable to determine location of MySQL my.cnf file"
-    else
-      unless File.exist?(@options[:my_cnf])
-        TU.error "The file #{@options[:my_cnf]} does not exist"
-      end
-    end
-    
-    if require_local_mysql_service?()
-      if @options[:mysqluser] == nil
-        @options[:mysqluser] = get_mysql_option("user")
-      end
-      if @options[:mysqluser].to_s() == ""
-        @options[:mysqluser] = "mysql"
-      end
-    
-      if @options[:mysql_service_command] == nil
-        @options[:mysql_service_command] = TI.setting(TI.setting_key(REPL_SERVICES, @options[:service], "repl_datasource_boot_script"))
-      end
-      if @options[:mysql_service_command] == nil
-        begin
-          service_command=TU.cmd_result("which service")
-          if TU.cmd("#{sudo_prefix()}test -x #{service_command}")
-            if TU.cmd("#{sudo_prefix()}test -x /etc/init.d/mysqld")
-              @options[:mysql_service_command] = "#{service_command} mysqld"
-            elsif TU.cmd("#{sudo_prefix()}test -x /etc/init.d/mysql")
-              @options[:mysql_service_command] = "#{service_command} mysql"
-            else
-              TU.error "Unable to determine the service command to start/stop mysql"
-            end
-          else
-            if TU.cmd("#{sudo_prefix()}test -x /etc/init.d/mysqld")
-              @options[:mysql_service_command] = "/etc/init.d/mysqld"
-            elsif TU.cmd("#{sudo_prefix()}test -x /etc/init.d/mysql")
-              @options[:mysql_service_command] = "/etc/init.d/mysql"
-            else
-              TU.error "Unable to determine the service command to start/stop mysql"
-            end
-          end
-        rescue CommandError
-          TU.error "Unable to determine the service command to start/stop mysql"
-        end
-      end
-    end
-  end
-  
-  def get_mysql_command
-    "mysql --defaults-file=#{@options[:my_cnf]} -h#{@options[:mysqlhost]} --port=#{@options[:mysqlport]}"
-  end
-  
-  def get_mysqldump_command
-    "mysqldump --defaults-file=#{@options[:my_cnf]} --host=#{@options[:mysqlhost]} --port=#{@options[:mysqlport]} --opt --single-transaction --all-databases --add-drop-database --master-data=2"
-  end
-  
-  def get_xtrabackup_command
-    # Use the configured my.cnf file, or the additional config file 
-    # if we created one
-    if @options[:extra_mysql_defaults_file] == nil
-      defaults_file = @options[:my_cnf]
-    else
-      defaults_file = @options[:extra_mysql_defaults_file].path()
-    end
-    
-    "innobackupex-1.5.1 --defaults-file=#{defaults_file} --host=#{@options[:mysqlhost]} --port=#{@options[:mysqlport]}"
-  end
-  
-  def get_mysql_result(command, timeout = 30)
-    begin      
-      Timeout.timeout(timeout.to_i()) {
-        return TU.cmd_result("#{get_mysql_command()} -e \"#{command}\"")
-      }
-    rescue Timeout::Error
-    rescue => e
-    end
-    
-    return nil
-  end
-  
-  def get_mysql_value(command, column = nil)
-    response = get_mysql_result(command + "\\\\G")
-    if response == nil
-      return nil
-    end
-    
-    response.split("\n").each{ | response_line |
-      parts = response_line.chomp.split(":")
-      if (parts.length != 2)
-        next
-      end
-      parts[0] = parts[0].strip;
-      parts[1] = parts[1].strip;
-      
-      if parts[0] == column || column == nil
-        return parts[1]
-      end
-    }
-    
-    return nil
-  end
-  
-  # Read the configured value for a mysql variable
-  def get_mysql_option(opt)
-    begin
-      val = TU.cmd_result("my_print_defaults --config-file=#{@options[:my_cnf]} mysqld | grep -e'^--#{opt.gsub(/[\-\_]/, "[-_]")}'")
-    rescue CommandError => ce
-      return nil
-    end
-
-    return val.split("\n")[0].split("=")[1]
-  end
-  
-  # Read the current value for a mysql variable
-  def get_mysql_variable(var)
-    response = TU.cmd_result("#{get_mysql_command()} -e \"SHOW VARIABLES LIKE '#{var}'\\\\G\"")
-    
-    response.split("\n").each{ | response_line |
-      parts = response_line.chomp.split(":")
-      if (parts.length != 2)
-        next
-      end
-      parts[0] = parts[0].strip;
-      parts[1] = parts[1].strip;
-      
-      if parts[0] == "Value"
-        return parts[1]
-      end
-    }
-    
-    return nil
-  end
-  
-  # Store additional MySQL configuration values in a temporary file
-  def set_mysql_defaults_value(value)
-    if @options[:extra_mysql_defaults_file] == nil
-      @options[:extra_mysql_defaults_file] = Tempfile.new("xtracfg")
-      @options[:extra_mysql_defaults_file].puts("!include #{@options[:my_cnf]}")
-      @options[:extra_mysql_defaults_file].puts("")
-      @options[:extra_mysql_defaults_file].puts("[mysqld]")
-    end
-    
-    @options[:extra_mysql_defaults_file].puts(value)
-    @options[:extra_mysql_defaults_file].flush()
-  end
-  
-  def start_mysql_server
-    TU.notice("Start the MySQL service")
-    begin
-      TU.cmd_result("#{sudo_prefix()}#{@options[:mysql_service_command]} start")
-    rescue CommandError
-    end
-    
-    # Wait 30 seconds for the MySQL service to be responsive
-    begin
-      Timeout.timeout(30) {
-        while true
-          begin
-            if get_mysql_result("SELECT 1") != nil
-              break
-            end
-            
-            # Pause for a second before running again
-            sleep 1
-          rescue
-          end
-        end
-      }
-    rescue Timeout::Error
-      raise "The MySQL server has taken too long to start"
-    end
-  end
-  
-  # Make sure that the mysql server is stopped by stopping it and checking
-  # the process has disappeared
-  def stop_mysql_server
-    TU.notice("Stop the MySQL service")
-    begin
-      pid_file = get_mysql_variable("pid_file")
-      pid = TU.cmd_result("#{sudo_prefix()}cat #{pid_file}")
-    rescue CommandError
-      pid = ""
-    end
-    
-    begin
-      TU.cmd_result("#{sudo_prefix()}#{@options[:mysql_service_command]} stop")
-    rescue CommandError
-    end
-    
-    begin
-      # Verify that the stop command worked properly
-      # We are expecting an error so we have to catch the exception
-      TU.cmd_result("#{get_mysql_command()} -e \"select 1\" > /dev/null 2>&1")
-      raise "Unable to properly shutdown the MySQL service"
-    rescue CommandError
-    end
-    
-    # We saw issues where MySQL would not close completely. This will
-    # watch the PID and make sure it does not appear
-    unless pid.to_s() == ""
-      begin
-        TU.debug("Verify that the MySQL pid has gone away")
-        Timeout.timeout(30) {
-          pid_missing = false
-          
-          while pid_missing == false do
-            begin
-              TU.cmd_result("#{sudo_prefix()}ps -p #{pid}")
-              sleep 5
-            rescue CommandError
-              pid_missing = true
-            end
-          end
-        }
-      rescue Timeout::Error
-        raise "Unable to verify that MySQL has fully shutdown"
-      end
-    end
   end
 end

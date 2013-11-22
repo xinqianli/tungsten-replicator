@@ -45,13 +45,7 @@ public interface ConsistencyCheck extends Serializable
      */
     class Method
     {
-        static final String MD5   = "md5";
-
-        /**
-         * Method that utilizes primary key for offset & limit, as opposed to
-         * row position (via LIMIT clause).
-         */
-        static final String MD5PK = "md5pk";
+        static final String MD5 = "md5";
     };
 
     /**

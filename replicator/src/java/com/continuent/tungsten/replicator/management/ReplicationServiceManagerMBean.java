@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2013 Continuent Inc.
+ * Copyright (C) 2010 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Robert Hodges
- * Contributor(s): Stephane Giron
+ * Contributor(s):
  */
 
 package com.continuent.tungsten.replicator.management;
@@ -29,7 +29,7 @@ import com.continuent.tungsten.common.jmx.DynamicMBeanHelper;
 
 /**
  * Management interface for main replicator control class.
- * 
+ *
  * @author <a href="mailto:robert.hodges@continuent.com">Robert Hodges</a>
  * @version 1.0
  */
@@ -47,50 +47,37 @@ public interface ReplicationServiceManagerMBean
 
     /**
      * Returns status information.
-     * 
+     *
      * @throws Exception
      */
     public Map<String, String> status() throws Exception;
 
     /**
      * Starts a replication service.
-     * 
+     *
      * @param name Name of the replicator service
      * @return True if replicator service exists and was started
      * @throws Exception Thrown if service start-up fails
      */
-    public boolean loadService(String name) throws Exception;
+    public boolean startService(String name) throws Exception;
 
     /**
      * Stops a replication service.
-     * 
+     *
      * @param name Name of the replicator service
      * @return True if replicator service exists and was stopped
      * @throws Exception Thrown if service stop fails
      */
-    public boolean unloadService(String name) throws Exception;
+    public boolean stopService(String name) throws Exception;
 
     /**
      * Resets a replication service.
-     * 
+     *
      * @param name Name of the replicator service
      * @return Map of strings that indicate actions taken.
      * @throws Exception Thrown if service stop fails
      */
     public Map<String, String> resetService(String name) throws Exception;
-
-    /**
-     * Resets a replication service or some of its components (thl, relay,
-     * database).
-     * 
-     * @param name Name of the replicator service
-     * @param controlParams 0 or more control parameters expressed as name-value
-     *            pairs (option={-all|-thl|-relay|-db})
-     * @return Map of strings that indicate actions taken.
-     * @throws Exception Thrown if service stop fails
-     */
-    public Map<String, String> resetService(String name,
-            Map<String, String> controlParams) throws Exception;
 
     /**
      * Returns a list of properties that have the status for each of the current
@@ -100,14 +87,14 @@ public interface ReplicationServiceManagerMBean
 
     /**
      * Returns a map of status properties for all current replicators
-     * 
+     *
      * @throws Exception
      */
     public Map<String, String> getStatus() throws Exception;
 
     /**
      * Stops all replication services and exits the process cleanly.
-     * 
+     *
      * @throws Exception Thrown if service stop fails
      */
     public void stop() throws Exception;

@@ -191,7 +191,7 @@ class Transformer
           end
           
           if functionMarker == "#("
-            if r.to_s() == ""
+            if r == ""
               r = "#"
             else
               r = ""

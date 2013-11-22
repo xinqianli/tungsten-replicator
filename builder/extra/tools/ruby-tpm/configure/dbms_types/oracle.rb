@@ -91,11 +91,7 @@ class OracleDatabasePlatform < ConfigureDatabasePlatform
   end
   
   def get_replication_schema
-    @username
-  end
-  
-  def extractor_provides_colnames?
-    true
+    "${replicator.global.db.user}"
   end
 end
 

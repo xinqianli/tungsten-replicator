@@ -277,18 +277,6 @@ class HostPrompt < ConfigurePrompt
   def allow_group_default
     false
   end
-  
-  def enabled_for_command_line?
-    true
-  end
-  
-  def build_command_line_argument?(member, v)
-    if to_identifier(v) == member
-      false
-    else
-      true
-    end
-  end
 end
 
 class UserIDPrompt < ConfigurePrompt
@@ -296,7 +284,7 @@ class UserIDPrompt < ConfigurePrompt
   
   def initialize
     super(USERID, "System User", 
-      PV_ANY, Configurator.instance.whoami())
+      PV_IDENTIFIER, Configurator.instance.whoami())
     self.extend(NotTungstenUpdatePrompt)
   end
   
@@ -537,30 +525,6 @@ class JavaFileEncoding < ConfigurePrompt
   def required?
     false
   end
-  
-  def get_default_value
-    has_heterogenous_service = false
-    @config.getPropertyOr([REPL_SERVICES], {}).keys().each{
-      |rs_alias|
-      if rs_alias == DEFAULTS
-        next
-      end
-      
-      if @config.getProperty([REPL_SERVICES, rs_alias, ENABLE_HETEROGENOUS_MASTER]) == "true"
-        has_heterogenous_service = true
-      end
-      
-      if @config.getProperty([REPL_SERVICES, rs_alias, ENABLE_HETEROGENOUS_SLAVE]) == "true"
-        has_heterogenous_service = true
-      end
-    }
-    
-    if has_heterogenous_service == true
-      @default = "UTF8"
-    else
-      super()
-    end
-  end
 end
 
 class JavaUserTimezone < ConfigurePrompt
@@ -649,7 +613,6 @@ end
 class ReplicationAPIPassword < ConfigurePrompt
   include ClusterHostPrompt
   include AdvancedPromptModule
-  include PrivateArgumentModule
 
   def initialize
     super(REPL_API_PASSWORD, "HTTP basic auth password for the replication API", PV_ANY, "secret")
@@ -693,15 +656,19 @@ class HostEnableManager < ConfigurePrompt
     if get_member() == DEFAULTS
       @default = false.to_s
     else
-      @config.getPropertyOr([MANAGERS], {}).each_key{
+      @config.getPropertyOr([REPL_SERVICES], {}).each_key{
         |rs_alias|
         
         if rs_alias == DEFAULTS
           next
         end
         
-        if @config.getProperty([MANAGERS, rs_alias, DEPLOYMENT_HOST]) == get_member()
-          @default = true.to_s
+        if @config.getProperty([REPL_SERVICES, rs_alias, DEPLOYMENT_HOST]) == get_member()
+          topology = Topology.build(@config.getProperty([REPL_SERVICES, rs_alias, DEPLOYMENT_DATASERVICE]), @config)
+          
+          if topology.use_management?()
+            @default = true.to_s
+          end
         end
       }
     end
@@ -797,21 +764,6 @@ class HostDefaultDataserviceName < ConfigurePrompt
           else
             non_cluster_ds_alias = ds_alias
           end
-        end
-      end
-    }
-    
-    @config.getNestedPropertyOr([MANAGERS], {}).each_key{
-      |m_alias|
-      if m_alias == DEFAULTS
-        next
-      end
-      
-      if @config.getNestedProperty([MANAGERS, m_alias, DEPLOYMENT_HOST]) == get_member()
-        ds_alias = @config.getNestedProperty([MANAGERS, m_alias, DEPLOYMENT_DATASERVICE])
-        if ds_alias != ""
-          @default = ds_alias
-          return
         end
       end
     }
@@ -1195,7 +1147,7 @@ class HostGlobalProperties < ConfigurePrompt
     false
   end
   
-  def build_command_line_argument(member, values, public_argument = false)
+  def build_command_line_argument(values)
     args = []
     
     if values.is_a?(Array)
@@ -1266,7 +1218,7 @@ class HostSkippedChecks < ConfigurePrompt
     false
   end
   
-  def build_command_line_argument(member, values, public_argument = false)
+  def build_command_line_argument(values)
     args = []
     
     if values.is_a?(Array)
@@ -1337,7 +1289,7 @@ class HostSkippedWarnings < ConfigurePrompt
     false
   end
   
-  def build_command_line_argument(member, values, public_argument = false)
+  def build_command_line_argument(values)
     args = []
     
     if values.is_a?(Array)
@@ -1396,7 +1348,8 @@ class HostDataServiceName < ConfigurePrompt
         next
       end
       
-      if @config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_MEMBERS]).include_alias?(get_member())
+      ds_members = @config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_MEMBERS], "").split(',')
+      if ds_members.include?(@config.getProperty(get_member_key(HOST)))
         if Topology.build(ds_alias, @config).use_management?()
           @default = @config.getProperty([DATASERVICES, ds_alias, DATASERVICENAME])
         end
@@ -1445,7 +1398,6 @@ end
 
 class HostJavaKeystorePassword < ConfigurePrompt
   include ClusterHostPrompt
-  include PrivateArgumentModule
   
   def initialize
     super(JAVA_KEYSTORE_PASSWORD, "The password for unlocking the tungsten_keystore.jks file in the security directory", PV_ANY, "tungsten")
@@ -1454,7 +1406,6 @@ end
 
 class HostJavaTruststorePassword < ConfigurePrompt
   include ClusterHostPrompt
-  include PrivateArgumentModule
   
   def initialize
     super(JAVA_TRUSTSTORE_PASSWORD, "The password for unlocking the tungsten_truststore.jks file in the security directory", PV_ANY, "tungsten")
@@ -1622,58 +1573,6 @@ class GlobalHostJavaPasswordStorePath < ConfigurePrompt
   def initialize
     super(GLOBAL_JAVA_PASSWORDSTORE_PATH, "Staging path to the Java Password Store file", 
       PV_FILENAME)
-  end
-end
-
-class HostBuildSecurityFiles < ConfigurePrompt
-  include ClusterHostPrompt
-  include NoStoredServerConfigValue
-  include HiddenValueModule
-  
-  def initialize
-    super(BUILD_SECURITY_FILES, "Build the necessary Java security files", PV_BOOLEAN, "false")
-  end
-end
-
-class HostSSLCA < ConfigurePrompt
-  include ClusterHostPrompt
-  include NoStoredServerConfigValue
-  include HiddenValueModule
-  
-  def initialize
-    super(SSL_CA, "Local path to the SSL certificate authority", PV_FILENAME)
-  end
-  
-  def required?
-    false
-  end
-end
-
-class HostSSLCert < ConfigurePrompt
-  include ClusterHostPrompt
-  include NoStoredServerConfigValue
-  include HiddenValueModule
-  
-  def initialize
-    super(SSL_CERT, "Local path to the SSL certificate", PV_FILENAME)
-  end
-  
-  def required?
-    false
-  end
-end
-
-class HostSSLKey < ConfigurePrompt
-  include ClusterHostPrompt
-  include NoStoredServerConfigValue
-  include HiddenValueModule
-  
-  def initialize
-    super(SSL_KEY, "Local path to the SSL certificate key", PV_FILENAME)
-  end
-  
-  def required?
-    false
   end
 end
 

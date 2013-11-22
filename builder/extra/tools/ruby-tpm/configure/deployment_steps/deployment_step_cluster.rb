@@ -154,15 +154,6 @@ module ConfigureDeploymentStepDeployment
     transformer.output
     watch_file(transformer.get_filename())
     
-    # Write the cluster-home/conf/connector.security.properties file
-    transformer = Transformer.new(
-		  "#{get_deployment_basedir()}/cluster-home/samples/conf/connector.security.properties.tpl",
-			"#{get_deployment_basedir()}/cluster-home/conf/connector.security.properties", "#")
-    transformer.set_fixed_properties(@config.getTemplateValue(get_host_key(FIXED_PROPERTY_STRINGS)))
-	  transformer.transform_values(method(:transform_values))
-    transformer.output
-    watch_file(transformer.get_filename())
-    
     if Configurator.instance.is_enterprise?()
       debug("Write INSTALLED cookbook scripts")
       transformer = Transformer.new(
@@ -171,9 +162,6 @@ module ConfigureDeploymentStepDeployment
       transformer.set_fixed_properties(@config.getTemplateValue(get_host_key(FIXED_PROPERTY_STRINGS)))
   	  transformer.transform_values(method(:transform_values))
 	  
-      nodeid=1
-      listed_nodes = []
-      
   	  dsid=1
   	  dsids={}
       @config.getPropertyOr(DATASERVICES, []).each_key{
@@ -190,25 +178,6 @@ module ConfigureDeploymentStepDeployment
           
           dsids[ds_name] = "configure $DS_NAME#{dsid}"
           dsid = dsid+1
-          
-          [
-            DATASERVICE_MASTER_MEMBER,
-            DATASERVICE_REPLICATION_MEMBERS,
-            DATASERVICE_CONNECTORS,
-            DATASERVICE_WITNESSES
-          ].each{
-            |key|
-            @config.getProperty([DATASERVICES, ds_alias, key]).to_s().split(",").each{
-              |node|
-              if listed_nodes.include?(node)
-                next
-              end
-
-              transformer << "export NODE#{nodeid}=#{node}"
-              nodeid = nodeid+1
-              listed_nodes << node
-            }
-          }
         end
       }
 	  
@@ -219,11 +188,11 @@ module ConfigureDeploymentStepDeployment
       File.open("#{get_deployment_basedir()}/cookbook/INSTALLED.tmpl", "w") {
         |f|
         f.puts <<EOF
-##################################
-# DO NOT MODIFY THIS FILE
-##################################
-# Loads environment variables to fill in the cookbook
-# . cookbook/INSTALLED_USER_VALUES.sh
+  ##################################
+  # DO NOT MODIFY THIS FILE
+  ##################################
+  # Loads environment variables to fill in the cookbook
+  # . cookbook/USER_VALUES.sh
 
 EOF
         rec = ReverseEngineerCommand.new(@config)
@@ -465,8 +434,8 @@ host=#{ds_alias}"
         next
       end
       unless (
-          @config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_MEMBERS]).include_alias?(get_host_alias()) ||
-          @config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_CONNECTORS]).include_alias?(get_host_alias())
+          @config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_MEMBERS], "").split(',').include?(@config.getProperty(get_host_key(HOST))) ||
+          @config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_CONNECTORS], "").split(',').include?(@config.getProperty(get_host_key(HOST)))
         )
         next
       end

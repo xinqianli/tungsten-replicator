@@ -28,12 +28,8 @@ import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
-import java.sql.Timestamp;
-import java.sql.Types;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.TimeZone;
 
 import javax.sql.rowset.serial.SerialBlob;
 
@@ -69,30 +65,27 @@ import com.continuent.tungsten.replicator.thl.log.LogEventReplReader;
  */
 public class THLManagerCtrl
 {
-    private static Logger                 logger             = Logger.getLogger(THLManagerCtrl.class);
+    private static Logger         logger             = Logger.getLogger(THLManagerCtrl.class);
     /**
      * Default path to replicator.properties if user not specified other.
      */
-    protected static final String         defaultConfigPath  = ".."
-                                                                     + File.separator
-                                                                     + "conf"
-                                                                     + File.separator
-                                                                     + "static-default.properties";
-
-    private static final SimpleDateFormat formatter          = new SimpleDateFormat(
-                                                                     "yyyy-MM-dd HH:mm:ss");
+    protected static final String defaultConfigPath  = ".."
+                                                             + File.separator
+                                                             + "conf"
+                                                             + File.separator
+                                                             + "static-default.properties";
 
     /**
      * Maximum length of characters to print out for a BLOB. If BLOB is larger,
      * it is truncated and "<...>" is added to the end.<br/>
      * TODO: make configurable from somewhere.
      */
-    private static final int              maxBlobPrintLength = 1000;
-    protected static ArgvIterator         argvIterator       = null;
-    protected String                      configFile         = null;
-    private boolean                       doChecksum;
-    private String                        logDir;
-    private DiskLog                       diskLog;
+    private static final int      maxBlobPrintLength = 1000;
+    protected static ArgvIterator argvIterator       = null;
+    protected String              configFile         = null;
+    private boolean               doChecksum;
+    private String                logDir;
+    private DiskLog               diskLog;
 
     /**
      * Creates a new <code>THLManagerCtrl</code> object.
@@ -111,7 +104,6 @@ public class THLManagerCtrl
         TungstenProperties properties = readConfig();
         logDir = properties.getString("replicator.store.thl.log_dir");
         this.doChecksum = doChecksum;
-        formatter.setTimeZone(TimeZone.getTimeZone("GMT"));
     }
 
     /**
@@ -194,9 +186,8 @@ public class THLManagerCtrl
         long minSeqno = diskLog.getMinSeqno();
         long maxSeqno = diskLog.getMaxSeqno();
         String logDir = diskLog.getLogDir();
-        int logFiles = diskLog.getLogFileNames().length;
         return new InfoHolder(logDir, minSeqno, maxSeqno, maxSeqno - minSeqno,
-                -1, logFiles);
+                -1);
     }
 
     /**
@@ -254,18 +245,6 @@ public class THLManagerCtrl
                     {
                         logger.warn("Unsupported encoding " + charset, e);
                     }
-                }
-                else if (colSpec.getType() == Types.DATE
-                        && value.getValue() instanceof Timestamp)
-                {
-                    Timestamp ts = (Timestamp) value.getValue();
-                    StringBuffer date = new StringBuffer(formatter.format(ts));
-                    if (ts.getNanos() > 0)
-                    {
-                        date.append(".");
-                        date.append(String.format("%09d%n", ts.getNanos()));
-                    }
-                    log += date.toString();
                 }
                 else
                     log += value.getValue().toString();
@@ -1003,7 +982,6 @@ public class THLManagerCtrl
 
                 InfoHolder info = thlManager.getInfo();
                 println("log directory = " + info.getLogDir());
-                println("log files = " + info.getLogFiles());
                 println("min seq# = " + info.getMinSeqNo());
                 println("max seq# = " + info.getMaxSeqNo());
                 println("events = " + info.getEventCount());
@@ -1221,7 +1199,7 @@ public class THLManagerCtrl
 
     protected static void printHelp()
     {
-        println("Tungsten Replicator THL Manager");
+        println("Replicator THL Manager");
         println("Syntax: thl [global-options] command [command-options]");
         println("Global options:");
         println("  -conf path    - Path to a static-<svc>.properties file");
@@ -1344,17 +1322,15 @@ public class THLManagerCtrl
         private long   maxSeqNo               = -1;
         private long   eventCount             = -1;
         private long   highestReplicatedEvent = -1;
-        private int    logFiles               = -1;
 
         public InfoHolder(String logDir, long minSeqNo, long maxSeqNo,
-                long eventCount, long highestReplicatedEvent, int logFiles)
+                long eventCount, long highestReplicatedEvent)
         {
             this.logDir = logDir;
             this.minSeqNo = minSeqNo;
             this.maxSeqNo = maxSeqNo;
             this.eventCount = eventCount;
             this.highestReplicatedEvent = highestReplicatedEvent;
-            this.logFiles = logFiles;
         }
 
         public String getLogDir()
@@ -1380,11 +1356,6 @@ public class THLManagerCtrl
         public long getHighestReplicatedEvent()
         {
             return highestReplicatedEvent;
-        }
-        
-        public int getLogFiles()
-        {
-            return logFiles;
         }
     }
 }

@@ -254,10 +254,6 @@ module ConfigureDeploymentCore
     end
   end
   
-  def get_host_alias
-    @config.getProperty(DEPLOYMENT_HOST)
-  end
-  
   def get_host_key(key)
     [HOSTS, @config.getProperty(DEPLOYMENT_HOST), key]
   end
@@ -471,9 +467,7 @@ module ConfigureDeploymentCore
       Dir.glob("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/cluster-home/conf/cluster/*").each{
         |ds_name|
         debug("Remove all files in #{ds_name}")
-        if File.exist?("#{ds_name}/datasource")
-          FileUtils.rm_rf(Dir.glob("#{ds_name}/datasource/*"))
-        end
+        FileUtils.rm_rf(Dir.glob("#{ds_name}/*"))
       }
     end
   end

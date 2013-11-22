@@ -38,7 +38,6 @@ import org.apache.velocity.runtime.RuntimeConstants;
 import org.apache.velocity.runtime.log.Log4JLogChute;
 
 import com.continuent.tungsten.replicator.ReplicatorException;
-import com.continuent.tungsten.replicator.conf.ReplicatorRuntimeConf;
 import com.continuent.tungsten.replicator.database.Column;
 import com.continuent.tungsten.replicator.database.Database;
 import com.continuent.tungsten.replicator.database.DatabaseFactory;
@@ -92,8 +91,8 @@ public class DDLScan
      * 
      * @throws ReplicatorException
      */
-    public void prepare(String additionalPath) throws ReplicatorException,
-            InterruptedException, SQLException
+    public void prepare() throws ReplicatorException, InterruptedException,
+            SQLException
     {
         db = DatabaseFactory.createDatabase(url, user, pass);
         db.connect();
@@ -102,11 +101,6 @@ public class DDLScan
         OracleDatabase oracle = new OracleDatabase();
         reservedWordsOracle = oracle.getReservedWords();
 
-        // Do we need additional paths for loader?
-        String userPath = "";
-        if (additionalPath != null)
-            userPath = "," + additionalPath;
-
         // Configure and initialize Velocity engine. Using ourselves as a
         // logger.
         velocity = new VelocityEngine();
@@ -114,9 +108,8 @@ public class DDLScan
                 "org.apache.velocity.runtime.log.Log4JLogChute");
         velocity.setProperty(Log4JLogChute.RUNTIME_LOG_LOG4J_LOGGER,
                 DDLScan.class.toString());
-        velocity.setProperty(RuntimeConstants.FILE_RESOURCE_LOADER_PATH, ".,"
-                + ReplicatorRuntimeConf.locateReplicatorHomeDir()
-                + "/samples/extensions/velocity" + userPath);
+        velocity.setProperty(RuntimeConstants.FILE_RESOURCE_LOADER_PATH,
+                ".,../samples/extensions/velocity");
         velocity.init();
     }
 
@@ -235,7 +228,6 @@ public class DDLScan
         context.put("enum", EnumToStringFilter.class);
         context.put("date", new java.util.Date()); // Current time.
         context.put("reservedWordsOracle", reservedWordsOracle);
-        context.put("velocity", velocity);
 
         // Iterate through all available tables in the database.
         for (Table table : tables)

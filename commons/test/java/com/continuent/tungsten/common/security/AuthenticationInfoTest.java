@@ -24,6 +24,7 @@ package com.continuent.tungsten.common.security;
 import junit.framework.TestCase;
 
 import com.continuent.tungsten.common.jmx.ServerRuntimeException;
+import com.continuent.tungsten.common.security.AuthenticationInfo.AUTH_USAGE;
 
 /**
  * Implements a simple unit test for AuthenticationInfo
@@ -42,7 +43,8 @@ public class AuthenticationInfoTest extends TestCase
      */
     public void testCheckAuthenticationInfo() throws Exception
     {
-        AuthenticationInfo authInfo = new AuthenticationInfo();
+        AuthenticationInfo authInfo = new AuthenticationInfo(
+                AUTH_USAGE.CLIENT_SIDE);
         boolean sreThrown = false;
 
         // If encryption required: trustore location exist

@@ -25,6 +25,7 @@ import junit.framework.TestCase;
 
 import com.continuent.tungsten.common.config.TungstenProperties;
 import com.continuent.tungsten.common.config.cluster.ConfigurationException;
+import com.continuent.tungsten.common.security.AuthenticationInfo.AUTH_USAGE;
 
 /**
  * Implements a simple unit test for SecurityHelper
@@ -41,7 +42,8 @@ public class SecurityHelperTest extends TestCase
      */
     public void testLoadPasswordsFromFile() throws Exception
     {
-        AuthenticationInfo authenticationInfo = new AuthenticationInfo();
+        AuthenticationInfo authenticationInfo = new AuthenticationInfo(
+                AUTH_USAGE.CLIENT_SIDE);
         authenticationInfo.setPasswordFileLocation("sample.passwords.store");
 
         // This should not be null if we retrieve passwords from the file
@@ -61,12 +63,13 @@ public class SecurityHelperTest extends TestCase
     {
         // Get authInfo from the configuration file on the CLIENT_SIDE
         AuthenticationInfo authInfo = SecurityHelper
-                .loadAuthenticationInformation("sample.security.properties");
+                .loadAuthenticationInformation("sample.security.properties",
+                        AUTH_USAGE.CLIENT_SIDE);
         assertNotNull(authInfo);
 
         // Get authInfo from the configuration file on the SERVER_SIDE
         authInfo = SecurityHelper.loadAuthenticationInformation(
-                "sample.security.properties");
+                "sample.security.properties", AUTH_USAGE.SERVER_SIDE);
         assertNotNull(authInfo);
 
         // Check that an Exception is thrown when the configuration file is not found
@@ -74,7 +77,8 @@ public class SecurityHelperTest extends TestCase
         try
         {
             authInfo = SecurityHelper.loadAuthenticationInformation(
-                    "sample.security.properties_DOES_NOT_EXIST");
+                    "sample.security.properties_DOES_NOT_EXIST",
+                    AUTH_USAGE.CLIENT_SIDE);
         }
         catch (ConfigurationException ce)
         {
@@ -92,7 +96,7 @@ public class SecurityHelperTest extends TestCase
     public void testRetrieveInformation() throws ConfigurationException
     {
         // Get authInfo from the configuration file on the SERVER_SIDE
-        AuthenticationInfo authInfo = SecurityHelper.loadAuthenticationInformation( "sample.security.properties");
+        AuthenticationInfo authInfo = SecurityHelper.loadAuthenticationInformation( "sample.security.properties", AUTH_USAGE.SERVER_SIDE);
         assertNotNull(authInfo);
         
         TungstenProperties securityProp = authInfo.getAsTungstenProperties();
@@ -111,7 +115,7 @@ public class SecurityHelperTest extends TestCase
     public void testloadAuthenticationInformation_and_setSystemProperties() throws ConfigurationException
     {
         // Get authInfo from the configuration file on the SERVER_SIDE
-        AuthenticationInfo authInfo = SecurityHelper.loadAuthenticationInformation( "sample.security.properties");
+        AuthenticationInfo authInfo = SecurityHelper.loadAuthenticationInformation( "sample.security.properties", AUTH_USAGE.SERVER_SIDE);
         assertNotNull(authInfo);
         
         // Check it's available in system wide properties

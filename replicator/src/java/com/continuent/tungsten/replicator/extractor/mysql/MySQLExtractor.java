@@ -1158,12 +1158,6 @@ public class MySQLExtractor implements RawExtractor
             }
         }
 
-        // If we are using relay logs make sure that relay logging is
-        // functioning here and we are up to point required by binlog
-        // position.
-        startRelayLogs(binlogPosition.getFileName(),
-                binlogPosition.getPosition());
-
         // Extract FD event
         try
         {
@@ -1182,6 +1176,11 @@ public class MySQLExtractor implements RawExtractor
             logger.warn("Interrupted while extracting format description event");
         }
 
+        // If we are using relay logs make sure that relay logging is
+        // functioning here and we are up to point required by binlog
+        // position.
+        startRelayLogs(binlogPosition.getFileName(),
+                binlogPosition.getPosition());
     }
 
     /**

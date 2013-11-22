@@ -18,11 +18,9 @@ class TungstenBackupScript
       storage_file = backup()
       end_thl_seqno = TI.trepctl_value(@options[:service], 'maximumStoredSeqNo')
 
-      if @options[:properties].to_s() != ""
-        # Store the path to the backup file in the properties file provided
-        # by the replicator
-        TU.cmd_result("echo \"file=#{storage_file}\" > #{@options[:properties]}")
-      end
+      # Store the path to the backup file in the properties file provided
+      # by the replicator
+      TU.cmd_result("echo \"file=#{storage_file}\" > #{@options[:properties]}")
       
       if @master_backup == true
         # A master backup requires the binlog file and position in order to 
@@ -103,7 +101,7 @@ class TungstenBackupScript
   def store_master_position(thl_record, storage_file)
     service_schema = TI.trepctl_property(@options[:service], "replicator.schema")
     sql = ["-- Reset the Tungsten service schema with the proper position",
-      "SET SESSION SQL_LOG_BIN=0;DELETE FROM #{service_schema}.trep_commit_seqno; INSERT INTO #{service_schema}.trep_commit_seqno (task_id, seqno, fragno, last_frag, epoch_number, eventid, source_id, update_timestamp, extract_timestamp) VALUES (0, #{thl_record['seqno']}, #{thl_record['frag']}, #{thl_record['lastFrag'] == true ? 1 : 0}, #{thl_record['epoch']}, '#{thl_record['eventId']}', '#{thl_record['sourceId']}', NOW(), NOW());"]
+      "UPDATE #{service_schema}.trep_commit_seqno SET seqno=#{thl_record['seqno']},epoch_number=#{thl_record['epoch']},eventid='#{thl_record['eventId']}',source_id='#{thl_record['sourceId']}';"]
     store_master_position_sql(sql, storage_file)
   end
   
@@ -112,8 +110,6 @@ class TungstenBackupScript
   end
   
   def validate
-    super()
-    
     if TI.trepctl_value(@options[:service], 'role') == "master"
       @master_backup = true
     else
@@ -128,7 +124,7 @@ class TungstenBackupScript
   end
 
   def configure
-    super()
+    TU.set_log_level(Logger::DEBUG)
     
     TU.remaining_arguments.map!{ |arg|
       # The backup agent sends single dashes instead of double dashes

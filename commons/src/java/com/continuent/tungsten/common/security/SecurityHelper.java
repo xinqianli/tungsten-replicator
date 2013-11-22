@@ -35,6 +35,7 @@ import com.continuent.tungsten.common.config.TungstenProperties;
 import com.continuent.tungsten.common.config.cluster.ClusterConfiguration;
 import com.continuent.tungsten.common.config.cluster.ConfigurationException;
 import com.continuent.tungsten.common.jmx.ServerRuntimeException;
+import com.continuent.tungsten.common.security.AuthenticationInfo.AUTH_USAGE;
 
 /**
  * Helper class for security related topics
@@ -143,7 +144,7 @@ public class SecurityHelper
         catch (FileNotFoundException e)
         {
             logger.error("Unable to find properties file: "
-                    + authenticationInfo.getPasswordFileLocation(), e);
+                    + authenticationInfo.getPasswordFileLocation());
             logger.debug("Properties search failure", e);
             throw new ServerRuntimeException("Unable to find password file: "
                     + e.getMessage());
@@ -151,7 +152,7 @@ public class SecurityHelper
         catch (IOException e)
         {
             logger.error("Unable to read properties file: "
-                    + authenticationInfo.getPasswordFileLocation(), e);
+                    + authenticationInfo.getPasswordFileLocation());
             logger.debug("Properties read failure", e);
             throw new ServerRuntimeException("Unable to read password file: "
                     + e.getMessage());
@@ -168,7 +169,8 @@ public class SecurityHelper
     public static AuthenticationInfo loadAuthenticationInformation()
             throws ConfigurationException
     {
-        return loadAuthenticationInformation(null);
+        return loadAuthenticationInformation(null,
+                AuthenticationInfo.AUTH_USAGE.SERVER_SIDE);
     }
 
     /**
@@ -182,14 +184,16 @@ public class SecurityHelper
      * @throws ConfigurationException
      * @throws ReplicatorException
      */
-    public static AuthenticationInfo loadAuthenticationInformation(String propertiesFileLocation)
+    public static AuthenticationInfo loadAuthenticationInformation(String propertiesFileLocation,
+    AuthenticationInfo.AUTH_USAGE authUsage)
     throws ConfigurationException
     {
-        return loadAuthenticationInformation(propertiesFileLocation, true);
+        return loadAuthenticationInformation(propertiesFileLocation, authUsage, true);
     }
 
     public static AuthenticationInfo loadAuthenticationInformation(
             String propertiesFileLocation,
+            AuthenticationInfo.AUTH_USAGE authUsage,
             boolean doConsistencyChecks
             )
             throws ConfigurationException
@@ -207,7 +211,7 @@ public class SecurityHelper
         }
         
 
-        AuthenticationInfo authInfo = new AuthenticationInfo(propertiesFileLocation);
+        AuthenticationInfo authInfo = new AuthenticationInfo(authUsage, propertiesFileLocation);
 
         // Authorisation and/or encryption
         if (securityProperties!=null)

@@ -43,12 +43,8 @@ module ReplicationServicePrompt
     get_member_key(key)
   end
   
-  def get_host_alias
-    @config.getProperty(get_member_key(DEPLOYMENT_HOST))
-  end
-  
   def get_host_key(key)
-    [HOSTS, get_host_alias(), key]
+    [HOSTS, @config.getProperty(get_member_key(DEPLOYMENT_HOST)), key]
   end
   
   def get_dataservice_key(key)
@@ -275,7 +271,7 @@ class ReplicationServiceRole < ConfigurePrompt
   
   def load_default_value
     topology = Topology.build(get_dataservice_alias(), @config)
-    @default = topology.get_role(get_host_alias())
+    @default = topology.get_role(@config.getProperty(get_host_key(HOST)))
   end
 end
 
@@ -386,7 +382,7 @@ class ReplicationServiceTHLMasterURI < ConfigurePrompt
   
   def get_template_value(transform_values_method)
     topology = Topology.build(get_dataservice_alias(), @config)
-    return topology.get_master_thl_uri(get_host_alias())
+    return topology.get_master_thl_uri(@config.getProperty(get_host_key(HOST)))
   end
 end
 
@@ -568,37 +564,26 @@ class ReplicationServiceBufferSize < ConfigurePrompt
   include ReplicationServicePrompt
   
   def initialize
-    super(REPL_BUFFER_SIZE, "Replicator queue size between stages (min 1)", 
+    super(REPL_BUFFER_SIZE, "Replicator block commit size (min 1, max 100)",
       PV_REPL_BUFFER_SIZE, 10)
   end
 end
 
-class ReplicationServiceApplierBlockCommitSize < ConfigurePrompt
+class ReplicationServiceApplierBufferSize < ConfigurePrompt
   include ReplicationServicePrompt
   include AdvancedPromptModule
   
   def initialize
-    super(REPL_SVC_APPLIER_BLOCK_COMMIT_SIZE, 
-      "Applier block commit size (min 1)",
+    super(REPL_SVC_APPLIER_BUFFER_SIZE, "Applier block commit size (min 1)",
       PV_ANY, nil)
   end
   
-  def load_default_value
+  def get_default_value
     if @config.getProperty(get_member_key(BATCH_ENABLED)) == "true"
-      @default = "10000"
+      return "10000"
     else
-      @default = "${replicator.global.buffer.size}"
+      return "${replicator.global.buffer.size}"
     end
-  end
-end
-
-class ReplicationServiceApplierBlockCommitInterval < ConfigurePrompt
-  include ReplicationServicePrompt
-  include AdvancedPromptModule
-
-  def initialize
-    super(REPL_SVC_APPLIER_BLOCK_COMMIT_INTERVAL, "Minimum interval between commits (Use values like 1s, 2h, 3, etc. or 0 to turn off)",
-      PV_ANY, 0)
   end
 end
 
@@ -1174,7 +1159,7 @@ class ReplicationServiceExtractorFilters < ConfigurePrompt
   end
   
   def get_template_value(transform_values_method)
-    (get_extractor_datasource().get_extractor_filters() + get_value().to_s().split(",")).join(",")
+    (get_value().to_s().split(",") + get_extractor_datasource().get_extractor_filters()).join(",")
   end
   
   def required?
@@ -1221,14 +1206,11 @@ class ReplicationServiceSchema < ConfigurePrompt
   include ConstantValueModule
   
   def initialize
-    super(REPL_SVC_SCHEMA, "Replication service schema")
+    super(REPL_SVC_SCHEMA, "Replication service schema", PV_IDENTIFIER)
   end
   
   def load_default_value
-    @default = get_applier_datasource().get_replication_schema()
-    if @default == nil
-      @default = @config.getProperty(get_dataservice_key(DATASERVICE_SCHEMA))
-    end
+    @default = @config.getProperty(get_dataservice_key(DATASERVICE_SCHEMA))
   end
   
   def required?
@@ -1325,46 +1307,6 @@ class ReplicationServiceRelayLogStorageDirectory < ConfigurePrompt
   end
 end
 
-class ReplicationHeterogenousService < ConfigurePrompt
-  include ReplicationServicePrompt
-  
-  def initialize
-    super(ENABLE_HETEROGENOUS_SERVICE, "Enable heterogenous operation", PV_BOOLEAN, "false")
-  end
-end
-
-class ReplicationHeterogenousMaster < ConfigurePrompt
-  include ReplicationServicePrompt
-  
-  def initialize
-    super(ENABLE_HETEROGENOUS_MASTER, "Enable heterogenous operation for the master", PV_BOOLEAN, "false")
-  end
-  
-  def load_default_value
-    if @config.getProperty(get_member_key(ENABLE_HETEROGENOUS_SERVICE)) == "true"
-      @default = "true"
-    else
-      super()
-    end
-  end
-end
-
-class ReplicationHeterogenousSlave < ConfigurePrompt
-  include ReplicationServicePrompt
-  
-  def initialize
-    super(ENABLE_HETEROGENOUS_SLAVE, "Enable heterogenous operation for the slave", PV_BOOLEAN, "false")
-  end
-  
-  def load_default_value
-    if @config.getProperty(get_member_key(ENABLE_HETEROGENOUS_SERVICE)) == "true"
-      @default = "true"
-    else
-      super()
-    end
-  end
-end
-
 class ReplicationServiceGlobalProperties < ConfigurePrompt
   include ReplicationServicePrompt
   include ConstantValueModule
@@ -1426,7 +1368,7 @@ class ReplicationServiceGlobalProperties < ConfigurePrompt
     false
   end
   
-  def build_command_line_argument(member, values, public_argument = false)
+  def build_command_line_argument(values)
     args = []
     
     if values.is_a?(Array)

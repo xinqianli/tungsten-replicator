@@ -247,7 +247,8 @@ class THLStorageCheck < ConfigureValidationCheck
     end
     
     begin
-      get_applier_datasource.check_thl_schema(@config.getProperty(get_member_key(REPL_SVC_SCHEMA)))
+      thl_schema = "tungsten_"+@config.getProperty(DATASERVICENAME)
+      get_applier_datasource.check_thl_schema(thl_schema)
     rescue => e
       error(e.message)
     end
@@ -337,14 +338,6 @@ class ParallelReplicationCountCheck < ConfigureValidationCheck
     
     if host_channels != nil && host_channels != ds_channels
       error("You are trying to configure this host with a custom replication channels setting.  That is not currently supported.  Please update the host configuration with --channels=#{ds_channels}")
-    end
-  end
-  
-  def enabled?
-    if get_topology().is_a?(ClusterTopology)
-      super()
-    else
-      false
     end
   end
 end

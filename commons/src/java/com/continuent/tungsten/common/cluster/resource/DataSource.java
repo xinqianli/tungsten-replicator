@@ -26,7 +26,7 @@ import com.continuent.tungsten.common.patterns.order.Sequence;
 
 @XmlRootElement
 @JsonIgnoreProperties(ignoreUnknown = true)
-@JsonPropertyOrder(alphabetic = true)
+@JsonPropertyOrder(alphabetic=true)
 public class DataSource extends Resource implements Serializable
 {
     private static final long       serialVersionUID               = 8153881753668230575L;
@@ -38,7 +38,6 @@ public class DataSource extends Resource implements Serializable
     public static final String      ISAVAILABLE                    = "isAvailable";
     public static final String      STATE                          = "state";
     public static final String      ISCOMPOSITE                    = "isComposite";
-    public static final String      ISWITNESS                      = "isWitness";
     public static final String      ALERT_STATUS                   = "alertStatus";
     public static final String      ALERT_MESSAGE                  = "alertMessage";
     public static final String      ALERT_TIME                     = "alertTime";
@@ -54,10 +53,9 @@ public class DataSource extends Resource implements Serializable
     public static final String      VIPINTERFACE                   = "vipInterface";
     public static final String      VIPADDRESS                     = "vipAddress";
     public static final String      VIPISBOUND                     = "vipIsBound";
-    public static final String      ACTIVE_CONNECTION_COUNT        = "activeConnectionCount";
+    public static final String      ACTIVE_CONNECTION_COUNT        = "activeConnectionsCount";
     public static final String      CONNECTIONS_CREATED_COUNT      = "connectionsCreatedCount";
     public static final String      TYPE                           = "type";
-    public static final String      MASTER_CONNECT_URI             = "masterConnectUri";
 
     // Defaults
     public static final double      DEFAULT_APPLIED_LATENCY        = 0.0;
@@ -77,8 +75,7 @@ public class DataSource extends Resource implements Serializable
     private String                  url                            = "";
     private boolean                 isComposite                    = false;
     private int                     precedence                     = 0;
-    private boolean                 isAvailable                    = false;
-    private String                  masterConnectUri               = "";
+    private boolean                 available                      = false;
 
     private ResourceState           state                          = ResourceState.UNKNOWN;
 
@@ -95,12 +92,11 @@ public class DataSource extends Resource implements Serializable
 
     @SuppressWarnings("unused")
     private boolean                 isStandby                      = false;
-    private boolean                 isWitness                      = false;
 
     private HighWaterResource       highWater                      = new HighWaterResource();
 
     // Statistics.
-    private AtomicLong              activeConnectionsCount          = new AtomicLong(
+    private AtomicLong              activeConnectionsCount         = new AtomicLong(
                                                                            0);
     private AtomicLong              connectionsCreatedCount        = new AtomicLong(
                                                                            0);
@@ -127,7 +123,7 @@ public class DataSource extends Resource implements Serializable
     private boolean                 vipIsBound                     = false;
 
     /** Retains all non-closed connections to this data source */
-    private Set<DatabaseConnection> activeConnections               = Collections
+    private Set<DatabaseConnection> activeConnections              = Collections
                                                                            .synchronizedSet(new HashSet<DatabaseConnection>());
     public final static String      JDBC_URL_START                 = "jdbc:";
 
@@ -205,17 +201,17 @@ public class DataSource extends Resource implements Serializable
 
     public void addConnection(DatabaseConnection conn)
     {
-        // thread-safe: ActiveConnection is a synchronizedSet
+        // thread-safe: activeConnections is a synchronizedSet
         activeConnections.add(conn);
     }
 
     public void removeConnection(DatabaseConnection conn)
     {
-        // thread-safe: ActiveConnection is a synchronizedSet
-       activeConnections.remove(conn);
+        // thread-safe: activeConnections is a synchronizedSet
+        activeConnections.remove(conn);
     }
 
-    public long getActiveConnectionCount()
+    public long getActiveConnectionsCount()
     {
         return activeConnectionsCount.get();
     }
@@ -315,32 +311,6 @@ public class DataSource extends Resource implements Serializable
         return newDs.toProperties();
     }
 
-    static public TungstenProperties createWitnessFromMemberHeartbeat(
-            TungstenProperties memberHeartbeatProps)
-    {
-        DataSource newDs = new DataSource(
-                memberHeartbeatProps.getString("memberName"),
-                memberHeartbeatProps.getString("clusterName"),
-                memberHeartbeatProps.getString("memberName"));
-
-        newDs.setRole(DataSourceRole.witness.toString());
-
-        newDs.setAlertStatus(DataSourceAlertStatus.OK);
-
-        // Standby data sources are not available for reads or writes
-        newDs.setIsAvailable(false);
-        newDs.setState(ResourceState.OFFLINE);
-        newDs.setStandby(true);
-
-        newDs.setPrecedence(99);
-
-        newDs.setVipIsBound(false);
-
-        newDs.setComposite(false);
-
-        return newDs.toProperties();
-    }
-
     public String getDriver()
     {
         if (driver == null)
@@ -387,16 +357,6 @@ public class DataSource extends Resource implements Serializable
         this.role = role;
     }
 
-    public String getMasterConnectUri()
-    {
-        return masterConnectUri;
-    }
-
-    public void setMasterConnectUri(String masterConnectUri)
-    {
-        this.masterConnectUri = masterConnectUri;
-    }
-
     public int getPrecedence()
     {
         return precedence;
@@ -425,7 +385,7 @@ public class DataSource extends Resource implements Serializable
      */
     public boolean isAvailable()
     {
-        return isAvailable;
+        return available;
     }
 
     /**
@@ -433,7 +393,7 @@ public class DataSource extends Resource implements Serializable
      */
     public boolean getIsAvailable()
     {
-        return isAvailable;
+        return available;
     }
 
     public void setCritical(String message)
@@ -444,9 +404,10 @@ public class DataSource extends Resource implements Serializable
     /**
      * @param isAvailable the isDateAvailable to set
      */
+    @JsonIgnore
     public void setIsAvailable(boolean isAvailable)
     {
-        this.isAvailable = isAvailable;
+        this.available = isAvailable;
 
         if (isAvailable)
         {
@@ -500,7 +461,6 @@ public class DataSource extends Resource implements Serializable
             this.setDriver(ds.getDriver());
             this.setUrl(ds.getUrl());
             this.setRole(ds.getRole());
-            this.setMasterConnectUri(ds.getMasterConnectUri());
             this.setPrecedence(ds.getPrecedence());
             this.setIsAvailable(ds.getIsAvailable());
             this.setState(ds.getState());
@@ -529,7 +489,6 @@ public class DataSource extends Resource implements Serializable
         props.setString(DRIVER, getDriver());
         props.setString(URL, getUrl());
         props.setString(ROLE, getRole().toString());
-        props.setString(MASTER_CONNECT_URI, getMasterConnectUri());
         props.setString(ALERT_STATUS, alertStatus.toString());
         props.setString(ALERT_MESSAGE, alertMessage);
         props.setLong(ALERT_TIME, alertTime);
@@ -588,6 +547,7 @@ public class DataSource extends Resource implements Serializable
      * 
      * @return Returns the sequence.
      */
+    @JsonIgnore
     public Sequence getSequence()
     {
         return sequence;

@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2013 Continuent Inc.
+ * Copyright (C) 2007-2012 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Scott Martin
- * Contributor(s): Stephane Giron, Linas Virbalas
+ * Contributor(s): Stephane Giron
  */
 
 package com.continuent.tungsten.replicator.database;
@@ -348,18 +348,8 @@ public class OracleDatabase extends AbstractDatabase
 
     public void useDefaultSchema(String schema) throws SQLException
     {
-        try
-        {
-            execute(getUseSchemaQuery(schema));
-            this.defaultSchema = schema;
-        }
-        catch (SQLException e)
-        {
-            // If we get exception at this time, Oracle error message is
-            // obscure, hence we're providing additional information.
-            logger.error("Setting current Oracle user failed: " + schema);
-            throw e;
-        }
+        execute(getUseSchemaQuery(schema));
+        this.defaultSchema = schema;
     }
 
     public String getUseSchemaQuery(String schema)
@@ -722,23 +712,8 @@ public class OracleDatabase extends AbstractDatabase
             if (!tungstenTableType.equals("CDCSYNC"))
             {
                 // Disable Tungsten Change Set
-                try
-                {
-                    execute("BEGIN DBMS_CDC_PUBLISH.ALTER_CHANGE_SET(change_set_name=>'"
-                            + changeSetName + "',enable_capture=>'N'); END;");
-                }
-                catch (SQLException e1)
-                {
-                    if (e1.getErrorCode() == 31410)
-                    {
-                        throw new SQLException(
-                                "The change set "
-                                        + changeSetName
-                                        + " does not seem to exist on Oracle. Did you run setupCDC.sh?",
-                                e1);
-                    }
-                    throw e1;
-                }
+                execute("BEGIN DBMS_CDC_PUBLISH.ALTER_CHANGE_SET(change_set_name=>'"
+                        + changeSetName + "',enable_capture=>'N'); END;");
 
                 // Or prepare table for asynchronous capture.
                 // This should not be done for synchronous capture as this would
@@ -760,12 +735,11 @@ public class OracleDatabase extends AbstractDatabase
             }
 
             String cdcSQL;
-            int oracleVersion = dbConn.getMetaData().getDatabaseMajorVersion();
             if (tungstenTableType.equals("CDCSYNC")
-                    && oracleVersion >= 11)
+                    && dbConn.getMetaData().getDatabaseMajorVersion() >= 11)
             {
-                logger.info("Setting up synchronous data capture with version = "
-                        + oracleVersion);
+                logger.info("Setting up synchronous data capture with version > "
+                        + dbConn.getMetaData().getDatabaseMajorVersion());
                 cdcSQL = "BEGIN "
                         + "DBMS_CDC_PUBLISH.CREATE_CHANGE_TABLE(owner=>'"
                         + table.getSchema()
@@ -807,23 +781,8 @@ public class OracleDatabase extends AbstractDatabase
                         + "target_colmap => 'y', source_colmap => 'n', "
                         + "options_string=>'TABLESPACE " + table.getSchema()
                         + "'); END;";
-            
-            try
-            {
-                execute(cdcSQL);
-            }
-            catch (SQLException e1)
-            {
-                if (e1.getErrorCode() == 31415)
-                {
-                    throw new SQLException(
-                            "The change set "
-                                    + changeSetName
-                                    + " does not seem to exist on Oracle. Did you run setupCDC.sh?",
-                            e1);
-                }
-                throw e1;
-            }
+
+            execute(cdcSQL);
 
             execute("GRANT SELECT ON CT_" + tableName + " TO PUBLIC");
             execute("GRANT SELECT ON " + tableName + " TO PUBLIC");

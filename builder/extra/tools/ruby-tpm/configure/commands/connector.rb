@@ -123,12 +123,4 @@ class ConnectorTerminalCommand
   def self.get_command_description
     "Open a terminal to the Connector"
   end
-  
-  def self.display_command
-    if Configurator.instance.is_enterprise?()
-      true
-    else
-      false
-    end
-  end
 end

@@ -92,19 +92,6 @@ class CCTRL
           }
         }
         datasource[0].scan(/
-          \|(\S*)
-          \(
-          (\S*):(\S*)                # Role:Status
-          /xm){
-          |m|
-          
-          ds_hostname=m[0]
-          ds_props = {
-            ROLE => m[1],
-            STATUS => m[2]
-          }
-        }
-        datasource[0].scan(/
           STATUS[\s]?
           \[(\S*)\][\s]?    #
           \[(.*)\]          # Timestamp of data

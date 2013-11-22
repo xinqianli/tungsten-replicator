@@ -154,7 +154,7 @@ public class ChannelAssignmentService implements PipelineService
         try
         {
             conn = DatabaseFactory.createDatabase(url, user, password);
-            conn.connect(false);
+            conn.connect();
         }
         catch (SQLException e)
         {

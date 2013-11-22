@@ -39,7 +39,6 @@ import com.continuent.tungsten.common.exec.ArgvIterator;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.conf.ReplicatorConf;
 import com.continuent.tungsten.replicator.conf.ReplicatorRuntimeConf;
-import com.continuent.tungsten.replicator.management.ReplicationServiceManager;
 
 /**
  * This class defines a DDLScanCtrl that implements a utility to access DDLScan
@@ -77,7 +76,6 @@ public class DDLScanCtrl
     private String                renameDefinitions = null;
 
     private String                templateFile      = null;
-    private String                additionalPath    = null;
     Hashtable<String, String>     templateOptions   = null;
     private String                outFile           = null;
 
@@ -92,8 +90,7 @@ public class DDLScanCtrl
      */
     public DDLScanCtrl(String url, String user, String pass, String db,
             String tables, String templateFile, String outFile,
-            String renameDefinitions,
-            Hashtable<String, String> templateOptions, String additionalPath)
+            String renameDefinitions, Hashtable<String, String> templateOptions)
             throws Exception
     {
         // JDBC connection string.
@@ -107,7 +104,6 @@ public class DDLScanCtrl
 
         // Template, options and output file.
         this.templateFile = templateFile;
-        this.additionalPath = additionalPath;
         this.templateOptions = templateOptions;
         this.outFile = outFile;
 
@@ -135,7 +131,7 @@ public class DDLScanCtrl
         try
         {
             scanner = new DDLScan(url, db, user, pass);
-            scanner.prepare(additionalPath);
+            scanner.prepare();
         }
         catch (SQLException e)
         {
@@ -254,7 +250,6 @@ public class DDLScanCtrl
             String service = null;
             
             String templateFile = null;
-            String additionalPath = null;
             String user = null;
             String pass = null;
             String url = null;
@@ -311,11 +306,6 @@ public class DDLScanCtrl
                 {
                     if (argvIterator.hasNext())
                         templateFile = argvIterator.next();
-                }
-                else if ("-path".equals(curArg))
-                {
-                    if (argvIterator.hasNext())
-                        additionalPath = argvIterator.next();
                 }
                 else if ("-out".equals(curArg))
                 {
@@ -435,7 +425,7 @@ public class DDLScanCtrl
             // Construct DDLScanCtrl from JDBC URL credentials.
             DDLScanCtrl ddlScanManager = new DDLScanCtrl(url, user, pass, db,
                     tables, templateFile, outFile, renameDefinitions,
-                    templateOptions, additionalPath);
+                    templateOptions);
 
             if (tables == null && outFile != null)
                 println("Tables not specified - extracting everything!");
@@ -463,9 +453,8 @@ public class DDLScanCtrl
         {
             public boolean accept(File fdir, String fname)
             {
-                if (fname
-                        .startsWith(ReplicationServiceManager.CONFIG_FILE_PREFIX)
-                        && fname.endsWith(ReplicationServiceManager.CONFIG_FILE_SUFFIX))
+                if (fname.startsWith("static-")
+                        && fname.endsWith(".properties"))
                     return true;
                 else
                     return false;
@@ -474,26 +463,6 @@ public class DDLScanCtrl
         File[] propertyFiles = configDir.listFiles(propFileFilter);
         if (propertyFiles.length == 1)
             return propertyFiles[0].getAbsolutePath();
-        else
-            return null;
-    }
-
-    /**
-     * Parse out service name from static configuration file name.
-     * 
-     * @param configFileName File name like "static-service.properties".
-     * @return Service name.
-     */
-    public static String serviceFromConfigFileName(String configFileName)
-    {
-        String prefx = ReplicationServiceManager.CONFIG_FILE_PREFIX;
-        String suffix = ReplicationServiceManager.CONFIG_FILE_SUFFIX;
-        if (configFileName.contains(prefx) && configFileName.endsWith(suffix))
-        {
-            int iP = configFileName.indexOf(prefx);
-            return configFileName.substring(iP + prefx.length(),
-                    configFileName.length() - suffix.length());
-        }
         else
             return null;
     }
@@ -517,7 +486,6 @@ public class DDLScanCtrl
         println("  -db db         - Database to use (will substitute "
                 + DBNAME_VAR + " in the URL, if needed)");
         println("  -template file - Specify template file to render");
-        println("  -path path     - Add additional search path for loading Velocity templates");
         println(" [-opt opt val]  - Option(s) to pass to template, try: -opt help me");
         println(" [-out file]     - Render to file (print to stdout if not specified)");
         println("  -help          - Print this help display");

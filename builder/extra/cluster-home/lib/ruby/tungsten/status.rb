@@ -60,7 +60,7 @@ class TungstenStatus
     
     mgr = TungstenDataserviceManager.new(@install.mgr_api_uri())
     result = mgr.get(@dataservice, 'status')
-    result = result["outputPayload"]["dataServiceState"]
+    result = result["outputPayload"]
 
     @props.setProperty(DATASERVICE, @dataservice)
     if result["composite"] == true

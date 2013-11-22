@@ -60,11 +60,9 @@ import com.continuent.tungsten.common.security.AuthenticationInfo;
 import com.continuent.tungsten.common.security.PasswordManager;
 import com.continuent.tungsten.common.security.PasswordManager.ClientApplicationType;
 import com.continuent.tungsten.common.security.SecurityHelper;
+import com.continuent.tungsten.common.security.AuthenticationInfo.AUTH_USAGE;
 import com.continuent.tungsten.common.utils.ManifestParser;
-import com.continuent.tungsten.replicator.ReplicatorException;
-import com.continuent.tungsten.replicator.conf.PropertiesManager;
 import com.continuent.tungsten.replicator.conf.ReplicatorConf;
-import com.continuent.tungsten.replicator.conf.ReplicatorRuntimeConf;
 import com.continuent.tungsten.replicator.consistency.ConsistencyTable;
 import com.continuent.tungsten.replicator.shard.ShardManager;
 import com.continuent.tungsten.replicator.shard.ShardManagerMBean;
@@ -105,28 +103,15 @@ public class OpenReplicatorManagerCtrl
     // Authentication and Encryption information
     private AuthenticationInfo             authenticationInfo             = null;
     private String                         securityPropertiesFileLocation = null;
-    private TungstenProperties             serviceProps;
 
     OpenReplicatorManagerCtrl(String[] argv)
     {
         argvIterator = new ArgvIterator(argv);
-
-        // Find and load the service.properties file.
-        File confDir = ReplicatorRuntimeConf.locateReplicatorConfDir();
-        File propsFile = new File(confDir, "services.properties");
-        try
-        {
-            serviceProps = PropertiesManager.loadProperties(propsFile);
-        }
-        catch (ReplicatorException e)
-        {
-            logger.warn("Unable to load 'services.properties' file", e);
-        }
     }
 
     private void printHelp()
     {
-        println("Tungsten Replicator Control Utility");
+        println("Replicator Manager Control Utility");
         println("Syntax:  trepctl [global-options] command [command-options]");
         println("Global Options:");
         println("  -host name                   - Host name of replicator [default: localhost]");
@@ -144,7 +129,7 @@ public class OpenReplicatorManagerCtrl
         println("Replicator-Wide Commands:");
         println("  version                      - Show replicator version and build");
         println("  services [-json] [-full]     - List replication services");
-        println("  shutdown [-y]                - (Deprecated) shut down replication services cleanly and exit");
+        println("  shutdown [-y]                - Shut down replication services cleanly and exit");
         println("  kill [-y]                    - Exit immediately without shutting down services");
         println("Service-Specific Commands (Require -service option)");
         println("  backup [-backup agent] [-storage agent] [-limit s]");
@@ -165,17 +150,14 @@ public class OpenReplicatorManagerCtrl
         println("         [-no-checksum]");
         println("                               - Set Replicator to ONLINE with start and stop points");
         println("  properties [-filter name]    - Print all in-memory properties and their current values");
-        println("             [-values]         - Print only the values in plain text");
         println("  purge [-y] [-limit s]        - Purge non-Tungsten logins on DBMS, waiting up to s seconds");
-        println("  reset {-all | -thl | -relay | -db} [-y]");
-        println("                               - Deletes the replicator service (-all or empty), thl directory,");
-        println("                                 relay logs directory or tungsten database for the service");
+        println("  reset [-y]                   - Deletes the replicator service");
         println("  restore [-uri u] [-limit s]  - Restore database");
         println("  setrole -role r [-uri u]     - Set replicator role");
-        println("  load                         - Load and start replication service");
+        println("  start                        - Start start replication service");
         println("  status [-name {channel-assignments|services|shards|stages|stores|tasks|watches}] [-json]");
         println("                               - Print replicator status information");
-        println("  unload [-y]                  - Stop and unload replication service");
+        println("  stop [-y]                    - Stop replication service");
         println("  wait -state st [-limit s]    - Wait up to s seconds for replicator state st");
         println("  wait -applied x [-limit s]   - Wait up to s seconds for seqno x to be applied");
         println("Shard Commands:");
@@ -211,13 +193,8 @@ public class OpenReplicatorManagerCtrl
     {
         // Set defaults for properties.
         rmiHost = ReplicatorConf.RMI_DEFAULT_HOST;
-
-        // Get the rmiPort from service.properties file
-        rmiPort = serviceProps.getInt(ReplicatorConf.RMI_PORT,
-                ReplicatorConf.RMI_DEFAULT_PORT, false);
-        // Check whether rmi port value was overridden as a system property
         rmiPort = new Integer(System.getProperty(ReplicatorConf.RMI_PORT,
-                String.valueOf(rmiPort))).intValue();
+                ReplicatorConf.RMI_DEFAULT_PORT)).intValue();
         service = null;
         String command = null;
 
@@ -232,8 +209,6 @@ public class OpenReplicatorManagerCtrl
                 if ("-host".equals(curArg))
                     rmiHost = argvIterator.next();
                 else if ("-port".equals(curArg))
-                    // If an -port option was given, this overrides other
-                    // settings
                     rmiPort = Integer.parseInt(argvIterator.next());
                 else if ("-verbose".equals(curArg))
                     verbose = true;
@@ -284,7 +259,9 @@ public class OpenReplicatorManagerCtrl
             try
             {
                 this.authenticationInfo = SecurityHelper
-                        .loadAuthenticationInformation(securityPropertiesFileLocation);
+                        .loadAuthenticationInformation(
+                                securityPropertiesFileLocation,
+                                AUTH_USAGE.CLIENT_SIDE);
                 // Sets the username and password in the authenticationInfo.
                 // This will be used as credentials when connecting
                 // Password is provided "as is" (potentilaly encrypted) and will
@@ -342,9 +319,9 @@ public class OpenReplicatorManagerCtrl
             else if (command.equals(Commands.SERVICES))
                 doServices();
             else if (command.equals(Commands.START))
-                doLoadService();
+                doStartService();
             else if (command.equals(Commands.STOP))
-                doUnloadService();
+                doStopService();
             else if (command.equals(Commands.RESET))
                 doResetService();
             else if (command.equals(Commands.SHUTDOWN))
@@ -679,25 +656,19 @@ public class OpenReplicatorManagerCtrl
         OpenReplicatorManagerMBean mbean = getOpenReplicator();
 
         String containing = null;
-        boolean valuesOnly = false;
         String curArg = null;
         while (argvIterator.hasNext())
         {
             curArg = argvIterator.next();
             if ("-filter".equals(curArg))
                 containing = argvIterator.next();
-            else if ("-values".equals(curArg))
-                valuesOnly = true;
             else
             {
                 fatal("Unrecognized option: " + curArg, null);
             }
         }
 
-        if (valuesOnly)
-            printPropertiesValues(mbean.properties(containing));
-        else
-            printPropertiesJSON(mbean.properties(containing));
+        printPropertiesJSON(mbean.properties(containing));
     }
 
     /**
@@ -718,6 +689,7 @@ public class OpenReplicatorManagerCtrl
             println("[");
         else
             println("Processing clients command...");
+            
 
         OpenReplicatorManagerMBean mbean = getOpenReplicator();
         List<Map<String, String>> clients = mbean.getClients();
@@ -753,12 +725,12 @@ public class OpenReplicatorManagerCtrl
     }
 
     // Start a service.
-    private void doLoadService() throws Exception
+    private void doStartService() throws Exception
     {
         if (service == null)
             throw new Exception(
                     "You must specify a service name using -service");
-        boolean ok = serviceManagerMBean.loadService(service);
+        boolean ok = serviceManagerMBean.startService(service);
         if (ok)
             println("Service started successfully: name=" + service);
         else
@@ -766,7 +738,7 @@ public class OpenReplicatorManagerCtrl
     }
 
     // Stop a service.
-    private void doUnloadService() throws Exception
+    private void doStopService() throws Exception
     {
         // Make sure we have a service name.
         if (service == null)
@@ -776,7 +748,7 @@ public class OpenReplicatorManagerCtrl
                 "Do you really want to stop replication service %s?", service));
         if (yes)
         {
-            boolean ok = serviceManagerMBean.unloadService(service);
+            boolean ok = serviceManagerMBean.stopService(service);
             if (ok)
                 println("Service stopped successfully: name=" + service);
             else
@@ -787,73 +759,23 @@ public class OpenReplicatorManagerCtrl
     // Reset (delete) a service.
     private void doResetService() throws Exception
     {
-        TungstenProperties options = new TungstenProperties();
-        boolean yes = false;
-
         if (service == null)
             throw new Exception(
                     "You must specify a service name using -service");
 
-        if (!argvIterator.hasNext())
-            yes = confirm(String
-                    .format("Do you really want to delete replication service %s completely?",
-                            service));
-        else
-            while (argvIterator.hasNext())
-            {
-                String curOption = argvIterator.next();
-                if ("-all".equalsIgnoreCase(curOption))
-                {
-                    yes = confirm(String
-                            .format("Do you really want to delete replication service %s completely?",
-                                    service));
-                    options.put("option", curOption);
-                    // For now, take only first option into account
-                    break;
-                }
-                else if ("-thl".equalsIgnoreCase(curOption))
-                {
-                    yes = confirm(String
-                            .format("Do you really want to delete THL for replication service %s completely?",
-                                    service));
-                    options.put("option", curOption);
-                    // For now, take only first option into account
-                    break;
-                }
-                else if ("-relay".equalsIgnoreCase(curOption))
-                {
-                    yes = confirm(String
-                            .format("Do you really want to delete relay logs for replication service %s completely?",
-                                    service));
-                    options.put("option", curOption);
-                    // For now, take only first option into account
-                    break;
-                }
-                else if ("-db".equalsIgnoreCase(curOption))
-                {
-                    yes = confirm(String
-                            .format("Do you really want to delete database for replication service %s completely?",
-                                    service));
-                    options.put("option", curOption);
-                    // For now, take only first option into account
-                    break;
-                }
-                else
-                    fatal("Unrecognized option for reset command : "
-                            + curOption, null);
-            }
-
+        boolean yes = confirm(String
+                .format("Do you really want to delete replication service %s completely?",
+                        service));
         if (yes)
         {
-            serviceManagerMBean.resetService(service, options.map());
+            serviceManagerMBean.resetService(service);
         }
     }
 
     // Shuts down the replicator nicely.
     private void doShutdown() throws Exception
     {
-        boolean yes = confirm("This command is DEPRECATED and will be removed! Use `replicator stop` instead."
-                + "\r\nDo you really want to shutdown the replicator?");
+        boolean yes = confirm("Do you really want to shutdown the replicator?");
         if (yes)
         {
             expectLostConnection = true;
@@ -1458,9 +1380,9 @@ public class OpenReplicatorManagerCtrl
             fatal("Missing value for " + curArg, null);
         }
 
-        String result = getOpenReplicator().restore(uri, seconds);
-        if (result != null)
-            println("Restore completed successfully; URI=" + result);
+        boolean success = getOpenReplicator().restore(uri, seconds);
+        if (success)
+            println("Restore completed successfully");
         else
             println("Restore is pending; check log for status");
     }
@@ -1641,24 +1563,6 @@ public class OpenReplicatorManagerCtrl
         print("}");
         if (propIdx < 0)
             println("");
-    }
-
-    /**
-     * Prints property values only. Useful for feeding into another process
-     * parameters.
-     */
-    private static void printPropertiesValues(Map<String, String> props)
-    {
-        Object[] keys = props.keySet().toArray();
-        for (int i = 0; i < keys.length; i++)
-        {
-            String key = (String) keys[i];
-            String value = props.get(key);
-            if (value != null)
-                println(value);
-            else
-                println("");
-        }
     }
 
     // Print a message to stdout.
@@ -2034,8 +1938,8 @@ public class OpenReplicatorManagerCtrl
     {
         // Replicator-wide commands.
         public static final String SERVICES         = "services";
-        public static final String START            = "load";
-        public static final String STOP             = "unload";
+        public static final String START            = "start";
+        public static final String STOP             = "stop";
         public static final String SHUTDOWN         = "shutdown";
         public static final String KILL             = "kill";
 

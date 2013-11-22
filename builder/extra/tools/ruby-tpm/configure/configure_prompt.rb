@@ -426,12 +426,8 @@ class ConfigurePrompt
     end
   end
   
-  def build_command_line_argument?(member, v)
-    enabled_for_command_line?()
-  end
-  
-  def build_command_line_argument(member, v, public_argument = false)
-    if build_command_line_argument?(member, v)
+  def build_command_line_argument(v)
+    if enabled_for_command_line?()
       return ["--#{get_command_line_argument()}=#{v}"]
     else
       debug("The argument for #{@name} is not accepted on the command line")
@@ -710,7 +706,7 @@ module CommercialPrompt
     if Configurator.instance.is_enterprise?()
       super()
     else
-      super()
+      false
     end
   end
   
@@ -718,7 +714,7 @@ module CommercialPrompt
     if Configurator.instance.is_enterprise?()
       super()
     else
-      super()
+      false
     end
   end
 end
@@ -741,16 +737,6 @@ module NoStoredServerConfigValue
       @config.setProperty(get_name(), nil)
       @config.setProperty([SYSTEM] + get_name().split('.'), nil)
     end
-  end
-end
-
-module PrivateArgumentModule
-  def build_command_line_argument(member, v, public_argument = false)
-    if public_argument == true
-      v = Array.new(v.length).fill("@").join("")
-    end
-    
-    super(member, v, public_argument)
   end
 end
 
@@ -814,9 +800,9 @@ module PortForReplicators
   end
 end
 module DeploymentFiles
-  def self.register(local, global, group = HOSTS)
+  def self.register(local, global)
     @prompts ||= []
-    @prompts << {:local => local, :global => global, :group => group}
+    @prompts << {:local => local, :global => global}
   end
 
   def self.prompts

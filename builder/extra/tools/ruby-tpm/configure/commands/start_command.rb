@@ -88,10 +88,6 @@ class StartCommand
       StartClusterDeploymentStep
     ]
   end
-  
-  def self.display_command
-    false
-  end
 
   def self.get_command_name
     'start'
@@ -100,6 +96,8 @@ class StartCommand
   def self.get_command_description
     "Start Tungsten services on the machines specified or this installation."
   end
+
+
 end
 
 module StartClusterDeploymentStep

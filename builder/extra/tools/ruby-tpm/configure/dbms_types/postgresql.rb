@@ -168,7 +168,11 @@ class PostgreSQLDDL < ConfigurePrompt
  
  def initialize
    super(REPL_POSTGRESQL_ENABLE_MYSQL2PGDDL, "Enable MySQL -> PostgreSQL DDL dialect converting filter placeholder",
-     PV_ANY, "false")
+     PV_ANY)
+ end
+ 
+ def get_default_value
+   return "false"
  end
    
  def enabled?

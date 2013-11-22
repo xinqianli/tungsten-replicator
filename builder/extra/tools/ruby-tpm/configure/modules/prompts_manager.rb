@@ -37,6 +37,7 @@ MGR_GROUP_COMMUNICATION_INITIAL_HOSTS = "mgr_group_communication_initial_hosts"
 MGR_GROUP_COMMUNICATION_CONFIG = "mgr_group_communication_config"
 MGR_RMI_PORT = "mgr_rmi_port"
 MGR_RMI_REMOTE_PORT = "mgr_rmi_remote_port"
+MGR_FILE_SERVER_PORT = "mgr_file_server_port"
 MGR_MONITOR_INTERVAL = "mgr_monitor_interval"
 MGR_WAIT_FOR_MEMBERS = "mgr_wait_for_members"
 MANAGER_ENABLE_INSTRUMENTATION = "manager_enable_instrumentation"
@@ -45,7 +46,6 @@ MGR_JAVA_ENABLE_CONCURRENT_GC = "mgr_java_enable_concurrent_gc"
 MGR_API = "mgr_api"
 MGR_API_PORT = "mgr_api_port"
 MGR_API_ADDRESS = "mgr_api_address"
-MGR_IS_WITNESS = "mgr_is_witness"
 
 class Managers < GroupConfigurePrompt
   def initialize
@@ -77,10 +77,6 @@ module ManagerPrompt
   
   def allow_group_default
     true
-  end
-  
-  def get_host_alias
-    @config.getProperty(get_member_key(DEPLOYMENT_HOST))
   end
   
   def get_host_key(key)
@@ -598,6 +594,15 @@ class ManagerRMIRemotePort < ConfigurePrompt
   end
 end
 
+class ManagerFileServerPort < ConfigurePrompt
+  include ManagerPrompt
+  include AdvancedPromptModule
+  
+  def initialize
+    super(MGR_FILE_SERVER_PORT, "Port to use for the manager file server", PV_INTEGER, "9998")
+  end
+end
+
 class ManagerGroupCommunicationInitialHosts < ConfigurePrompt
   include ManagerPrompt
   include ConstantValueModule
@@ -714,26 +719,5 @@ class ManagerAPIAddress < ConfigurePrompt
   
   def initialize
     super(MGR_API_ADDRESS, "Address for the Manager API", PV_ANY, "127.0.0.1")
-  end
-end
-
-class ManagerIsWitness < ConfigurePrompt
-  include ManagerPrompt
-  include HiddenValueModule
-  
-  def initialize
-    super(MGR_IS_WITNESS, "Manager is an active witness", PV_BOOLEAN, "false")
-  end
-  
-  def get_default_value
-    if @config.getProperty(get_dataservice_key(ENABLE_ACTIVE_WITNESSES)) == "true"
-      if @config.getPropertyOr(get_dataservice_key(DATASERVICE_WITNESSES)).include_alias?(get_host_alias())
-        @default = "true"
-      else
-        @default = false
-      end
-    else
-      @default = "false"
-    end
   end
 end

@@ -116,10 +116,6 @@ class UpdateCommand
     'update'
   end
   
-  def self.get_command_aliases
-    ['upgrade']
-  end
-  
   def self.get_command_description
     "Updates an existing installation of Tungsten.  If not arguments are specified, the local configuration is used to install.  If you specify --user, --hosts and --directory; this command will get the current configuration from each host and continue."
   end

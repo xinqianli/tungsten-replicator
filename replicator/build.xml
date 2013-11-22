@@ -239,6 +239,14 @@
             <fileset dir="${jars.dir}"/>
         </copy>
         <copy todir="${dist.dir}/lib">
+            <fileset dir="${project.common}/lib">
+            	<include name="*.jar"/>
+            </fileset>
+        </copy>
+        <copy todir="${dist.dir}/lib">
+            <fileset dir="${common.build.dir}/jars"/>
+        </copy>
+        <copy todir="${dist.dir}/lib">
              <fileset dir="lib/">
              	<include name="*.jar" unless="library.compile.files"/>
              	<include name="${library.compile.files}" if="library.compile.files"/>
@@ -264,9 +272,12 @@
         <mkdir dir="${dist.dir}/var"/>
     	
 		<mkdir dir="${dist.dir}/scripts"/>
-		<exec executable="rsync">
-		    <arg line="-Ca ${scripts.dir}/ ${dist.dir}/scripts/"/>
-		</exec>
+        <copy todir="${dist.dir}/scripts">
+            <fileset dir="${scripts.dir}">
+            	<include name="*/**"/>
+            </fileset>
+        </copy>
+        <chmod dir="${dist.dir}/scripts" perm="ugoa+rx" includes="**/*.sh"/>
     </target>
 
     <target name="refresh-services" description="--> refresh JWS scripts and libraries">

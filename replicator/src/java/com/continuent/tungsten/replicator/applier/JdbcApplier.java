@@ -123,7 +123,7 @@ public class JdbcApplier implements RawApplier
      * because some statements may be very large. TODO: make this configurable
      * via replicator.properties
      */
-    protected int                     maxSQLLogLength            = 5000;
+    protected int                     maxSQLLogLength            = 3000;
 
     private TableMetadataCache        tableMetadataCache;
 
@@ -184,9 +184,13 @@ public class JdbcApplier implements RawApplier
         this.ignoreSessionVars = ignoreSessionVars;
     }
 
-    public void setGetColumnMetadataFromDB(boolean getColumnInformationFromDB)
+    public void setGetColumnMetadataFromDB(String getMetadataFromDB)
     {
-        this.getColumnInformationFromDB = getColumnInformationFromDB;
+        getColumnInformationFromDB = getMetadataFromDB.toLowerCase().compareTo(
+                "false") != 0;
+        if (!getColumnInformationFromDB)
+            logger.info("Using event column metadata. Not fetching information from underlying database.");
+
     }
 
     /**
@@ -415,10 +419,8 @@ public class JdbcApplier implements RawApplier
      * @return Number of columns that a table has. Zero, if no columns were
      *         retrieved (table does not exist or has no columns).
      * @throws SQLException
-     * @throws ApplierException
      */
-    protected int fillColumnNames(OneRowChange data) throws SQLException,
-            ApplierException
+    protected int fillColumnNames(OneRowChange data) throws SQLException
     {
         Table t = tableMetadataCache.retrieve(data.getSchemaName(),
                 data.getTableName());
@@ -433,32 +435,16 @@ public class JdbcApplier implements RawApplier
             {
                 rs = conn.getColumnsResultSet(meta, data.getSchemaName(),
                         data.getTableName());
-                if (rs.next())
+                while (rs.next())
                 {
-                    do
-                    {
-                        String columnName = rs.getString("COLUMN_NAME");
-                        int columnIdx = rs.getInt("ORDINAL_POSITION");
+                    String columnName = rs.getString("COLUMN_NAME");
+                    int columnIdx = rs.getInt("ORDINAL_POSITION");
 
-                        Column column = addColumn(rs, columnName);
-                        column.setPosition(columnIdx);
-                        t.AddColumn(column);
-                    }
-                    while (rs.next());
-                    tableMetadataCache.store(t);
+                    Column column = addColumn(rs, columnName);
+                    column.setPosition(columnIdx);
+                    t.AddColumn(column);
                 }
-                else
-                {
-                    // Empty resultset, i.e. table not found in database : it
-                    // won't be possible to generate a correct statement for
-                    // this row update
-                    throw new ApplierException(
-                            "Table "
-                                    + data.getSchemaName()
-                                    + "."
-                                    + data.getTableName()
-                                    + " not found in database. Unable to generate a valid statement.");
-                }
+                tableMetadataCache.store(t);
             }
             finally
             {
@@ -1099,7 +1085,7 @@ public class JdbcApplier implements RawApplier
                     .getKeyValues();
             ArrayList<ArrayList<OneRowChange.ColumnVal>> columnValues = oneRowChange
                     .getColumnValues();
-            String log = "Failing statement: " + stmt.toString()
+            String log = "Failing statement : " + stmt.toString()
                     + "\nArguments:";
             log += logFailedRowChangeValues(keys, columns, keyValues,
                     columnValues, row);
@@ -1321,7 +1307,7 @@ public class JdbcApplier implements RawApplier
             else if (header instanceof ReplDBMSFilteredEvent)
             {
                 // This is a range of filtered events
-                // Update the position and commit if desired.
+                // Update the position and commit if desired. 
                 ((ReplDBMSFilteredEvent) header).updateCommitSeqno();
                 updateCommitSeqno(header, appliedLatency);
                 if (doCommit)

@@ -112,10 +112,10 @@ import com.continuent.tungsten.replicator.thl.THL;
  */
 public class OpenReplicatorManager extends NotificationBroadcasterSupport
         implements
-            OpenReplicatorManagerMBean,
-            OpenReplicatorContext,
-            StateChangeListener,
-            EventCompletionListener
+        OpenReplicatorManagerMBean,
+        OpenReplicatorContext,
+        StateChangeListener,
+        EventCompletionListener
 {
     public static final int         MAJOR                   = 1;
     public static final int         MINOR                   = 0;
@@ -742,7 +742,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     class RestoreEvent extends Event
     {
-        private volatile Future<String> future;
+        private volatile Future<Boolean> future;
         private final String             uri;
 
         public RestoreEvent(String uri)
@@ -751,12 +751,12 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
             this.uri = uri;
         }
 
-        public Future<String> getFuture()
+        public Future<Boolean> getFuture()
         {
             return future;
         }
 
-        public void setFuture(Future<String> future)
+        public void setFuture(Future<Boolean> future)
         {
             this.future = future;
         }
@@ -1392,7 +1392,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
             {
                 RestoreEvent restoreEvent = (RestoreEvent) event;
                 String uri = restoreEvent.getUri();
-                Future<String> task = backupManager.spawnRestore(uri);
+                Future<Boolean> task = backupManager.spawnRestore(uri);
                 restoreEvent.setFuture(task);
             }
             catch (Exception e)
@@ -1947,8 +1947,6 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
             pluginStatus.put(Replicator.SOURCEID, getSourceId());
             pluginStatus.put(Replicator.CLUSTERNAME, clusterName);
             pluginStatus.put(Replicator.ROLE, getRole());
-            pluginStatus.put(Replicator.HOST, getSourceId());
-
             pluginStatus.put(Replicator.DATASERVER_HOST, properties
                     .getString(ReplicatorConf.RESOURCE_DATASERVER_HOST));
             pluginStatus.put(Replicator.UPTIME_SECONDS,
@@ -2425,7 +2423,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      *      long)
      */
     @MethodDesc(description = "Restores the database", usage = "restore <uri> <timeout>")
-    public String restore(
+    public boolean restore(
             @ParamDesc(name = "uri", description = "URI of backup to restore") String uri,
             @ParamDesc(name = "timeout", description = "Seconds to wait before timing out (0=infinity") long timeout)
             throws Exception
@@ -2437,8 +2435,8 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
             handleEventSynchronous(restoreEvent);
 
             // The event returns a Future on the backup task.
-            Future<String> restoreTask = restoreEvent.getFuture();
-            String completed = null;
+            Future<Boolean> restoreTask = restoreEvent.getFuture();
+            boolean completed = false;
             try
             {
                 if (timeout <= 0)

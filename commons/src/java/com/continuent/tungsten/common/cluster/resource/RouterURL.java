@@ -38,51 +38,50 @@ import org.apache.log4j.Logger;
  */
 public class RouterURL implements Cloneable
 {
-    private static final String URL_OPTIONS_DELIMITERS       = "&=?";
+    private static final String URL_OPTIONS_DELIMITERS    = "&=?";
 
-    private static Logger       logger                       = Logger.getLogger(RouterURL.class);
+    private static Logger       logger                    = Logger.getLogger(RouterURL.class);
 
-    private static final String URL_ELMT_JDBC                = "jdbc";
-    private static final String URL_ELMT_TROUTER             = "t-router";
-    public static final String  URL_FULL_HEADER              = URL_ELMT_JDBC
-                                                                     + ':'
-                                                                     + URL_ELMT_TROUTER
-                                                                     + "://";
+    private static final String URL_ELMT_JDBC             = "jdbc";
+    private static final String URL_ELMT_TROUTER          = "t-router";
+    public static final String  URL_FULL_HEADER           = URL_ELMT_JDBC
+                                                                  + ':'
+                                                                  + URL_ELMT_TROUTER
+                                                                  + "://";
     // Keys for specific, internal use, connection properties
-    public static final String  KEY_MAX_APPLIED_LATENCY      = "maxAppliedLatency";
-    public static final String  KEY_QOS                      = "qos";
-    public static final String  KEY_SESSION_ID               = "sessionId";
-    public static final String  KEY_AFFINITY                 = "affinity";
-    public static final String  KEY_USER                     = "user";
-    public static final String  KEY_PASSWORD                 = "password";
+    public static final String  KEY_MAX_APPLIED_LATENCY   = "maxAppliedLatency";
+    public static final String  KEY_QOS                   = "qos";
+    public static final String  KEY_SESSION_ID            = "sessionId";
+    public static final String  KEY_AFFINITY              = "affinity";
+    public static final String  KEY_USER                  = "user";
+    public static final String  KEY_PASSWORD              = "password";
 
     /** How the password will be displayed when hiding it */
-    private static final String OBFUSCATED_PASSWORD          = "<obfuscated>";
+    private static final String OBFUSCATED_PASSWORD       = "<obfuscated>";
 
     // various predefined session ids
-    public static final String  SESSIONID_CONNECTION         = "CONNECTION";
-    public static final String  SESSIONID_DATABASE           = "DATABASE";
-    public static final String  SESSIONID_USER               = "USER";
-    public static final String  SESSIONID_PROVIDED_IN_DBNAME = "PROVIDED_IN_DBNAME";
+    public static final String  SESSIONID_CONNECTION      = "CONNECTION";
+    public static final String  SESSIONID_DATABASE        = "DATABASE";
+    public static final String  SESSIONID_USER            = "USER";
 
     /** Special tag to be replaced by a database name dynamically */
-    public static final String  DBNAME_TOKEN                 = "${DBNAME}";
+    public static final String  DBNAME_TOKEN              = "${DBNAME}";
 
     // Parsed URL data
-    private String              dataServiceName              = "UNDEFINED";
-    private String              dbname                       = "";
-    private QualityOfService    qos                          = QualityOfService.RW_STRICT;
-    public static double        MAX_APPLIED_LATENCY_UNDEF    = -1;
-    private double              maxAppliedLatency            = MAX_APPLIED_LATENCY_UNDEF;
-    private String              sessionId                    = null;
-    private String              affinity                     = null;
+    private String              dataServiceName           = "UNDEFINED";
+    private String              dbname                    = "";
+    private QualityOfService    qos                       = QualityOfService.RW_STRICT;
+    public static double        MAX_APPLIED_LATENCY_UNDEF = -1;
+    private double              maxAppliedLatency         = MAX_APPLIED_LATENCY_UNDEF;
+    private String              sessionId                 = null;
+    private String              affinity                  = null;
 
-    private boolean             autoSession                  = false;
+    private boolean             autoSession               = false;
     /**
      * These properties hold only the non-RouterURL settings, ie. the JDBC
      * driver specific ones
      */
-    private Properties          props                        = new Properties();
+    private Properties          props                     = new Properties();
 
     // Parsing information.
     // TUC-1065: don't store the original URL, this would double the information
@@ -90,7 +89,7 @@ public class RouterURL implements Cloneable
      * After parsing, this will store the last position character position of
      * the URL base ([jdbc:t-router://<service>/<db>]<opts>)
      */
-    private int                 urlBaseEndIndex              = 0;
+    private int                 urlBaseEndIndex           = 0;
 
     /**
      * Creates a parsed URL object.<br>
@@ -247,10 +246,7 @@ public class RouterURL implements Cloneable
         {
             boolean wasAutoSession = isAutoSession();
             autoSession = false;
-            if (propsSessionId.equals(SESSIONID_CONNECTION)
-                    ||
-                    // smartScale Fall back when no sessionId is given
-                    propsSessionId.equals(SESSIONID_PROVIDED_IN_DBNAME))
+            if (propsSessionId.equals(SESSIONID_CONNECTION))
             {
                 autoSession = true;
                 // generate a session id only if not already generated
@@ -262,7 +258,6 @@ public class RouterURL implements Cloneable
             }
             else if (propsSessionId.equals(SESSIONID_DATABASE))
             {
-                autoSession = true;
                 if (dbname != null)
                 {
                     sessionId = dbname;
@@ -276,7 +271,6 @@ public class RouterURL implements Cloneable
             }
             else if (propsSessionId.equals(SESSIONID_USER))
             {
-                autoSession = true;
                 String user = getProperty(KEY_USER);
                 if (user != null)
                 {
@@ -387,16 +381,6 @@ public class RouterURL implements Cloneable
     public void setMaxAppliedLatency(double maxAppliedLatencyPrm)
     {
         maxAppliedLatency = maxAppliedLatencyPrm;
-    }
-
-    /**
-     * Upon catalog change, it can be required to change the session ID
-     * 
-     * @param newSessionId
-     */
-    public void setSessionId(String newSessionId)
-    {
-        sessionId = newSessionId;
     }
 
     public String getSessionId()

@@ -107,7 +107,7 @@ class DatasourceDBHost < ConfigurePrompt
   
   def initialize
     super(REPL_DBHOST, "Database server hostname", PV_HOSTNAME)
-    override_command_line_argument("replication-host")
+    self.extend(NotTungstenInstallerPrompt)
   end
   
   def load_default_value
@@ -115,6 +115,10 @@ class DatasourceDBHost < ConfigurePrompt
   end
   
   def allow_group_default
+    false
+  end
+  
+  def enabled_for_command_line?
     false
   end
 end
@@ -158,7 +162,6 @@ end
 class DatasourceDBPassword < ConfigurePrompt
   include DatasourcePrompt
   include ManagerRestart
-  include PrivateArgumentModule
   
   def initialize
     super(REPL_DBPASSWORD, "Database password", 
@@ -361,11 +364,10 @@ class DirectDatasourceDBPort < ConfigurePrompt
 
   def initialize
     super(EXTRACTOR_REPL_DBPORT, "Database server port", PV_INTEGER)
-    override_command_line_argument("direct-replication-port")
   end
 
   def load_default_value
-    @default = @config.getProperty(get_member_key(REPL_DBPORT))
+    @default = get_datasource().get_default_port()
   end
 
   PortForConnectors.register(REPL_SERVICES, EXTRACTOR_REPL_DBPORT)
@@ -388,7 +390,6 @@ end
 
 class DirectDatasourceDBPassword < ConfigurePrompt
   include DatasourcePrompt
-  include PrivateArgumentModule
 
   def initialize
     super(EXTRACTOR_REPL_DBPASSWORD, "Database password", 

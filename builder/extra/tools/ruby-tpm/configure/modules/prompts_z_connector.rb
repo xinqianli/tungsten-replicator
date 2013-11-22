@@ -3,10 +3,9 @@ HOST_ENABLE_CONNECTOR = "host_enable_connector"
 CONN_LISTEN_INTERFACE = "connector_listen_interface"
 CONN_LISTEN_ADDRESS = "connector_listen_address"
 CONN_LISTEN_PORT = "connector_listen_port"
-CONN_RO_LISTEN_PORT = "connector_readonly_listen_port"
 CONN_CLIENTLOGIN = "connector_user"
 CONN_CLIENTPASSWORD = "connector_password"
-CONN_CLIENTDEFAULTDB = "connector_default_schema"
+CONN_CLIENTDEFAULTDB = "connector_forced_schema"
 CONN_DB_PROTOCOL = "connector_db_protocol"
 CONN_DB_VERSION = "connector_db_version"
 CONN_DELETE_USER_MAP = "connector_delete_user_map"
@@ -29,17 +28,6 @@ ROUTER_DELAY_BEFORE_OFFLINE = "connector_delay_before_offline"
 CONN_JAVA_MEM_SIZE = "conn_java_mem_size"
 CONN_JAVA_ENABLE_CONCURRENT_GC = "conn_java_enable_concurrent_gc"
 CONN_RR_INCLUDE_MASTER = "conn_round_robin_include_master"
-ENABLE_CONNECTOR_SSL = "enable_connector_ssl"
-JAVA_CONNECTOR_KEYSTORE_PASSWORD = "java_connector_keystore_password"
-JAVA_CONNECTOR_TRUSTSTORE_PASSWORD = "java_connector_truststore_password"
-JAVA_CONNECTOR_TRUSTSTORE_PATH = "java_connector_truststore_path"
-GLOBAL_JAVA_CONNECTOR_TRUSTSTORE_PATH = "global_java_connector_truststore_path"
-JAVA_CONNECTOR_KEYSTORE_PATH = "java_connector_keystore_path"
-GLOBAL_JAVA_CONNECTOR_KEYSTORE_PATH = "global_java_connector_keystore_path"
-ENABLE_CONNECTOR_RO = "enable_connector_readonly"
-ENABLE_CONNECTOR_BRIDGE_MODE = "enable_connector_bridge_mode"
-CONN_RO_PROPERTIES_EXISTS = "connector_ro_properties_exists"
-CONN_MAX_SLAVE_LATENCY = "connector_max_slave_latency"
 
 class Connectors < GroupConfigurePrompt
   def initialize
@@ -96,14 +84,6 @@ module ConnectorPrompt
   
   def get_dataservice_key(key)
     return [DATASERVICES, get_dataservice(), key]
-  end
-  
-  def get_host_alias
-    @config.getProperty(get_member_key(DEPLOYMENT_HOST))
-  end
-  
-  def get_host_key(key)
-    [HOSTS, @config.getProperty(get_member_key(DEPLOYMENT_HOST)), key]
   end
   
   def get_hash_prompt_key
@@ -192,7 +172,6 @@ end
 
 class ConnectorPassword < ConfigurePrompt
   include ConnectorPrompt
-  include PrivateArgumentModule
   
   def initialize
     super(CONN_CLIENTPASSWORD, "Database password for the connector", PV_ANY)
@@ -259,30 +238,7 @@ class ConnectorListenPort < ConfigurePrompt
     override_command_line_argument("application-port")
   end
   
-  def get_template_value(transform_values_method)
-    if @config.getTemplateValue(get_member_key(ENABLE_CONNECTOR_RO)) == "true"
-      @config.getPropertyOr(get_member_key(CONN_RO_LISTEN_PORT), get_value())
-    else
-      get_value()
-    end
-  end
-  
   PortForUsers.register(CONNECTORS, CONN_LISTEN_PORT)
-end
-
-class ConnectorReadOnlyListenPort < ConfigurePrompt
-  include ConnectorPrompt
-  
-  def initialize
-    super(CONN_RO_LISTEN_PORT, "Port for the connector to listen for read-only connections on", PV_INTEGER)
-    override_command_line_argument("application-readonly-port")
-  end
-  
-  def required?
-    false
-  end 
-  
-  PortForUsers.register(CONNECTORS, CONN_RO_LISTEN_PORT)
 end
 
 class ConnectorDefaultSchema < ConfigurePrompt
@@ -290,7 +246,6 @@ class ConnectorDefaultSchema < ConfigurePrompt
   
   def initialize
     super(CONN_CLIENTDEFAULTDB, "Default schema for the connector to use", PV_ANY, "none")
-    add_command_line_alias("connector-forced-schema")
   end
 end
 
@@ -485,14 +440,6 @@ class ConnectorSmartScale < ConfigurePrompt
   def initialize
     super(CONN_SMARTSCALE, "Enable SmartScale R/W splitting in the connector", PV_BOOLEAN, "false")
   end
-  
-  def get_template_value(transform_values_method)
-    if @config.getTemplateValue(get_member_key(ENABLE_CONNECTOR_RO)) == "true"
-      "false"
-    else
-      super(transform_values_method)
-    end
-  end
 end
 
 class ConnectorSmartScaleSession < ConfigurePrompt
@@ -645,257 +592,4 @@ class ConnectorRoundRobinIncludeMaster < ConfigurePrompt
     super(CONN_RR_INCLUDE_MASTER, "Should the Connector include the master in round-robin load balancing",
       PV_BOOLEAN, "false")
   end
-end
-
-class ConnectorDriverOptions < ConfigurePrompt
-  include ConnectorPrompt
-  include HiddenValueModule
-  
-  def initialize
-    super(CONN_DRIVEROPTIONS, "JDBC options for connector JDBC connections to the database", PV_ANY)
-  end
-  
-  def load_default_value
-    opts = []
-    
-    # Each prompt that has registered via ConnectorDriverOptions.register
-    # will be called and can add options to the array
-    self.class.prompts().each{
-      |name|
-      p = @config.getPromptHandler().find_prompt(get_member_key(name))
-      if p
-        p.add_jdbc_driver_options(opts)
-      end
-    }
-    
-    if opts.size() == 0
-      @default = ""
-    else
-      @default = "?#{opts.join('&')}"
-    end
-  end
-  
-  def get_template_value(transform_values_method)
-    v = get_value()
-    if @config.getTemplateValue(get_member_key(ENABLE_CONNECTOR_RO)) == "true"
-      if v == ""
-        return "?qos=RO_RELAXED"
-      else
-        return "#{v}&qos=RO_RELAXED"
-      end
-    else
-      return v
-    end
-  end
-  
-  def self.register(klass)
-    @driver_prompts ||= []
-    @driver_prompts << klass
-  end
-  
-  def self.prompts
-    @driver_prompts || []
-  end
-end
-
-class ConnectorEnableSSL < ConfigurePrompt
-  include ConnectorPrompt
-  
-  def initialize
-    super(ENABLE_CONNECTOR_SSL, "Enable SSL encryption of connector traffic to the database", PV_BOOLEAN, "false")
-    add_command_line_alias("connector-ssl")
-  end
-  
-  def add_jdbc_driver_options(opts)
-    if get_value() == "true"
-      opts << "useSSL=true"
-    end
-  end
-  
-  ConnectorDriverOptions.register(ENABLE_CONNECTOR_SSL)
-end
-
-class ConnectorJavaKeystorePassword < ConfigurePrompt
-  include ConnectorPrompt
-  include PrivateArgumentModule
-  
-  def initialize
-    super(JAVA_CONNECTOR_KEYSTORE_PASSWORD, "The password for unlocking the tungsten_connector_keystore.jks file in the security directory", PV_ANY)
-  end
-  
-  def load_default_value
-    @default = @config.getProperty(get_host_key(JAVA_KEYSTORE_PASSWORD))
-  end
-end
-
-class ConnectorJavaTruststorePassword < ConfigurePrompt
-  include ConnectorPrompt
-  include PrivateArgumentModule
-  
-  def initialize
-    super(JAVA_CONNECTOR_TRUSTSTORE_PASSWORD, "The password for unlocking the tungsten_connector_truststore.jks file in the security directory", PV_ANY)
-  end
-  
-  def load_default_value
-    @default = @config.getProperty(get_host_key(JAVA_TRUSTSTORE_PASSWORD))
-  end
-end
-
-class ConnectorJavaKeystorePath < ConfigurePrompt
-  include ConnectorPrompt
-  include NoStoredServerConfigValue
-  
-  def initialize
-    super(JAVA_CONNECTOR_KEYSTORE_PATH, "Local path to the Java Connector Keystore file.", PV_FILENAME)
-  end
-  
-  def get_template_value(transform_values_method)
-    @config.getProperty(get_host_key(SECURITY_DIRECTORY)) + "/tungsten_connector_keystore.jks"
-  end
-  
-  def required?
-    false
-  end
-  
-  def validate_value(value)
-    super(value)
-    if is_valid?() && value != ""
-      unless File.exists?(value)
-        error("The file #{value} does not exist")
-      end
-    end
-    
-    is_valid?()
-  end
-  
-  DeploymentFiles.register(JAVA_CONNECTOR_KEYSTORE_PATH, GLOBAL_JAVA_CONNECTOR_KEYSTORE_PATH, CONNECTORS)
-end
-
-class GlobalConnectorJavaKeystorePath < ConfigurePrompt
-  include ConnectorPrompt
-  include ConstantValueModule
-  include NoStoredServerConfigValue
-  
-  def initialize
-    super(GLOBAL_JAVA_CONNECTOR_KEYSTORE_PATH, "Staging path to the Java Connector Keystore file", 
-      PV_FILENAME)
-  end
-end
-
-class ConnectorJavaTruststorePath < ConfigurePrompt
-  include ConnectorPrompt
-  include NoStoredServerConfigValue
-  
-  def initialize
-    super(JAVA_CONNECTOR_TRUSTSTORE_PATH, "Local path to the Java Connector Truststore file.", PV_FILENAME)
-  end
-  
-  def get_template_value(transform_values_method)
-    @config.getProperty(get_host_key(SECURITY_DIRECTORY)) + "/tungsten_connector_truststore.ts"
-  end
-  
-  def required?
-    false
-  end
-  
-  def validate_value(value)
-    super(value)
-    if is_valid?() && value != ""
-      unless File.exists?(value)
-        error("The file #{value} does not exist")
-      end
-    end
-    
-    is_valid?()
-  end
-  
-  DeploymentFiles.register(JAVA_CONNECTOR_TRUSTSTORE_PATH, GLOBAL_JAVA_CONNECTOR_TRUSTSTORE_PATH, CONNECTORS)
-end
-
-class GlobalConnectorJavaTruststorePath < ConfigurePrompt
-  include ConnectorPrompt
-  include ConstantValueModule
-  include NoStoredServerConfigValue
-  
-  def initialize
-    super(GLOBAL_JAVA_CONNECTOR_TRUSTSTORE_PATH, "Staging path to the Java Connector Truststore file", 
-      PV_FILENAME)
-  end
-end
-
-class ConnectorEnableReadOnly < ConfigurePrompt
-  include ConnectorPrompt
-  
-  def initialize
-    super(ENABLE_CONNECTOR_RO, "Enable the Tungsten Connector read-only mode", PV_BOOLEAN, "false")
-    override_command_line_argument("connector-readonly")
-  end
-  
-  def get_template_value(transform_values_method)
-    if get_value() == "true" || ConfigureDeploymentStepConnector.connector_ro_mode?() == true
-      "true"
-    else
-      "false"
-    end
-  end
-end
-
-class ConnectorEnableBridgeMode < ConfigurePrompt
-  include ConnectorPrompt
-  
-  def initialize
-    super(ENABLE_CONNECTOR_BRIDGE_MODE, "Enable the Tungsten Connector bridge mode", PV_BOOLEAN, "false")
-    override_command_line_argument("connector-bridge-mode")
-  end
-  
-  def get_template_value(transform_values_method)
-    if get_value() == "true"
-      if @config.getTemplateValue(get_member_key(ENABLE_CONNECTOR_RO)) == "true"
-        "RO_RELAXED"
-      else
-        "RW_STRICT"
-      end
-    else
-      "OFF"
-    end
-  end
-end
-
-class ConnectorReadOnlyPropertiesExists < ConfigurePrompt
-  include ConnectorPrompt
-  include ConstantValueModule
-  include NoStoredServerConfigValue
-  
-  def initialize
-    super(CONN_RO_PROPERTIES_EXISTS, "Enable the second Tungsten Connector listeners", PV_BOOLEAN, "false")
-  end
-  
-  def get_template_value(transform_values_method)
-    if File.exist?("#{@config.getProperty(PREPARE_DIRECTORY)}/tungsten-connector/conf/connector.ro.properties") == true
-      "true"
-    else
-      ""
-    end
-  end
-end
-
-class ConnectorMaxSlaveLatency < ConfigurePrompt
-  include ConnectorPrompt
-  
-  def initialize
-    super(CONN_MAX_SLAVE_LATENCY, "The maximum applied latency for slave connections", PV_INTEGER)
-    add_command_line_alias("connector-max-applied-latency")
-  end
-  
-  def required?
-    false
-  end
-  
-  def add_jdbc_driver_options(opts)
-    if get_value() != nil
-      opts << "maxAppliedLatency=#{get_value}"
-    end
-  end
-  
-  ConnectorDriverOptions.register(CONN_MAX_SLAVE_LATENCY)
 end

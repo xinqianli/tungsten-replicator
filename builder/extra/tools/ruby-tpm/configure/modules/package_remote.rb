@@ -162,6 +162,9 @@ module RemoteCommand
         unless final_props[key].has_key?(DEFAULTS)
           final_props[key][DEFAULTS] = {}
         end
+      else
+        final_props[key] = {}
+        final_props[key][DEFAULTS] = {}
       end
     }
     

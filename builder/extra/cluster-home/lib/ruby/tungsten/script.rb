@@ -69,6 +69,7 @@ module TungstenScript
         cleanup(1)
       end
     
+      TU.debug("Command: #{@command}")
       TU.debug("Options:")
       @options.each{
         |k,v|
@@ -138,7 +139,7 @@ module TungstenScript
         if @command != nil
           raise "Multiple commands have been specified as the default"
         end
-        @command = command_key
+        @command = command_key.to_s()
       end
 
       @command_definitions[command_key] = definition
@@ -188,12 +189,6 @@ module TungstenScript
   end
   
   def parse_options
-    if @command_definitions.size() > 0 && TU.remaining_arguments.size() > 0
-      if @command_definitions.has_key?(TU.remaining_arguments[0].to_sym())
-        @command = TU.remaining_arguments.shift()
-      end
-    end
-    
     opts = OptionParser.new()
     
     @option_definitions.each{
@@ -227,6 +222,12 @@ module TungstenScript
     }
     
     TU.run_option_parser(opts)
+    
+    if @command_definitions.size() > 0 && TU.remaining_arguments.size() > 0
+      if @command_definitions.has_key?(TU.remaining_arguments[0].to_sym())
+        @command = TU.remaining_arguments.shift()
+      end
+    end
   end
   
   def parse_integer_option(val)
@@ -261,7 +262,7 @@ module TungstenScript
       end
     end
     
-    if @command_definitions.size() > 0 && @command == nil
+    if require_command?() && @command_definitions.size() > 0 && @command == nil
       TU.error("A command was not given for this script. Valid commands are #{@command_definitions.keys().join(', ')} and must be the first argument.")
     end
   end
@@ -280,9 +281,10 @@ module TungstenScript
     if @command_definitions.size() > 0
       TU.write_header("Script Commands", nil)
       
-      @command_definitions.each{
-        |command_key,definition|
-        
+      commands = @command_definitions.keys().sort { |a, b| a.to_s <=> b.to_s }
+      commands.each{
+        |command_key|
+        definition = @command_definitions[command_key]
         if definition[:default] == true
           default = "default"
         else
@@ -353,6 +355,10 @@ module TungstenScript
     end
     
     @require_installed_directory
+  end
+  
+  def require_command?
+    true
   end
   
   def description(v = nil)

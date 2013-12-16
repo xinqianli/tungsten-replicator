@@ -1131,12 +1131,12 @@ class MySQLApplierPortCheck < ConfigureValidationCheck
   def validate
     port = @config.getProperty(get_applier_key(REPL_DBPORT))
     
+    conf_file = @config.getProperty(get_applier_key(REPL_MYSQL_CONF))
     unless Configurator.instance.is_localhost?(@config.getProperty(get_applier_key(REPL_DBHOST)))
       warning("Unable to check for a configured port in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
       return
     end
     
-    conf_file = @config.getProperty(get_applier_key(REPL_MYSQL_CONF))
     unless File.exists?(conf_file) && File.readable?(conf_file)
       error("The MySQL config file '#{conf_file}' is not readable")
       help("Specify the --datasource-mysql-conf argument with the path to your my.cnf")
@@ -1712,6 +1712,10 @@ class MySQLConnectorPermissionsCheck < ConfigureValidationCheck
             error("The user specified in --application-user (#{connuser}@#{host}) does not have REPLICATION CLIENT privileges and SMARTSCALE in enabled")
             help("When SmartScale is enabled, all application users require the REPLICATION CLIENT  privilege. Grant it to the user via GRANT REPLICATION CLIENT on *.* to '#{connuser}'@#{host}")
           end
+          if get_applier_datasource.get_value(" select count(*) from mysql.user where User not in ('root','tungsten') and  Repl_client_priv = 'N'").to_i != 0
+            warning("Users exist in the database that do not have REPLICATION CLIENT privileges and SMARTSCALE in enabled")
+            help("When SmartScale is enabled, all application users require the REPLICATION CLIENT  privilege to connect . Grant it to the user via GRANT REPLICATION CLIENT on *.* to '<username>'@'<host>'")
+          end
         end
       end
     end
@@ -1795,27 +1799,6 @@ class MySQLMyISAMCheck < ConfigureValidationCheck
   end
 end
 
-#
-# Removed check that prevents installation using MySQL 5.6 servers
-# Starting with Tungsten-Replicator 2.1.1-101, MySQL 5.6 is fully supported
-#
-#class MySQLCheckSumCheck < ConfigureValidationCheck
-#  include ReplicationServiceValidationCheck
-#  include MySQLApplierCheck
-#  
-#  def set_vars
-#    @title = "MySQL 5.6 binlog Checksum Check"
-#  end
-#  
-#  def validate
-#    info("Checking that MySQL Binlog Checksum is not enabled")
-#    checkSum = get_applier_datasource.get_value("show variables like 'binlog_checksum'", "Value")
-#    if (checkSum == 'CRC32') 
-#      error("This instance is running with BinLog checksum enabled which is not yet supported")
-#    end
-#  end
-#end
-
 class MySQLDumpCheck < ConfigureValidationCheck
   include ReplicationServiceValidationCheck
   include MySQLApplierCheck
@@ -1832,10 +1815,11 @@ class MySQLDumpCheck < ConfigureValidationCheck
      
     if "#{runningVersion[0]}.#{runningVersion[1]}" !=  "#{dumpVersion[0]}.#{dumpVersion[1]}"
       error("The version of Mysqldump in the path does not match the running version of MySQL")
-      help("The instance is running #{runningVersion[0]}.#{runningVersion[1]} but the version of mysqldump in the path is #{dumpVersion[0]}.#{dumpVersion[1]} ")
+      help("The instance is running #{runningVersion[0]}.#{runningVersion[1]} but the version of mysqldump in the path is #{dumpVersion[0]}.#{dumpVersion[1]}. Add the --preferred-path option to use the proper mysqldump command.")
     end
   end
   def enabled?
-    super() && ["mysqldump"].include?(@config.getProperty(get_member_key(REPL_BACKUP_METHOD)))
+    super() && ["mysqldump"].include?(@config.getProperty(get_member_key(REPL_BACKUP_METHOD))) &&
+      Configurator.instance.is_localhost?(@config.getProperty(get_applier_key(REPL_DBHOST)))
   end
 end

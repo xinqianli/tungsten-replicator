@@ -96,9 +96,9 @@ public class Replicator
 
     /** URI that slaves should use when connecting to this master. */
     public static final String MASTER_LISTEN_URI           = "masterListenUri";
-
+    
     /** Indicates if SSL connection is used. */
-    public static final String USE_SSL_CONNECTION          = "useSSLConnection";
+    public static final String USE_SSL_CONNECTION         = "useSSLConnection";
 
     /** Name of the site to which this replicator belongs. */
     public static final String SITENAME                    = "siteName";
@@ -193,12 +193,6 @@ public class Replicator
 
     /** Port on which apps access resource */
     static public final String RESOURCE_PORT               = "resourcePort";
-
-    static public final String RESOURCE_REPL_USER          = "resourceReplUser";
-
-    static public final String RESOURCE_REPL_PASSWORD      = "resourceReplPassword";
-
-    static public final String RESOURCE_REPL_SCHEMA        = "resourceReplSchema";
 
     /**
      * Log sequence number type to allow managers to figure out how to sort

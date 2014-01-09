@@ -73,9 +73,8 @@ public class SecurityHelper
         }
         catch (org.apache.commons.configuration.ConfigurationException ce)
         {
-            CLUtils.println("Error while saving properties for file:"
-                    + authenticationInfo.getPasswordFileLocation());
-            logger.debug(ce.getMessage());
+            logger.error("Error while saving properties for file:"
+                    + authenticationInfo.getPasswordFileLocation(), ce);
             throw new ServerRuntimeException("Error while saving Credentials: "
                     + ce.getMessage());
         }
@@ -112,9 +111,8 @@ public class SecurityHelper
         }
         catch (org.apache.commons.configuration.ConfigurationException ce)
         {
-            CLUtils.println("Error while saving properties for file:"
-                    + authenticationInfo.getPasswordFileLocation());
-            logger.debug(ce.getMessage());
+            logger.error("Error while saving properties for file:"
+                    + authenticationInfo.getPasswordFileLocation(), ce);
             throw new ServerRuntimeException("Error while saving Credentials: "
                     + ce.getMessage());
         }
@@ -143,19 +141,14 @@ public class SecurityHelper
         }
         catch (FileNotFoundException e)
         {
-            CLUtils.println("Unable to find properties file: "
-                    + authenticationInfo.getPasswordFileLocation());
-            logger.debug("Properties search failure", e);
-            throw new ServerRuntimeException("Unable to find password file: "
-                    + e.getMessage());
+            throw new ServerRuntimeException("Unable to find properties file: "
+                    + authenticationInfo.getPasswordFileLocation(), e);
+
         }
         catch (IOException e)
         {
-            CLUtils.println("Unable to read properties file: "
-                    + authenticationInfo.getPasswordFileLocation());
-            logger.debug("Properties read failure", e);
-            throw new ServerRuntimeException("Unable to read password file: "
-                    + e.getMessage());
+            throw new ServerRuntimeException("Unable to read properties file: "
+                    + authenticationInfo.getPasswordFileLocation(), e);
         }
     }
 
@@ -365,7 +358,7 @@ public class SecurityHelper
             String msg = MessageFormat.format(
                     "Cannot find configuration file: {0}",
                     securityPropertiesFile.getPath());
-            CLUtils.println(msg);
+            logger.debug(msg, e);
             throw new ConfigurationException(msg);
         }
         catch (IOException e)
@@ -373,7 +366,7 @@ public class SecurityHelper
             String msg = MessageFormat.format(
                     "Cannot load configuration file: {0}.\n Reason: {1}",
                     securityPropertiesFile.getPath(), e.getMessage());
-            CLUtils.println(msg);
+            logger.debug(msg, e);
             throw new ConfigurationException(msg);
         }
 

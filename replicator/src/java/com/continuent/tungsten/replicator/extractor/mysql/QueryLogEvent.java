@@ -42,7 +42,7 @@ import com.continuent.tungsten.replicator.extractor.mysql.conversion.LittleEndia
  */
 public class QueryLogEvent extends LogEvent
 {
-    static Logger                                            logger                 = Logger.getLogger(QueryLogEvent.class);
+    static Logger                                            logger                 = Logger.getLogger(MySQLExtractor.class);
 
     /**
      * Fixed data part:
@@ -170,15 +170,10 @@ public class QueryLogEvent extends LogEvent
 
     public QueryLogEvent(byte[] buffer, int eventLength,
             FormatDescriptionLogEvent descriptionEvent,
-            boolean parseStatements, boolean useBytesForString,
-            String currentPosition) throws ReplicatorException
+            boolean parseStatements, boolean useBytesForString)
+            throws ReplicatorException
     {
         this(buffer, descriptionEvent, MysqlBinlog.QUERY_EVENT);
-
-        this.startPosition = currentPosition;
-        if (logger.isDebugEnabled())
-            logger.debug("Extracting event at position  : " + startPosition
-                    + " -> " + getNextEventPosition());
 
         this.parseStatements = parseStatements;
 
@@ -199,12 +194,14 @@ public class QueryLogEvent extends LogEvent
 
         if (eventLength < commonHeaderLength + postHeaderLength)
         {
-            throw new MySQLExtractException("query event length is too short");
+            throw new MySQLExtractException("too short query event");
         }
 
         if (descriptionEvent.useChecksum())
         {
             // Removing the checksum from the size of the event
+            if (logger.isDebugEnabled())
+                logger.debug("Using checksummed events");
             eventLength -= 4;
         }
 
@@ -706,23 +703,23 @@ public class QueryLogEvent extends LogEvent
          * field is always written to the binlog in version >= 5.0, and never
          * written in version < 5.0.
          */
-
+    
         flags2 = LittleEndianConversion.convert4BytesToInt(buffer, pos);
         if (logger.isDebugEnabled())
             logger.debug("In QueryLogEvent, flags2 = " + flags2
                     + " - row data : " + hexdump(buffer, pos, 4));
-
+    
         flagAutocommit = (flags2 & MysqlBinlog.OPTION_NOT_AUTOCOMMIT) != MysqlBinlog.OPTION_NOT_AUTOCOMMIT;
         flagAutoIsNull = (flags2 & MysqlBinlog.OPTION_AUTO_IS_NULL) == MysqlBinlog.OPTION_AUTO_IS_NULL;
         flagForeignKeyChecks = (flags2 & MysqlBinlog.OPTION_NO_FOREIGN_KEY_CHECKS) != MysqlBinlog.OPTION_NO_FOREIGN_KEY_CHECKS;
         flagUniqueChecks = (flags2 & MysqlBinlog.OPTION_RELAXED_UNIQUE_CHECKS) != MysqlBinlog.OPTION_RELAXED_UNIQUE_CHECKS;
-
+    
         sessionVariables = "set @@session.foreign_key_checks="
                 + (flagForeignKeyChecks ? 1 : 0)
                 + ", @@session.sql_auto_is_null=" + (flagAutoIsNull ? 1 : 0)
                 + ", @@session.unique_checks=" + (flagUniqueChecks ? 1 : 0)
                 + ", @@session.autocommit=" + (flagAutocommit ? 1 : 0);
-
+    
         if (logger.isDebugEnabled())
         {
             logger.debug(sessionVariables);

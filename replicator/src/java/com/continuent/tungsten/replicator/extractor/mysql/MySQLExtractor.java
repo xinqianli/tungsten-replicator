@@ -535,7 +535,7 @@ public class MySQLExtractor implements RawExtractor
         boolean doFileFragment = false;
         Timestamp startTime = null;
 
-        long sessionId = -1;
+        long sessionId = 0;
         ArrayList<DBMSData> dataArray = new ArrayList<DBMSData>();
 
         boolean foundRowsLogEvent = false;
@@ -691,7 +691,7 @@ public class MySQLExtractor implements RawExtractor
 
                         if (sessionId == -1)
                         {
-                            // first query in transaction / event
+                            // first query in transaction
                             sessionId = event.getSessionId();
                         }
                         else
@@ -1158,13 +1158,7 @@ public class MySQLExtractor implements RawExtractor
             }
         }
 
-        // If we are using relay logs make sure that relay logging is
-        // functioning here and we are up to point required by binlog
-        // position.
-        startRelayLogs(binlogPosition.getFileName(),
-                binlogPosition.getPosition());
-
-        // Extract FD event
+        // Extract FD event ?
         try
         {
             LogEvent formatDescriptionEvent = processFile(new BinlogReader(4,
@@ -1179,8 +1173,13 @@ public class MySQLExtractor implements RawExtractor
         }
         catch (InterruptedException ignore)
         {
-            logger.warn("Interrupted while extracting format description event");
         }
+
+        // If we are using relay logs make sure that relay logging is
+        // functioning here and we are up to point required by binlog
+        // position.
+        startRelayLogs(binlogPosition.getFileName(),
+                binlogPosition.getPosition());
     }
 
     /**

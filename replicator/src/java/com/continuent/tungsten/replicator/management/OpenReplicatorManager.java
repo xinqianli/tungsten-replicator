@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2013 Continuent Inc.
+ * Copyright (C) 2007-2012 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,14 +17,13 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Seppo Jaakola
- * Contributor(s): Robert Hodges, Teemu Ollakka, Alex Yurchenko, Linas Virbalas, Stephane Giron
+ * Contributor(s): Robert Hodges, Teemu Ollakka, Alex Yurchenko, Linas Virbalas
  */
 
 package com.continuent.tungsten.replicator.management;
 
 import java.net.InetAddress;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.UnknownHostException;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetEncoder;
@@ -95,12 +94,7 @@ import com.continuent.tungsten.replicator.consistency.ConsistencyException;
 import com.continuent.tungsten.replicator.filter.FilterManualProperties;
 import com.continuent.tungsten.replicator.management.events.GoOfflineEvent;
 import com.continuent.tungsten.replicator.management.events.OfflineNotification;
-import com.continuent.tungsten.replicator.management.tungsten.TungstenPlugin;
 import com.continuent.tungsten.replicator.plugin.PluginException;
-import com.continuent.tungsten.replicator.storage.Store;
-import com.continuent.tungsten.replicator.thl.ConnectorHandler;
-import com.continuent.tungsten.replicator.thl.ProtocolParams;
-import com.continuent.tungsten.replicator.thl.THL;
 
 /**
  * This class provides overall management for the replication and is the
@@ -169,7 +163,6 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
     /** Cluster name to which replicator belongs. */
     private String                  clusterName;
 
-    private String                  rmiHost                 = null;
     private int                     rmiPort                 = -1;
 
     // Open replicator plugin
@@ -226,8 +219,8 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
         State goingonline = new State("GOING-ONLINE", StateType.ACTIVE);
         State goingonlineSynchronizing = new State("SYNCHRONIZING",
                 StateType.ACTIVE, goingonline);
-        State offlineRestoring = new State("RESTORING", StateType.ACTIVE,
-                offlineNormal);
+        State goingonlineRestoring = new State("RESTORING", StateType.ACTIVE,
+                goingonline);
 
         State goingoffline = new State("GOING-OFFLINE", StateType.ACTIVE);
 
@@ -243,7 +236,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
         stmap.addState(offlineError);
         stmap.addState(goingonline);
         stmap.addState(goingonlineSynchronizing);
-        stmap.addState(offlineRestoring);
+        stmap.addState(goingonlineRestoring);
         stmap.addState(goingoffline);
         stmap.addState(online);
         stmap.addState(end);
@@ -316,9 +309,9 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
         stmap.addTransition(new Transition("OFFLINE-BACKUP-1", backupGuard,
                 offlineNormal, backupAction, offlineNormal));
         stmap.addTransition(new Transition("OFFLINE-RESTORE", restoreGuard,
-                offlineNormal, restoreAction, offlineRestoring));
+                offlineNormal, restoreAction, goingonlineRestoring));
         stmap.addTransition(new Transition("OFFLINE-PROVISION", provisionGuard,
-                offlineNormal, provisionAction, offlineRestoring));
+                offlineNormal, provisionAction, goingonlineRestoring));
         stmap.addTransition(new Transition("OFFLINE-SETROLE", setRoleGuard,
                 offlineNormal, setRoleAction, offlineNormal));
 
@@ -342,15 +335,17 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
         stmap.addTransition(new Transition("ERROR-BACKUP", backupGuard,
                 offlineError, backupAction, offlineError));
         stmap.addTransition(new Transition("ERROR-RESTORE", restoreGuard,
-                offlineNormal, restoreAction, offlineRestoring));
+                offlineNormal, restoreAction, goingonlineRestoring));
 
         // OFFLINE:BACKUP can transition to the following state(s).
         stmap.addTransition(new Transition("BACKUP-OFFLINE",
                 backupCompleteGuard, offline, null, offlineNormal));
 
-        // RESTORE can transition to the following state(s).
-        stmap.addTransition(new Transition("RESTORE-OFFLINE",
-                restoreCompleteGuard, offlineRestoring, null, offlineNormal));
+        // RESTORE:SYNCHRONIZING can transition to the following state(s).
+        // TODO: Plugin should decide whether to go online.
+        stmap.addTransition(new Transition("RESTORE-SYNCHRONIZING-OFFLINE",
+                restoreCompleteGuard, goingonlineRestoring,
+                offlineToSynchronizingAction, goingonlineSynchronizing));
 
         // GOING-ONLINE can transition to the following states.
         stmap.addTransition(new Transition("SYNCHRONIZING-ERROR", errorGuard,
@@ -416,8 +411,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
                 .getConfiguration(serviceName);
         propertiesManager = new PropertiesManager(
                 runtimeConf.getReplicatorProperties(),
-                runtimeConf.getReplicatorDynamicProperties(),
-                runtimeConf.getReplicatorDynamicRole());
+                runtimeConf.getReplicatorDynamicProperties());
         propertiesManager.loadProperties();
 
         // Clear properties if that is desired.
@@ -743,8 +737,8 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     class RestoreEvent extends Event
     {
-        private volatile Future<String> future;
-        private final String            uri;
+        private volatile Future<Boolean> future;
+        private final String             uri;
 
         public RestoreEvent(String uri)
         {
@@ -752,12 +746,12 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
             this.uri = uri;
         }
 
-        public Future<String> getFuture()
+        public Future<Boolean> getFuture()
         {
             return future;
         }
 
-        public void setFuture(Future<String> future)
+        public void setFuture(Future<Boolean> future)
         {
             this.future = future;
         }
@@ -1393,7 +1387,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
             {
                 RestoreEvent restoreEvent = (RestoreEvent) event;
                 String uri = restoreEvent.getUri();
-                Future<String> task = backupManager.spawnRestore(uri);
+                Future<Boolean> task = backupManager.spawnRestore(uri);
                 restoreEvent.setFuture(task);
             }
             catch (Exception e)
@@ -1628,58 +1622,6 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
         return properties.getString(ReplicatorConf.MASTER_LISTEN_URI);
     }
 
-    @MethodDesc(description = "Indicates if the replicator uses an SSL connection", usage = "useSSLConnection")
-    public Boolean getUseSSLConnection() throws URISyntaxException
-    {
-        URI uri = null;
-        Boolean useSSL = false;
-        // Uses the Master Listen URI to determine if a connection is using SSL
-        // or not
-        if (this.getMasterListenUri() != null)
-        {
-            uri = new URI(this.getMasterListenUri());
-            String scheme = uri.getScheme();
-            useSSL = THL.SSL_URI_SCHEME.equals(scheme) ? true : false;
-        }
-        return useSSL;
-    }
-
-    @MethodDesc(description = "Returns clients (slaves) of this server", usage = "getClients")
-    public List<Map<String, String>> getClients() throws Exception
-    {
-        if (openReplicator instanceof TungstenPlugin)
-        {
-            TungstenPlugin tungsten = (TungstenPlugin) openReplicator;
-
-            if (tungsten.getReplicatorRuntime() == null)
-                throw new Exception("No runtime found. Is Replicator ONLINE?");
-
-            // Drill down through the pipeline and collect clients of configured
-            // THL store(s).
-            List<Map<String, String>> clients = new ArrayList<Map<String, String>>();
-            for (Store store : tungsten.getReplicatorRuntime().getStores())
-            {
-                if (store instanceof THL)
-                {
-                    THL thl = (THL) store;
-                    for (ConnectorHandler handler : thl.getClients())
-                    {
-                        Map<String, String> client = new HashMap<String, String>();
-                        client.put(ProtocolParams.RMI_HOST,
-                                handler.getRmiHost());
-                        client.put(ProtocolParams.RMI_PORT,
-                                handler.getRmiPort());
-                        clients.add(client);
-                    }
-                }
-            }
-            return clients;
-        }
-        else
-            throw new Exception(
-                    "Unable to retrieve clients, because Replicator is not a TungstenPlugin instance");
-    }
-
     @MethodDesc(description = "Gets the replicator's current role.", usage = "getRole")
     public String getRole()
     {
@@ -1696,16 +1638,6 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
     public String getState()
     {
         return this.sm.getState().getName();
-    }
-
-    @MethodDesc(description = "Get the prospective state of the replicator if there is a transition in progress", usage = "getPendingTransition")
-    public String transitioningTo()
-    {
-        State pendingState = this.sm.getPendingState();
-        if (pendingState == null)
-            return "";
-        else
-            return pendingState.getName();
     }
 
     @MethodDesc(description = "Gets the time replicator has been in current state", usage = "getTimeInStateSeconds")
@@ -1943,13 +1875,9 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
                     getMasterConnectUri());
             pluginStatus
                     .put(Replicator.MASTER_LISTEN_URI, getMasterListenUri());
-            pluginStatus.put(Replicator.USE_SSL_CONNECTION, this
-                    .getUseSSLConnection().toString());
             pluginStatus.put(Replicator.SOURCEID, getSourceId());
             pluginStatus.put(Replicator.CLUSTERNAME, clusterName);
             pluginStatus.put(Replicator.ROLE, getRole());
-            pluginStatus.put(Replicator.HOST, getSourceId());
-
             pluginStatus.put(Replicator.DATASERVER_HOST, properties
                     .getString(ReplicatorConf.RESOURCE_DATASERVER_HOST));
             pluginStatus.put(Replicator.UPTIME_SECONDS,
@@ -1957,7 +1885,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
             pluginStatus.put(Replicator.TIME_IN_STATE_SECONDS,
                     Double.toString(getTimeInStateSeconds()));
             pluginStatus.put(Replicator.STATE, getState());
-            pluginStatus.put(Replicator.TRANSITIONING_TO, transitioningTo());
+
             pluginStatus.put(Replicator.RMI_PORT,
                     Integer.toString(getRmiPort()));
             pluginStatus.put(Replicator.PENDING_EXCEPTION_MESSAGE,
@@ -2036,7 +1964,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      * Start Replicator Node Manager JMX service.
      */
     @MethodDesc(description = "Starts the replicator service", usage = "start")
-    public void start(boolean forceOffline) throws Exception
+    public void start() throws Exception
     {
         try
         {
@@ -2047,7 +1975,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
                 // directly.
                 boolean autoEnabled = new Boolean(
                         properties.getBoolean(ReplicatorConf.AUTO_ENABLE));
-                if (!forceOffline && autoEnabled)
+                if (autoEnabled)
                 {
                     logger.info("Replicator auto-enabling is engaged; going online automatically");
                     online();
@@ -2426,7 +2354,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      *      long)
      */
     @MethodDesc(description = "Restores the database", usage = "restore <uri> <timeout>")
-    public String restore(
+    public boolean restore(
             @ParamDesc(name = "uri", description = "URI of backup to restore") String uri,
             @ParamDesc(name = "timeout", description = "Seconds to wait before timing out (0=infinity") long timeout)
             throws Exception
@@ -2438,8 +2366,8 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
             handleEventSynchronous(restoreEvent);
 
             // The event returns a Future on the backup task.
-            Future<String> restoreTask = restoreEvent.getFuture();
-            String completed = null;
+            Future<Boolean> restoreTask = restoreEvent.getFuture();
+            boolean completed = false;
             try
             {
                 if (timeout <= 0)
@@ -2535,7 +2463,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
 
     @MethodDesc(description = "Perform a cluster-wide consistency check", usage = "consistencyCheck <schema>[.{<table> | *}]")
-    public int consistencyCheck(
+    public void consistencyCheck(
             @ParamDesc(name = "method", description = "md5") String method,
             @ParamDesc(name = "schemaName", description = "schema to check") String schemaName,
             @ParamDesc(name = "tableName", description = "name of table to check") String tableName,
@@ -2549,8 +2477,8 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
                     + schemaName + "." + tableName + ":" + rowOffset + ","
                     + rowLimit);
 
-            return openReplicator.consistencyCheck(method, schemaName,
-                    tableName, rowOffset, rowLimit);
+            openReplicator.consistencyCheck(method, schemaName, tableName,
+                    rowOffset, rowLimit);
         }
         catch (Exception e)
         {
@@ -2976,22 +2904,6 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
     }
 
     /**
-     * Returns RMI port.
-     */
-    public String getRmiHost()
-    {
-        return rmiHost;
-    }
-
-    /**
-     * Sets RMI host.
-     */
-    public void setRmiHost(String rmiHost)
-    {
-        this.rmiHost = rmiHost;
-    }
-
-    /**
      * Returns the rmiPort value.
      * 
      * @return Returns the rmiPort.
@@ -3019,8 +2931,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
                 .getConfiguration(serviceName);
         PropertiesManager propertiesManager = new PropertiesManager(
                 runtimeConf.getReplicatorProperties(),
-                runtimeConf.getReplicatorDynamicProperties(),
-                runtimeConf.getReplicatorDynamicRole());
+                runtimeConf.getReplicatorDynamicProperties());
         propertiesManager.loadProperties();
 
         return propertiesManager.getProperties();

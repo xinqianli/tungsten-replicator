@@ -96,7 +96,7 @@ public class MySQLIOs
 
     public enum ExecuteQueryStatus
     {
-        OK, TOO_MANY_CONNECTIONS, OPEN_FILE_LIMIT_ERROR, SOCKET_NO_IO, SOCKET_CONNECT_TIMEOUT, SEND_QUERY_TIMEOUT, QUERY_RESULTS_TIMEOUT, QUERY_EXEC_TIMEOUT, LOGIN_RESPONSE_TIMEOUT, QUERY_TOO_LARGE, QUERY_RESULT_FAILED, QUERY_EXECUTION_FAILED, SOCKET_IO_ERROR, MYSQL_ERROR, UNEXPECTED_EXCEPTION, MYSQL_PREMATURE_EOF, HOST_IS_DOWN, NO_ROUTE_TO_HOST, UNKNOWN_HOST, UNTRAPPED_CONDITION
+        OK, TOO_MANY_CONNECTIONS, OPEN_FILE_LIMIT_ERROR, SOCKET_NO_IO, SOCKET_CONNECT_TIMEOUT, SEND_QUERY_TIMEOUT, QUERY_RESULTS_TIMEOUT, QUERY_EXEC_TIMEOUT, LOGIN_RESPONSE_TIMEOUT, QUERY_TOO_LARGE, QUERY_RESULT_FAILED, QUERY_EXECUTION_FAILED, SOCKET_IO_ERROR, MYSQL_ERROR, UNEXPECTED_EXCEPTION, MYSQL_PREMATURE_EOF, HOST_IS_DOWN, NO_ROUTE_TO_HOST, UNTRAPPED_CONDITION
     }
 
     /**
@@ -864,50 +864,42 @@ public class MySQLIOs
                 }
                 queryResult = MySQLPacket.mysqlReadPacket(socketInput, true);// EOF
                 queryResult = MySQLPacket.mysqlReadPacket(socketInput, true);
-                while (!queryResult.isEOF() && !queryResult.isError())
+                for (int i = 0; i < numberOfColumns; i++)
                 {
-                    for (int i = 0; i < numberOfColumns; i++)
+                    String row = queryResult.getLenEncodedString(false);
+                    if (logger.isDebugEnabled())
                     {
-                        String row = queryResult.getLenEncodedString(false);
-                        if (logger.isDebugEnabled())
+                        logger.debug("Got Row: " + row);
+                    }
+                    byte type = columnTypes.get(i);
+                    // Time and dates must be converted to long (# of ms since
+                    // epoch)
+                    if (type == MySQLConstants.MYSQL_TYPE_DATE
+                            || type == MySQLConstants.MYSQL_TYPE_DATETIME
+                            || type == MySQLConstants.MYSQL_TYPE_NEWDATE
+                            || type == MySQLConstants.MYSQL_TYPE_TIMESTAMP)
+                    {
+                        SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd");
+                        // timestamps that contain hour info
+                        if (row.length() > 11)
                         {
-                            logger.debug("Got Row: " + row);
+                            f = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
                         }
-                        byte type = columnTypes.get(i);
-                        // Time and dates must be converted to long (# of ms
-                        // since epoch)
-                        if (type == MySQLConstants.MYSQL_TYPE_DATE
-                                || type == MySQLConstants.MYSQL_TYPE_DATETIME
-                                || type == MySQLConstants.MYSQL_TYPE_NEWDATE
-                                || type == MySQLConstants.MYSQL_TYPE_TIMESTAMP)
+                        try
                         {
-                            SimpleDateFormat f = new SimpleDateFormat(
-                                    "yyyy-MM-dd");
-                            // timestamps that contain hour info
-                            if (row.length() > 11)
-                            {
-                                f = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-                            }
-                            try
-                            {
-                                java.util.Date d = f.parse(row);
-                                resultSet.setLong(columnNames.get(i),
-                                        d.getTime());
-                            }
-                            catch (ParseException pe)
-                            {
-                                // Don't throw an error but keep it safe:
-                                resultSet.setLong(columnNames.get(i), 0L);
-                            }
+                            java.util.Date d = f.parse(row);
+                            resultSet.setLong(columnNames.get(i), d.getTime());
                         }
-                        else
+                        catch (ParseException pe)
                         {
-                            resultSet.setString(columnNames.get(i), row);
+                            // Don't throw an error but keep it safe:
+                            resultSet.setLong(columnNames.get(i), 0L);
                         }
                     }
-                    queryResult = MySQLPacket
-                            .mysqlReadPacket(socketInput, true);
-
+                    else
+                    {
+                        resultSet.setString(columnNames.get(i), row);
+                    }
                 }
 
                 statusMessage = String.format("Query to %s:%d succeeded.",
@@ -1006,20 +998,6 @@ public class MySQLIOs
                                 socketPhase, hostname, port, ioe);
                 statusAndResult.setObject(STATUS_KEY,
                         ExecuteQueryStatus.OPEN_FILE_LIMIT_ERROR);
-                statusAndResult.setString(STATUS_MESSAGE_KEY, statusMessage);
-                statusAndResult.setObject(STATUS_EXCEPTION, ioe);
-                logger.warn(formatExecStatus(statusAndResult));
-                return logAndReturnProperties(statusAndResult);
-            }
-
-            if (ioe.toString().contains("java.net.UnknownHostException"))
-            {
-                statusMessage = String
-                        .format("I/O exception while %s a socket to %s:%d\nException='%s'\n"
-                                + "There may be an issue with your DNS for this host or your /etc/hosts entry is not correct.",
-                                socketPhase, hostname, port, ioe);
-                statusAndResult.setObject(STATUS_KEY,
-                        ExecuteQueryStatus.UNKNOWN_HOST);
                 statusAndResult.setString(STATUS_MESSAGE_KEY, statusMessage);
                 statusAndResult.setObject(STATUS_EXCEPTION, ioe);
                 logger.warn(formatExecStatus(statusAndResult));
@@ -1279,7 +1257,6 @@ public class MySQLIOs
             case MYSQL_PREMATURE_EOF :
             case UNTRAPPED_CONDITION :
             case TOO_MANY_CONNECTIONS :
-            case UNKNOWN_HOST :
             default :
                 return ResourceState.SUSPECT;
         }

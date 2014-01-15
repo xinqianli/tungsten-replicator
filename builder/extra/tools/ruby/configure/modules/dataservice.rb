@@ -93,7 +93,7 @@ module ReplicationServicePrompt
       @config.getProperty([DATASOURCES, ds_key, REPL_DBHOST]),
       @config.getProperty([DATASOURCES, ds_key, REPL_DBPORT]),
       @config.getProperty([DATASOURCES, ds_key, REPL_DBLOGIN]),
-      @config.getProperty([DATASOURCES, ds_key, REPL_DBPASSWORD]), @config, ds_key)
+      @config.getProperty([DATASOURCES, ds_key, REPL_DBPASSWORD]), @config)
   end
   
   def get_command_line_argument()
@@ -444,15 +444,14 @@ class ReplicationServiceTHLMasterURI < ConfigurePrompt
     
     hosts = @config.getPropertyOr(get_member_key(REPL_MASTERHOST), "").split(",")
     port = @config.getProperty(get_member_key(REPL_MASTERPORT))
-    protocol = @config.getProperty(get_member_key(REPL_THL_PROTOCOL))
     
     hosts.each{
       |host|
       
       if host.index(':') == nil
-        values << "#{protocol}://#{host}:#{port}/"
+        values << "thl://#{host}:#{port}/"
       else
-        values << "#{protocol}://#{host}"
+        values << "thl://#{host}"
       end
     }
     
@@ -633,41 +632,26 @@ class ReplicationServiceBufferSize < ConfigurePrompt
   include ReplicationServicePrompt
   
   def initialize
-    super(REPL_BUFFER_SIZE, "Replicator queue size between stages (min 1)",
+    super(REPL_BUFFER_SIZE, "Replicator block commit size (min 1)",
       PV_INTEGER, 10)
   end
 end
 
-class ReplicationServiceApplierBlockCommitSize < ConfigurePrompt
+class ReplicationServiceApplierBufferSize < ConfigurePrompt
   include ReplicationServicePrompt
   include AdvancedPromptModule
- 
+  
   def initialize
-    super(REPL_SVC_APPLIER_BLOCK_COMMIT_SIZE,
-      "Applier block commit size (min 1)",
+    super(REPL_SVC_APPLIER_BUFFER_SIZE, "Applier block commit size (min 1)",
       PV_ANY, nil)
   end
- 
+  
   def get_default_value
     if @config.getProperty(get_member_key(BATCH_ENABLED)) == "true"
       return "10000"
     else
       return "${replicator.global.buffer.size}"
     end
-  end
-end
-
-class ReplicationServiceApplierBlockCommitInterval < ConfigurePrompt
-  include ReplicationServicePrompt
-  include AdvancedPromptModule
-
-  def initialize
-    super(REPL_SVC_APPLIER_BLOCK_COMMIT_INTERVAL, "Minimum interval between commits (Use values like 1s, 2h, 3, etc. or 0 to turn off)",
-      PV_ANY, nil)
-  end
-
-  def get_default_value
-    return "0"
   end
 end
 
@@ -862,15 +846,6 @@ class THLStorageRetention < ConfigurePrompt
   
   def enabled?
     super() && @config.getProperty(get_host_key(REPL_LOG_TYPE)) == "disk"
-  end
-end
-
-class THLProtocol < ConfigurePrompt
-  include ReplicationServicePrompt
-  include AdvancedPromptModule
-  
-  def initialize
-    super(REPL_THL_PROTOCOL, "Protocol to use for THL communication with this service", PV_ANY, "thl")
   end
 end
 
@@ -1357,22 +1332,5 @@ class ReplicationServiceTableEngine < ConfigurePrompt
     else
       super()
     end
-  end
-end
-
-class ReplicationServiceEnableShardComments < ConfigurePrompt
-  include ReplicationServicePrompt
-  include ConstantValueModule
-  
-  def initialize
-    super(REPL_SVC_ENABLE_MASTER_SERVICE_COMMENTS, "Add a comment to extracted events with the current service name", PV_BOOLEAN, "false")
-  end
-end
-
-class ReplicationServiceRepositionOnSourceIDChange < ConfigurePrompt
-  include ReplicationServicePrompt
-  
-  def initialize
-    super(REPL_SVC_REPOSITION_ON_SOURCE_ID_CHANGE, "The master will come ONLINE from the current position if the stored source_id does not match the value in the static properties.", PV_BOOLEAN, "true")
   end
 end

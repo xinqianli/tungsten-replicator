@@ -169,7 +169,7 @@ public class PingLauncher
         {
             HostAddressService service = new HostAddressService(true);
             service.setTimeout(timeout * 1000);
-            HostAddress address = HostAddressService.getByName(host);
+            HostAddress address = service.getByName(host);
             List<String> methodNames;
             if (method == null)
                 methodNames = service.getEnabledMethodNames();

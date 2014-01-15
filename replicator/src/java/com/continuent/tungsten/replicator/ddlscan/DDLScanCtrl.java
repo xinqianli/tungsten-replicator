@@ -31,7 +31,6 @@ import java.io.IOException;
 import java.io.StringWriter;
 import java.io.Writer;
 import java.sql.SQLException;
-import java.util.Hashtable;
 import java.util.Properties;
 
 import com.continuent.tungsten.common.config.TungstenProperties;
@@ -39,7 +38,6 @@ import com.continuent.tungsten.common.exec.ArgvIterator;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.conf.ReplicatorConf;
 import com.continuent.tungsten.replicator.conf.ReplicatorRuntimeConf;
-import com.continuent.tungsten.replicator.management.ReplicationServiceManager;
 
 /**
  * This class defines a DDLScanCtrl that implements a utility to access DDLScan
@@ -77,8 +75,6 @@ public class DDLScanCtrl
     private String                renameDefinitions = null;
 
     private String                templateFile      = null;
-    private String                additionalPath    = null;
-    Hashtable<String, String>     templateOptions   = null;
     private String                outFile           = null;
 
     private DDLScan               scanner           = null;
@@ -92,9 +88,7 @@ public class DDLScanCtrl
      */
     public DDLScanCtrl(String url, String user, String pass, String db,
             String tables, String templateFile, String outFile,
-            String renameDefinitions,
-            Hashtable<String, String> templateOptions, String additionalPath)
-            throws Exception
+            String renameDefinitions) throws Exception
     {
         // JDBC connection string.
         this.url = url;
@@ -105,10 +99,8 @@ public class DDLScanCtrl
         this.db = db;
         this.tables = tables;
 
-        // Template, options and output file.
+        // Output file.
         this.templateFile = templateFile;
-        this.additionalPath = additionalPath;
-        this.templateOptions = templateOptions;
         this.outFile = outFile;
 
         // Rename definitions file.
@@ -124,10 +116,6 @@ public class DDLScanCtrl
             println("db = " + db);
             println("user = " + user);
             println("template = " + templateFile);
-            for (String option : templateOptions.keySet())
-            {
-                println("  " + option + " = " + templateOptions.get(option));
-            }
             if (renameDefinitions != null)
                 println("rename = " + renameDefinitions);
         }
@@ -135,7 +123,7 @@ public class DDLScanCtrl
         try
         {
             scanner = new DDLScan(url, db, user, pass);
-            scanner.prepare(additionalPath);
+            scanner.prepare();
         }
         catch (SQLException e)
         {
@@ -189,7 +177,7 @@ public class DDLScanCtrl
         else
             writer = new BufferedWriter(new FileWriter(new File(outFile)));
 
-        scanner.scan(tables, templateOptions, writer);
+        scanner.scan(tables, writer);
 
         // Flush and cleanup.
         writer.flush();
@@ -252,9 +240,8 @@ public class DDLScanCtrl
             // Command line parameters and options.
             String configFile = null;
             String service = null;
-            
+            String command = null;
             String templateFile = null;
-            String additionalPath = null;
             String user = null;
             String pass = null;
             String url = null;
@@ -262,9 +249,6 @@ public class DDLScanCtrl
             String db = null;
             String outFile = null;
             String renameDefinitions = null;
-
-            // Options to pass to template.
-            Hashtable<String, String> templateOptions = new Hashtable<String, String>();
 
             // Parse command line arguments.
             ArgvIterator argvIterator = new ArgvIterator(argv);
@@ -312,11 +296,6 @@ public class DDLScanCtrl
                     if (argvIterator.hasNext())
                         templateFile = argvIterator.next();
                 }
-                else if ("-path".equals(curArg))
-                {
-                    if (argvIterator.hasNext())
-                        additionalPath = argvIterator.next();
-                }
                 else if ("-out".equals(curArg))
                 {
                     if (argvIterator.hasNext())
@@ -326,25 +305,6 @@ public class DDLScanCtrl
                 {
                     if (argvIterator.hasNext())
                         renameDefinitions = argvIterator.next();
-                }
-                else if ("-opt".equals(curArg))
-                {
-                    // Option to pass to the template.
-                    if (argvIterator.hasNext())
-                    {
-                        String option = argvIterator.next();
-                        String value = "";
-                        if (argvIterator.hasNext())
-                            value = argvIterator.next();
-                        templateOptions.put(option, value);
-                    }
-                    else
-                    {
-                        println("To pass an option to a template: -opt <option> <value>");
-                        println("To ask a template to describe itself: -opt help");
-                        printHelp();
-                        fail();
-                    }
                 }
                 else if ("-help".equals(curArg))
                 {
@@ -357,6 +317,8 @@ public class DDLScanCtrl
                     printHelp();
                     fail();
                 }
+                else
+                    command = curArg;
             }
 
             if (templateFile == null)
@@ -434,8 +396,7 @@ public class DDLScanCtrl
 
             // Construct DDLScanCtrl from JDBC URL credentials.
             DDLScanCtrl ddlScanManager = new DDLScanCtrl(url, user, pass, db,
-                    tables, templateFile, outFile, renameDefinitions,
-                    templateOptions, additionalPath);
+                    tables, templateFile, outFile, renameDefinitions);
 
             if (tables == null && outFile != null)
                 println("Tables not specified - extracting everything!");
@@ -456,16 +417,15 @@ public class DDLScanCtrl
      * Return the service configuration file if there is one and only one file
      * that matches the static-svcname.properties pattern.
      */
-    public static String lookForConfigFile()
+    private static String lookForConfigFile()
     {
         File configDir = ReplicatorRuntimeConf.locateReplicatorConfDir();
         FilenameFilter propFileFilter = new FilenameFilter()
         {
             public boolean accept(File fdir, String fname)
             {
-                if (fname
-                        .startsWith(ReplicationServiceManager.CONFIG_FILE_PREFIX)
-                        && fname.endsWith(ReplicationServiceManager.CONFIG_FILE_SUFFIX))
+                if (fname.startsWith("static-")
+                        && fname.endsWith(".properties"))
                     return true;
                 else
                     return false;
@@ -478,49 +438,40 @@ public class DDLScanCtrl
             return null;
     }
 
-    /**
-     * Parse out service name from static configuration file name.
-     * 
-     * @param configFileName File name like "static-service.properties".
-     * @return Service name.
-     */
-    public static String serviceFromConfigFileName(String configFileName)
-    {
-        String prefx = ReplicationServiceManager.CONFIG_FILE_PREFIX;
-        String suffix = ReplicationServiceManager.CONFIG_FILE_SUFFIX;
-        if (configFileName.contains(prefx) && configFileName.endsWith(suffix))
-        {
-            int iP = configFileName.indexOf(prefx);
-            return configFileName.substring(iP + prefx.length(),
-                    configFileName.length() - suffix.length());
-        }
-        else
-            return null;
-    }
-
     protected static void printHelp()
     {
         println("DDLScan Utility");
-        println("Syntax: ddlscan [conf|conn] [scan-spec] -db <db> -template <file> [template-options] [out]");
+        println("Syntax: ddlscan [connection|conf-options] [scan-spec] -db <db> -template <file> [out-options]");
         println("Conf options:");
         println("  -conf path     - Path to a static-<svc>.properties file to read JDBC");
-        println("     OR            connection address and credentials");
+        println("                   connection address and credentials OR");
         println("  -service name  - Name of a replication service instead of path to config");
         println("OR connection options:");
         println("  -user user     - JDBC username");
         println("  -pass secret   - JDBC password");
         println("  -url jdbcUrl   - JDBC connection string (use single quotes to escape)");
         println("Schema scan specification:");
-        println(" [-tables regex] - Regular expression enabled list defining tables to find");
-        println(" [-rename file]  - Definitions file for renaming schemas, tables and columns");
+        println("  -tables regex  - Regular expression enabled list defining tables to find");
+        println("  -rename file   - Definitions file for renaming schemas, tables and columns");
         println("Global options:");
         println("  -db db         - Database to use (will substitute "
                 + DBNAME_VAR + " in the URL, if needed)");
         println("  -template file - Specify template file to render");
-        println("  -path path     - Add additional search path for loading Velocity templates");
-        println(" [-opt opt val]  - Option(s) to pass to template, try: -opt help me");
-        println(" [-out file]     - Render to file (print to stdout if not specified)");
+        println("  -out file      - Render to file (print to stdout if not specified)");
         println("  -help          - Print this help display");
+    }
+
+    /**
+     * Appends a message to a given stringBuilder, adds a newline character at
+     * the end.
+     * 
+     * @param msg String to print.
+     * @param stringBuilder StringBuilder object to add a message to.
+     */
+    private static void println(StringBuilder stringBuilder, String msg)
+    {
+        stringBuilder.append(msg);
+        stringBuilder.append("\n");
     }
 
     /**

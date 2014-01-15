@@ -75,8 +75,6 @@ public class SingleThreadStageTask implements Runnable
     private long               blockEventCount = 0;
     private TaskProgress       taskProgress;
     private PluginContext      context;
-    private long               lastCommitMillis;
-    private long               blockCommitIntervalMillis;
 
     private volatile boolean   cancelled       = false;
 
@@ -86,11 +84,6 @@ public class SingleThreadStageTask implements Runnable
         this.name = stage.getName() + "-" + taskId;
         this.stage = stage;
         this.blockCommitRowsCount = stage.getBlockCommitRowCount();
-        if (stage.getBlockCommitInterval() == null)
-            this.blockCommitIntervalMillis = 0;
-        else
-            this.blockCommitIntervalMillis = stage.getBlockCommitInterval()
-                    .longValue();
         this.usingBlockCommit = (blockCommitRowsCount > 1);
         this.taskProgress = stage.getProgressTracker().getTaskProgress(taskId);
     }
@@ -171,20 +164,7 @@ public class SingleThreadStageTask implements Runnable
         taskProgress.begin();
         context = stage.getPluginContext();
 
-        try
-        {
-            runTask();
-        }
-        catch (Throwable t)
-        {
-            // This catch block should not be normally reachable except if
-            // failure recovery generates an exception. We need to try to
-            // log the exception for later fault diagnosis and report an error.
-            String msg = "Stage task error recovery failed: stage="
-                    + stage.getName() + " message=" + t.getMessage();
-            logger.error(msg, t);
-            dispatchErrorNotification(msg, null, t);
-        }
+        runTask();
 
         logInfo("Terminating processing for stage task thread", null);
         ReplDBMSHeader lastEvent = stage.getProgressTracker()
@@ -228,9 +208,6 @@ public class SingleThreadStageTask implements Runnable
             boolean syncTHLWithExtractor = stage.getPipeline()
                     .syncTHLWithExtractor();
 
-            // Initialize the clock for checking block commit interval.
-            lastCommitMillis = System.currentTimeMillis();
-
             while (!cancelled)
             {
                 // Check for cancellation and exit loop if it has occurred.
@@ -254,7 +231,7 @@ public class SingleThreadStageTask implements Runnable
                     {
                         if (logger.isDebugEnabled())
                             logger.debug(message, e);
-                        dispatchErrorNotification(message, null, e);
+                        eventDispatcher.put(new ErrorNotification(message, e));
                         break;
                     }
                     else
@@ -278,11 +255,8 @@ public class SingleThreadStageTask implements Runnable
 
                 // Issue #15. If we detect a change in the service name, we
                 // should commit now to prevent merging of transactions from
-                // different services in block commit. However, we need to
-                // ignore this rule for filtered events, as they are gaps
-                // rather than real transactions.
-                if (usingBlockCommit && genericEvent instanceof ReplDBMSEvent
-                        && !(genericEvent instanceof ReplDBMSFilteredEvent))
+                // different services in block commit.
+                if (usingBlockCommit && genericEvent instanceof ReplDBMSEvent)
                 {
                     ReplDBMSEvent re = (ReplDBMSEvent) genericEvent;
                     String newService = re.getDBMSEvent()
@@ -471,18 +445,11 @@ public class SingleThreadStageTask implements Runnable
                 else if (usingBlockCommit)
                 {
                     blockEventCount++;
-                    if (event.getLastFrag())
+                    if (event.getLastFrag()
+                            && ((blockEventCount >= blockCommitRowsCount) || !extractor
+                                    .hasMoreEvents()))
                     {
-                        if ((blockEventCount >= blockCommitRowsCount))
-                        {
-                            // Commit if we are at the end of the block.
-                            doCommit = true;
-                        }
-                        else if (extractorQueueEmpty())
-                        {
-                            // Commit if there is no more work to be done.
-                            doCommit = true;
-                        }
+                        doCommit = true;
                     }
                 }
                 else
@@ -502,31 +469,8 @@ public class SingleThreadStageTask implements Runnable
             }
 
             // At the end of the loop, issue commit to ensure partial block
-            // becomes persistent. This should *only* occur if we are at the
-            // end of a transaction to prevent partial block commits. Otherwise
-            // we must roll back.
-            if (event != null && event.getLastFrag())
-            {
-                commit();
-            }
-            else
-            {
-                String message;
-                if (event == null)
-                {
-                    message = "Performing rollback of possible partial transaction: seqno=(unavailable)";
-                }
-                else
-                {
-                    message = "Performing rollback of partial transaction: seqno="
-                            + event.getSeqno()
-                            + " fragno="
-                            + event.getFragno()
-                            + " last_frag=" + event.getLastFrag();
-                }
-                logger.info(message);
-                applier.rollback();
-            }
+            // becomes persistent.
+            commit();
         }
         catch (InterruptedException e)
         {
@@ -550,102 +494,41 @@ public class SingleThreadStageTask implements Runnable
         }
         catch (ApplierException e)
         {
-            // Something happened to our target. Construct an appropriate
-            // message.
-            String message;
-            if (event == null)
-            {
-                message = "Event application failed: seqno=(unavailable) message="
-                        + e.getMessage();
-            }
-            else
-            {
-                message = "Event application failed: seqno=" + event.getSeqno()
-                        + " fragno=" + event.getFragno() + " message="
-                        + e.getMessage();
-            }
+            String message = "Event application failed: seqno="
+                    + event.getSeqno() + " fragno=" + event.getFragno()
+                    + " message=" + e.getMessage();
+            logError(message, e);
+            dispatchErrorEvent(new ErrorNotification(message, event.getSeqno(),
+                    event.getEventId(), e));
 
-            // Now shut down cleanly.
-            emergencyRollback(message, event, e);
+            // Roll back to prevent partial writes (should not be possible but
+            // might happen).
+            emergencyRollback();
         }
         catch (Throwable e)
         {
             // An unexpected error occurred.
-            String message;
+            String msg = "Stage task failed: " + stage.getName();
             if (event == null)
             {
-                message = "Stage task failed: " + stage.getName();
+                dispatchErrorEvent(new ErrorNotification(msg, e));
             }
             else
             {
-                message = "Stage task failed: stage=" + stage.getName()
-                        + " seqno=" + +event.getSeqno() + " fragno="
-                        + event.getFragno();
+                dispatchErrorEvent(new ErrorNotification(msg, event.getSeqno(),
+                        event.getEventId(), e));
             }
+            logger.info("Unexpected error: " + msg, e);
 
-            // Now shut down cleanly.
-            emergencyRollback(message, event, e);
+            // Roll back to prevent partial writes (should not be possible but
+            // might happen).
+            emergencyRollback();
         }
     }
 
-    /**
-     * Determines whether the extractor queue is currently empty. If the queue
-     * is empty we wait up until the block commit interval using a quick sleep
-     * interval.
-     * 
-     * @throws InterruptedException
-     */
-    private boolean extractorQueueEmpty() throws InterruptedException
+    // Roll back following an unexpected failure.
+    private void emergencyRollback()
     {
-        if (extractor.hasMoreEvents())
-            return false;
-        else if (blockCommitIntervalMillis <= 0)
-            return true;
-        else
-        {
-            // Compute the next time when we can commit based on commit
-            // interval.
-            long nextCommitMillis = lastCommitMillis
-                    + blockCommitIntervalMillis;
-            long sleepMillis = nextCommitMillis - System.currentTimeMillis();
-
-            // If we are not past the commit time loop around short sleep
-            // followed by checking the extractor. The loop describes the
-            // sleep time so that this exits.
-            while (sleepMillis > 0)
-            {
-                Thread.sleep(1);
-                if (extractor.hasMoreEvents())
-                    return false;
-                sleepMillis = nextCommitMillis - System.currentTimeMillis();
-            }
-
-            // If we get here the queue is really empty and has been for a
-            // while.
-            return true;
-        }
-    }
-
-    /**
-     * Roll back following an unexpected failure. This takes care of error
-     * logging, rollback, and dispatching error notification to shut down the
-     * pipeline.
-     * 
-     * @param message Message to print in the log
-     * @param event Current transaction fragment or null if not available
-     * @param t The exception that prompted a rollback
-     */
-    private void emergencyRollback(String message, ReplDBMSEvent event,
-            Throwable t)
-    {
-        // Print the error to get as much information into the log as possible.
-        logError(message, t);
-
-        // Now roll back suppressing exceptions. Interrupts can be ignored
-        // as the thread will end shortly anyway. Other errors can be ignored
-        // since rollback might not work due to the original error, e.g. a
-        // server going away. In both cases we write messages to ensure there
-        // is full diagnostic information for post-mortem analysis.
         logger.info("Performing emergency rollback of applied changes");
         try
         {
@@ -656,15 +539,10 @@ public class SingleThreadStageTask implements Runnable
             logWarn("Task cancelled while trying to rollback following cancellation",
                     null);
         }
-        catch (Throwable t1)
+        catch (Throwable t)
         {
-            logWarn("Emergency rollback failed", t1);
+            logWarn("Emergency rollback failed", t);
         }
-
-        // Finally, dispatch a notification to stop the pipeline. We need to be
-        // very sure preceding code suppresses exceptions so we can get to this
-        // point.
-        dispatchErrorNotification(message, event, t);
     }
 
     // Utility routine to update position. This routine knows about control
@@ -704,14 +582,10 @@ public class SingleThreadStageTask implements Runnable
         if (usingBlockCommit)
         {
             blockEventCount++;
-            if (blockEventCount >= blockCommitRowsCount)
+            if ((blockEventCount >= blockCommitRowsCount)
+                    || !extractor.hasMoreEvents())
             {
                 // Commit if we are at the end of the block.
-                doCommit = true;
-            }
-            else if (extractorQueueEmpty())
-            {
-                // Commit if there is no more work to be done.
                 doCommit = true;
             }
             else
@@ -721,9 +595,7 @@ public class SingleThreadStageTask implements Runnable
             }
         }
         else
-        {
             doCommit = true;
-        }
 
         // Finally, update!
         if (logger.isDebugEnabled())
@@ -738,7 +610,6 @@ public class SingleThreadStageTask implements Runnable
         {
             schedule.commit();
             blockEventCount = 0;
-            lastCommitMillis = System.currentTimeMillis();
         }
     }
 
@@ -770,7 +641,6 @@ public class SingleThreadStageTask implements Runnable
             {
                 schedule.commit();
                 blockEventCount = 0;
-                lastCommitMillis = System.currentTimeMillis();
             }
         }
         catch (ApplierException e)
@@ -805,36 +675,14 @@ public class SingleThreadStageTask implements Runnable
         applier.commit();
         schedule.commit();
         blockEventCount = 0;
-        lastCommitMillis = System.currentTimeMillis();
     }
 
-    /**
-     * Utility routine to generate an error notification while trapping
-     * interrupts. This is a terminal call and the caller thread *MUST* exit
-     * unconditionally after making it. Interrupt suppression allows the caller
-     * to complete any logging that may be necessary to diagnose the failure or
-     * provide user-visible information.
-     * 
-     * @param message Error message
-     * @param event Event associated with the error or null if no such event
-     *            exists
-     * @param t Throwable that generated the error
-     */
-    private void dispatchErrorNotification(String message, ReplDBMSEvent event,
-            Throwable t)
+    // Utility routine to log error event with exception handling.
+    private void dispatchErrorEvent(ErrorNotification en)
     {
-        logInfo("Dispatching error event: " + message, null);
         try
         {
-            if (event == null)
-            {
-                eventDispatcher.put(new ErrorNotification(message, t));
-            }
-            else
-            {
-                eventDispatcher.put(new ErrorNotification(message, event
-                        .getSeqno(), event.getEventId(), t));
-            }
+            eventDispatcher.put(en);
         }
         catch (InterruptedException e)
         {

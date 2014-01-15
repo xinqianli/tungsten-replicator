@@ -400,16 +400,15 @@ public class TestSqlOperationMatcher
     {
         String[] cmds1 = {
                 "/* comment */ delete /* comment */ from foo where id=1",
-                "DELETE from foo WHERE \"msg\" = 'value'",
-                "DELETE from \"foo\" WHere msg= 'data'",
-                "delete  from   `foo` /* hello*/ where id=1",
-                "DElete LOW_PRIORITY QUICK IGNORE from \"foo\""};
+                "DELETE foo WHERE \"msg\" = 'value'",
+                "DELETE \"foo\" WHere msg= 'data'",
+                "delete    `foo` /* hello*/ where id=1",
+                "DElete LOW_PRIORITY QUICK IGNORE \"foo\""};
         String[] cmds2 = {"delete from bar.foo where id=1",
-                "DELETE from bar.foo WHERE \"msg\" = 'value'",
-                "DELETE from \"bar\".\"foo\" WHere msg= 'data'",
-                "delete      from  `bar`.`foo` /* hello*/ where id=1",
-                "DElete LOW_PRIORITY QUICK IGNORE from bar.\"foo\"",
-                "delete a from bar.foo a join bar.foo b on a.id = b.id where b.val = 2"};
+                "DELETE bar.foo WHERE \"msg\" = 'value'",
+                "DELETE \"bar\".\"foo\" WHere msg= 'data'",
+                "delete    `bar`.`foo` /* hello*/ where id=1",
+                "DElete LOW_PRIORITY QUICK IGNORE bar.\"foo\""};
         SqlOperationMatcher m = new MySQLOperationMatcher();
         for (String cmd : cmds1)
         {

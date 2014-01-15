@@ -17,7 +17,6 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Ludovic Launer
- * Contributors: Robert Hodges
  */
 
 package com.continuent.tungsten.common.security;
@@ -35,7 +34,6 @@ import com.continuent.tungsten.common.config.TungstenProperties;
 import com.continuent.tungsten.common.config.cluster.ClusterConfiguration;
 import com.continuent.tungsten.common.config.cluster.ConfigurationException;
 import com.continuent.tungsten.common.jmx.ServerRuntimeException;
-import com.continuent.tungsten.common.utils.CLUtils;
 
 /**
  * Helper class for security related topics
@@ -46,75 +44,63 @@ import com.continuent.tungsten.common.utils.CLUtils;
 public class SecurityHelper
 {
     private static final Logger logger = Logger.getLogger(SecurityHelper.class);
-
+    
+    
     /**
      * Save passwords from a TungstenProperties into a file
      * 
      * @param authenticationInfo containing password file location
      */
-    public static void saveCredentialsFromAuthenticationInfo(
-            AuthenticationInfo authenticationInfo)
-            throws ServerRuntimeException
+    public static void saveCredentialsFromAuthenticationInfo(AuthenticationInfo authenticationInfo) throws ServerRuntimeException
     {
-        String passwordFileLocation = authenticationInfo
-                .getPasswordFileLocation();
-
+        String passwordFileLocation = authenticationInfo.getPasswordFileLocation();
+        
         try
         {
             String username = authenticationInfo.getUsername();
             String password = authenticationInfo.getPassword();
-
-            PropertiesConfiguration props = new PropertiesConfiguration(
-                    passwordFileLocation); // Use Apache commons-configuration:
-                                           // preserves comments in .properties
-                                           // !
+            
+            PropertiesConfiguration props = new PropertiesConfiguration(passwordFileLocation);      // Use Apache commons-configuration: preserves comments in .properties !
             props.setProperty(username, password);
             props.save();
         }
         catch (org.apache.commons.configuration.ConfigurationException ce)
         {
-            logger.error("Error while saving properties for file:"
-                    + authenticationInfo.getPasswordFileLocation(), ce);
-            throw new ServerRuntimeException("Error while saving Credentials: "
-                    + ce.getMessage());
+          logger.error("Error while saving properties for file:" + authenticationInfo.getPasswordFileLocation());
+          logger.debug(ce.getMessage());
+          throw new ServerRuntimeException("Error while saving Credentials: " + ce.getMessage());
         }
     }
-
+    
     /**
      * Delete a user and password from a file
      * 
      * @param authenticationInfo containing password file location
      */
-    public static void deleteUserFromAuthenticationInfo(
-            AuthenticationInfo authenticationInfo)
-            throws ServerRuntimeException
+    public static void deleteUserFromAuthenticationInfo(AuthenticationInfo authenticationInfo) throws ServerRuntimeException
     {
-        String username = authenticationInfo.getUsername();
-        String passwordFileLocation = authenticationInfo
-                .getPasswordFileLocation();
-
+        String username             = authenticationInfo.getUsername();
+        String passwordFileLocation = authenticationInfo.getPasswordFileLocation();
+        
         try
         {
-            PropertiesConfiguration props = new PropertiesConfiguration(
-                    passwordFileLocation);
-
+            PropertiesConfiguration props = new PropertiesConfiguration(passwordFileLocation);
+            
             // --- Check that the user exists ---
             String usernameInFile = props.getString(username);
-            if (usernameInFile == null)
+            if (usernameInFile==null)
             {
-                throw new ServerRuntimeException(MessageFormat.format(
-                        "Username does not exist: {0}", username));
+                throw new ServerRuntimeException(MessageFormat.format("Username does not exist: {0}", username));
             }
-
+            
             props.clearProperty(username);
             props.save();
         }
         catch (org.apache.commons.configuration.ConfigurationException ce)
         {
-            logger.error("Error while saving properties for file:"
-                    + authenticationInfo.getPasswordFileLocation(), ce);
-            throw new ServerRuntimeException("Error while saving Credentials: "
-                    + ce.getMessage());
+          logger.error("Error while saving properties for file:" + authenticationInfo.getPasswordFileLocation());
+          logger.debug(ce.getMessage());
+          throw new ServerRuntimeException("Error while saving Credentials: " + ce.getMessage());
         }
     }
 
@@ -125,8 +111,7 @@ public class SecurityHelper
      *         values
      */
     public static TungstenProperties loadPasswordsFromAuthenticationInfo(
-            AuthenticationInfo authenticationInfo)
-            throws ServerRuntimeException
+            AuthenticationInfo authenticationInfo) throws ServerRuntimeException
     {
         try
         {
@@ -141,14 +126,19 @@ public class SecurityHelper
         }
         catch (FileNotFoundException e)
         {
-            throw new ServerRuntimeException("Unable to find properties file: "
-                    + authenticationInfo.getPasswordFileLocation(), e);
-
+            logger.error("Unable to find properties file: "
+                    + authenticationInfo.getPasswordFileLocation());
+            logger.debug("Properties search failure", e);
+            throw new ServerRuntimeException("Unable to find password file: "
+                    + e.getMessage());
         }
         catch (IOException e)
         {
-            throw new ServerRuntimeException("Unable to read properties file: "
-                    + authenticationInfo.getPasswordFileLocation(), e);
+            logger.error("Unable to read properties file: "
+                    + authenticationInfo.getPasswordFileLocation());
+            logger.debug("Properties read failure", e);
+            throw new ServerRuntimeException("Unable to read password file: "
+                    + e.getMessage());
         }
     }
 
@@ -162,7 +152,8 @@ public class SecurityHelper
     public static AuthenticationInfo loadAuthenticationInformation()
             throws ConfigurationException
     {
-        return loadAuthenticationInformation(null);
+        return loadAuthenticationInformation(null,
+                AuthenticationInfo.AUTH_USAGE.SERVER_SIDE);
     }
 
     /**
@@ -177,135 +168,66 @@ public class SecurityHelper
      * @throws ReplicatorException
      */
     public static AuthenticationInfo loadAuthenticationInformation(
-            String propertiesFileLocation) throws ConfigurationException
-    {
-        return loadAuthenticationInformation(propertiesFileLocation, true);
-    }
-
-    public static AuthenticationInfo loadAuthenticationInformation(
-            String propertiesFileLocation, boolean doConsistencyChecks)
+            String propertiesFileLocation,
+            AuthenticationInfo.AUTH_USAGE authUsage)
             throws ConfigurationException
     {
-        // Load properties and perform substitution
-        TungstenProperties securityProperties = null;
-        try
-        {
-            securityProperties = loadSecurityPropertiesFromFile(propertiesFileLocation);
-        }
-        catch (ConfigurationException ce)
-        {
-            if (doConsistencyChecks)
-                throw ce;
-        }
+        TungstenProperties securityProperties = loadSecurityPropertiesFromFile(propertiesFileLocation);
 
-        AuthenticationInfo authInfo = new AuthenticationInfo(
-                propertiesFileLocation);
+        AuthenticationInfo authInfo = new AuthenticationInfo(authUsage);
 
         // Authorisation and/or encryption
-        if (securityProperties != null)
-        {
-            securityProperties.trim(); // Remove white spaces
-            boolean useAuthentication = securityProperties.getBoolean(
-                    SecurityConf.SECURITY_JMX_USE_AUTHENTICATION,
-                    SecurityConf.SECURITY_USE_AUTHENTICATION_DEFAULT, false);
-            boolean useEncryption = securityProperties.getBoolean(
-                    SecurityConf.SECURITY_JMX_USE_ENCRYPTION,
-                    SecurityConf.SECURITY_USE_ENCRYPTION_DEFAULT, false);
-            boolean useTungstenAuthenticationRealm = securityProperties
-                    .getBoolean(
-                            SecurityConf.SECURITY_JMX_USE_TUNGSTEN_AUTHENTICATION_REALM,
-                            SecurityConf.SECURITY_USE_TUNGSTEN_AUTHENTICATION_REALM_DEFAULT,
-                            false);
-            boolean useEncryptedPassword = securityProperties
-                    .getBoolean(
-                            SecurityConf.SECURITY_JMX_USE_TUNGSTEN_AUTHENTICATION_REALM_ENCRYPTED_PASSWORD,
-                            SecurityConf.SECURITY_USE_TUNGSTEN_AUTHENTICATION_REALM_ENCRYPTED_PASSWORD_DEFAULT,
-                            false);
+        securityProperties.trim(); // Remove white spaces
+        boolean useAuthentication = securityProperties.getBoolean(
+                SecurityConf.SECURITY_USE_AUTHENTICATION,
+                SecurityConf.SECURITY_USE_AUTHENTICATION_DEFAULT, false);
+        boolean useEncryption = securityProperties.getBoolean(
+                SecurityConf.SECURITY_USE_ENCRYPTION,
+                SecurityConf.SECURITY_USE_ENCRYPTION_DEFAULT, false);
+        boolean useTungstenAuthenticationRealm = securityProperties
+                .getBoolean(
+                        SecurityConf.SECURITY_USE_TUNGSTEN_AUTHENTICATION_REALM,
+                        SecurityConf.SECURITY_USE_TUNGSTEN_AUTHENTICATION_REALM_DEFAULT,
+                        false);
+        boolean useEncryptedPassword = securityProperties
+                .getBoolean(
+                        SecurityConf.SECURITY_USE_TUNGSTEN_AUTHENTICATION_REALM_ENCRYPTED_PASSWORD,
+                        SecurityConf.SECURITY_USE_TUNGSTEN_AUTHENTICATION_REALM_ENCRYPTED_PASSWORD_DEFAULT,
+                        false);
 
-            // Retrieve properties
-            String parentFileLocation = securityProperties
-                    .getString(SecurityConf.SECURITY_PROPERTIES_PARENT_FILE_LOCATION);
-            String passwordFileLocation = securityProperties
-                    .getString(SecurityConf.SECURITY_PASSWORD_FILE_LOCATION);
-            String accessFileLocation = securityProperties
-                    .getString(SecurityConf.SECURITY_ACCESS_FILE_LOCATION);
-            String keystoreLocation = securityProperties
-                    .getString(SecurityConf.SECURITY_KEYSTORE_LOCATION);
-            String keystorePassword = securityProperties
-                    .getString(SecurityConf.SECURITY_KEYSTORE_PASSWORD);
-            String truststoreLocation = securityProperties
-                    .getString(SecurityConf.SECURITY_TRUSTSTORE_LOCATION);
-            String truststorePassword = securityProperties
-                    .getString(SecurityConf.SECURITY_TRUSTSTORE_PASSWORD);
-            String userName = securityProperties.getString(
-                    SecurityConf.SECURITY_JMX_USERNAME, null, false);
+        // Retrieve properties
+        String securityPropertiesFileLocation = securityProperties
+                .getString(SecurityConf.SECURITY_PROPERTIES_PARENT_FILE_LOCATION);
+        String passwordFileLocation = securityProperties
+                .getString(SecurityConf.SECURITY_PASSWORD_FILE_LOCATION);
+        String accessFileLocation = securityProperties
+                .getString(SecurityConf.SECURITY_ACCESS_FILE_LOCATION);
+        String keystoreLocation = securityProperties
+                .getString(SecurityConf.SECURITY_KEYSTORE_LOCATION);
+        String keystorePassword = securityProperties
+                .getString(SecurityConf.SECURITY_KEYSTORE_PASSWORD);
+        String truststoreLocation = securityProperties
+                .getString(SecurityConf.SECURITY_TRUSTSTORE_LOCATION);
+        String truststorePassword = securityProperties
+                .getString(SecurityConf.SECURITY_TRUSTSTORE_PASSWORD);
+        String userName = securityProperties.getString(
+                SecurityConf.SECURITY_USERNAME, null, false);
 
-            // Populate return object
-            authInfo.setParentPropertiesFileLocation(parentFileLocation);
-            authInfo.setAuthenticationNeeded(useAuthentication);
-            authInfo.setUseTungstenAuthenticationRealm(useTungstenAuthenticationRealm);
-            authInfo.setUseEncryptedPasswords(useEncryptedPassword);
-            authInfo.setEncryptionNeeded(useEncryption);
-            authInfo.setPasswordFileLocation(passwordFileLocation);
-            authInfo.setAccessFileLocation(accessFileLocation);
-            authInfo.setKeystoreLocation(keystoreLocation);
-            authInfo.setKeystorePassword(keystorePassword);
-            authInfo.setTruststoreLocation(truststoreLocation);
-            authInfo.setTruststorePassword(truststorePassword);
-            authInfo.setUsername(userName);
+        // Populate return object
+        authInfo.setParentPropertiesFileLocation(securityPropertiesFileLocation);
+        authInfo.setAuthenticationNeeded(useAuthentication);
+        authInfo.setUseTungstenAuthenticationRealm(useTungstenAuthenticationRealm);
+        authInfo.setUseEncryptedPasswords(useEncryptedPassword);
+        authInfo.setEncryptionNeeded(useEncryption);
+        authInfo.setPasswordFileLocation(passwordFileLocation);
+        authInfo.setAccessFileLocation(accessFileLocation);
+        authInfo.setKeystoreLocation(keystoreLocation);
+        authInfo.setKeystorePassword(keystorePassword);
+        authInfo.setTruststoreLocation(truststoreLocation);
+        authInfo.setTruststorePassword(truststorePassword);
+        authInfo.setUsername(userName);
 
-            // --- Check information is correct ---
-            if (doConsistencyChecks)
-                authInfo.checkAuthenticationInfo(); // Checks authentication and
-                                                    // encryption parameters:
-                                                    // file exists, ...
-
-            // --- Set critical properties as System Properties ---
-            SecurityHelper.setSecurityProperties(authInfo, false);
-        }
         return authInfo;
-    }
-
-    /**
-     * Set system properties required for SSL and password management. Since
-     * these settings are critical to correct operation we optionally log them.
-     * 
-     * @param authInfo Populated authenticatino information
-     * @param verbose If true, log information
-     */
-    private static void setSecurityProperties(AuthenticationInfo authInfo,
-            boolean verbose)
-    {
-        if (verbose)
-        {
-            CLUtils.println("Setting security properties!");
-        }
-        setSystemProperty("javax.net.ssl.keyStore",
-                authInfo.getKeystoreLocation(), verbose);
-        setSystemProperty("javax.net.ssl.keyStorePassword",
-                authInfo.getKeystorePassword(), verbose);
-        setSystemProperty("javax.net.ssl.trustStore",
-                authInfo.getTruststoreLocation(), verbose);
-        setSystemProperty("javax.net.ssl.trustStorePassword",
-                authInfo.getTruststorePassword(), verbose);
-    }
-
-    /**
-     * Sets a system property with a log message. Java -Dxxx system property
-     * 
-     * @param name the name of the system property to set
-     * @param value value of the system property
-     * @param verbose log the property being set if true.
-     */
-    private static void setSystemProperty(String name, String value,
-            boolean verbose)
-    {
-        if (verbose)
-        {
-            CLUtils.println("Setting system property: name=" + name + " value="
-                    + value);
-        }
-        System.setProperty(name, value);
     }
 
     /**
@@ -351,14 +273,14 @@ public class SecurityHelper
         {
             securityProps = new TungstenProperties();
             securityProps.load(new FileInputStream(securityPropertiesFile),
-                    true);
+                    false);
         }
         catch (FileNotFoundException e)
         {
             String msg = MessageFormat.format(
                     "Cannot find configuration file: {0}",
                     securityPropertiesFile.getPath());
-            logger.debug(msg, e);
+            logger.error(msg);
             throw new ConfigurationException(msg);
         }
         catch (IOException e)
@@ -366,21 +288,17 @@ public class SecurityHelper
             String msg = MessageFormat.format(
                     "Cannot load configuration file: {0}.\n Reason: {1}",
                     securityPropertiesFile.getPath(), e.getMessage());
-            logger.debug(msg, e);
+            logger.error(msg);
             throw new ConfigurationException(msg);
         }
 
-        if (logger.isDebugEnabled())
-        {
-            logger.debug(MessageFormat.format(": {0}",
-                    securityPropertiesFile.getPath()));
-        }
-
+        logger.info(MessageFormat.format(
+                "Security parameters loaded from: {0}",
+                securityPropertiesFile.getPath()));
+        
         // Update propertiesFileLocation with the location actualy used
-        securityProps.put(
-                SecurityConf.SECURITY_PROPERTIES_PARENT_FILE_LOCATION,
-                securityPropertiesFile.getAbsolutePath());
-
+        securityProps.put(SecurityConf.SECURITY_PROPERTIES_PARENT_FILE_LOCATION, securityPropertiesFile.getAbsolutePath());
+        
         return securityProps;
     }
 

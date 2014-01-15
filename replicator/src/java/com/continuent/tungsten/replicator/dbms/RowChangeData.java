@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2013 Continuent Inc.
+ * Copyright (C) 2007-2008 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,13 +17,14 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Teemu Ollakka
- * Contributor(s): Stephane Giron
+ * Contributor(s):
  */
 
 package com.continuent.tungsten.replicator.dbms;
 
 import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.List;
 
 import com.continuent.tungsten.replicator.event.ReplOption;
 
@@ -71,4 +72,10 @@ public class RowChangeData extends DBMSData
     {
         this.options.addAll(savedOptions);
     }
+
+    public List<ReplOption> getOptions()
+    {
+        return options;
+    }
+
 }

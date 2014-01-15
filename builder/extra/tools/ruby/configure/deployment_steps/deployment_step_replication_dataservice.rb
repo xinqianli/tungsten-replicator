@@ -21,7 +21,7 @@ module ConfigureDeploymentStepReplicationDataservice
 		  get_replication_dataservice_template(),
 			@config.getProperty(REPL_SVC_CONFIG_FILE), "#")
 		
-		transformer.set_fixed_properties(@config.getProperty(get_host_key(FIXED_PROPERTY_STRINGS))+@config.getProperty(get_service_key(FIXED_PROPERTY_STRINGS)))
+		transformer.set_fixed_properties(@config.getProperty(get_service_key(FIXED_PROPERTY_STRINGS)))
 		transformer.transform_values(method(:transform_replication_dataservice_values))
     transformer.output
 		
@@ -34,7 +34,7 @@ module ConfigureDeploymentStepReplicationDataservice
         rescue CommandError => ce
           # The status command fails if the service is not running
           info("Start the replication service")
-          cmd_result("#{get_trepctl_cmd()} -service #{@config.getProperty(get_service_key(DEPLOYMENT_SERVICE))} load")
+          cmd_result("#{get_trepctl_cmd()} -service #{@config.getProperty(get_service_key(DEPLOYMENT_SERVICE))} start")
           
           if @config.getProperty(REPL_SVC_REPORT) == "true"
             output("Getting services list")
@@ -98,7 +98,7 @@ module ConfigureDeploymentStepReplicationDataservice
       @config.getProperty([DATASOURCES, ds, REPL_DBHOST]),
       @config.getProperty([DATASOURCES, ds, REPL_DBPORT]),
       @config.getProperty([DATASOURCES, ds, REPL_DBLOGIN]),
-      @config.getProperty([DATASOURCES, ds, REPL_DBPASSWORD]), @config, ds)
+      @config.getProperty([DATASOURCES, ds, REPL_DBPASSWORD]), @config)
   end
   
   def get_extractor_datasource()
@@ -113,7 +113,7 @@ module ConfigureDeploymentStepReplicationDataservice
         @config.getProperty([DATASOURCES, ds, REPL_DBHOST]),
         @config.getProperty([DATASOURCES, ds, REPL_DBPORT]),
         @config.getProperty([DATASOURCES, ds, REPL_DBLOGIN]),
-        @config.getProperty([DATASOURCES, ds, REPL_DBPASSWORD]), @config, ds)
+        @config.getProperty([DATASOURCES, ds, REPL_DBPASSWORD]), @config)
     else
       get_applier_datasource()
     end

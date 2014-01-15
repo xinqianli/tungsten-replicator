@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2011-13 Continuent Inc.
+ * Copyright (C) 2011-12 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -23,7 +23,6 @@
 package com.continuent.tungsten.replicator.thl;
 
 import java.sql.Timestamp;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.log4j.Logger;
@@ -134,8 +133,7 @@ public class THLParallelReadTask implements Runnable
     {
         // Set up the read queue.
         this.readQueue = new THLParallelReadQueue(taskId, maxSize,
-                maxControlEvents, restartSeqno, syncInterval, lastHeader,
-                intervalGuard);
+                maxControlEvents, restartSeqno, syncInterval, lastHeader);
 
         // Connect to the log.
         connection = thl.connect(true);
@@ -158,6 +156,8 @@ public class THLParallelReadTask implements Runnable
                 try
                 {
                     response = partitioner.partition(header, taskId);
+                    intervalGuard.report(taskId, header.getSeqno(), header
+                            .getExtractedTstamp().getTime());
                 }
                 catch (THLException e)
                 {
@@ -283,16 +283,10 @@ public class THLParallelReadTask implements Runnable
         }
         catch (Throwable e)
         {
-            // Store the error and try to log it at the point of failure.
-            // This mitigates liveness problems if we fail due to lack of memory
-            // as errors may not be logged. However, callers will pick up
-            // the throwable and signal an error.
-            throwable = e;
+            String msg = "Read failed on transaction log: seqno=" + readSeqno
+                    + " taskId=" + taskId;
             try
             {
-                String msg = "Read failed on transaction log: seqno="
-                        + readSeqno + " taskId=" + taskId;
-                logger.error(msg, e);
                 dispatcher.put(new ErrorNotification(msg, e));
             }
             catch (InterruptedException e1)
@@ -300,11 +294,8 @@ public class THLParallelReadTask implements Runnable
                 logger.warn("Task cancelled while posting error notification",
                         null);
             }
-            catch (Throwable t1)
-            {
-                logger.warn("Failure while attempting to log an error: " + e,
-                        t1);
-            }
+
+            throwable = e;
         }
 
         // Close up shop.
@@ -324,8 +315,7 @@ public class THLParallelReadTask implements Runnable
 
     /**
      * Removes and returns next event from the queue, blocking if empty. This
-     * call blocks if no event is available. Internally it polls so that we
-     * correctly detect if the thread has failed.
+     * call blocks if no event is available.
      * 
      * @return The next event in the queue
      * @throws InterruptedException Thrown if method is interrupted
@@ -333,30 +323,21 @@ public class THLParallelReadTask implements Runnable
      */
     public ReplEvent get() throws InterruptedException, ReplicatorException
     {
-        // Use a polling loop so that if there is a problem with the THL thread
-        // we will see the throwable. This prevents us from blocking while the
-        // thread is actually dead.
-        ReplEvent event = null;
-        while (event == null)
+        // Check for read thread liveness.
+        if (throwable != null)
         {
-            // Check for read thread liveness.
-            if (throwable != null)
-            {
-                // If this happens the thread has died.
-                throw new ReplicatorException("THL reader thread failed",
-                        throwable);
-            }
-            else if (cancelled)
-            {
-                // If this is true the thread has been cancelled. This should
-                // not occur before the caller thread has exited.
-                throw new ReplicatorException("THL reader thread is cancelled");
-            }
-
-            // Get the next event and return it.
-            event = readQueue.take(1000, TimeUnit.MILLISECONDS);
+            // If this happens the thread has died.
+            throw new ReplicatorException("THL reader thread failed", throwable);
+        }
+        else if (cancelled)
+        {
+            // If this is true the thread has been cancelled. This should never
+            // occur before the caller thread has exited.
+            throw new ReplicatorException("THL reader thread is cancelled");
         }
 
+        // Get the next event and return it.
+        ReplEvent event = readQueue.take();
         if (logger.isDebugEnabled())
         {
             logger.debug("Returning event from queue: seqno="

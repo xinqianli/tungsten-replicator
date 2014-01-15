@@ -81,7 +81,6 @@ REPL_ROLE_LOCAL_PRE = "local-prefetch"
 DISTRIBUTED_DEPLOYMENT_NAME = "regular"
 UPDATE_DEPLOYMENT_NAME = "update_deployment"
 DIRECT_DEPLOYMENT_HOST_ALIAS = "local"
-DIRECTORY_LOCK_FILENAME = ".lock"
 
 DEFAULT_SERVICE_NAME = "default"
 
@@ -176,9 +175,6 @@ class Configurator
   # then deploy on each host
   def run
     parsed_options?(ARGV)
-    
-    warning("This command has been DEPRECATED")
-    warning("Switch to the tpm script for managing installation and upgrade")
     
     write_header "Tungsten #{tungsten_version()} Configuration Procedure"
     display_help()
@@ -635,7 +631,7 @@ Do you want to continue with the configuration (Y) or quit (Q)?"
   end
 
   def output_version
-    write "#{File.basename(__FILE__)} version #{get_release_version}"
+    write "#{File.basename(__FILE__)} version #{VERSION}"
   end
   
   def display_help
@@ -896,14 +892,6 @@ Do you want to continue with the configuration (Y) or quit (Q)?"
   def enable_output?
     (has_tty?() || @options.stream_output == true)
   end
-
-  def is_locked?
-    File.exists?(get_lock_filename())
-  end
-
-  def get_lock_filename
-    "#{get_base_path()}/#{DIRECTORY_LOCK_FILENAME}"
-  end
   
   def is_full_tungsten_package?
     (IS_TOOLS_PACKAGE==false)
@@ -954,12 +942,6 @@ Do you want to continue with the configuration (Y) or quit (Q)?"
   def get_release_name
     release_details = get_release_details()
     release_details["name"]
-  end
-  
-  # Parse the manifest to determine what kind of package this is
-  def get_release_version
-    release_details = get_release_details()
-    release_details["version"]
   end
   
   def advanced_mode?

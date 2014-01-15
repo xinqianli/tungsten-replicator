@@ -24,7 +24,6 @@ package com.continuent.tungsten.replicator.extractor.mysql;
 
 import java.io.EOFException;
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.sql.Timestamp;
 
 import org.apache.log4j.Logger;
@@ -32,7 +31,6 @@ import org.apache.log4j.Logger;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.conf.ReplicatorRuntime;
 import com.continuent.tungsten.replicator.extractor.ExtractorException;
-import com.continuent.tungsten.replicator.extractor.mysql.conversion.BigEndianConversion;
 import com.continuent.tungsten.replicator.extractor.mysql.conversion.LittleEndianConversion;
 
 /**
@@ -54,8 +52,6 @@ public abstract class LogEvent
     protected int           flags;
 
     protected boolean       threadSpecificEvent = false;
-
-    protected String        startPosition       = "";
 
     public LogEvent()
     {
@@ -170,18 +166,8 @@ public abstract class LogEvent
         return when;
     }
 
-    /**
-     * Returns the position for the next event.
-     * 
-     * @return Returns the logPos.
-     */
-    public int getNextEventPosition()
-    {
-        return logPos;
-    }
-
     private static LogEvent readLogEvent(boolean parseStatements,
-            String currentPosition, byte[] buffer, int eventLength,
+            byte[] buffer, int eventLength,
             FormatDescriptionLogEvent descriptionEvent,
             boolean useBytesForString) throws ReplicatorException
     {
@@ -191,36 +177,40 @@ public abstract class LogEvent
         {
             case MysqlBinlog.QUERY_EVENT :
                 event = new QueryLogEvent(buffer, eventLength,
-                        descriptionEvent, parseStatements, useBytesForString,
-                        currentPosition);
+                        descriptionEvent, parseStatements, useBytesForString);
                 break;
             case MysqlBinlog.LOAD_EVENT :
                 logger.warn("Skipping unsupported LOAD_EVENT");
+                // ev = new Load_log_event(buf, event_len, description_event);
                 break;
             case MysqlBinlog.NEW_LOAD_EVENT :
                 logger.warn("Skipping unsupported NEW_LOAD_EVENT");
+                // ev = new Load_log_event(buf, event_len, description_event);
                 break;
             case MysqlBinlog.ROTATE_EVENT :
                 event = new RotateLogEvent(buffer, eventLength,
-                        descriptionEvent, currentPosition);
+                        descriptionEvent);
                 break;
             case MysqlBinlog.SLAVE_EVENT : /* can never happen (unused event) */
                 logger.warn("Skipping unsupported SLAVE_EVENT");
+                // ev = new Slave_log_event(buf, event_len);
                 break;
             case MysqlBinlog.CREATE_FILE_EVENT :
                 logger.warn("Skipping unsupported CREATE_FILE_EVENT");
+                // ev = new Create_file_log_event(buf, event_len,
+                // description_event);
                 break;
             case MysqlBinlog.APPEND_BLOCK_EVENT :
                 if (logger.isDebugEnabled())
                     logger.debug("reading APPEND_BLOCK_EVENT");
                 event = new AppendBlockLogEvent(buffer, eventLength,
-                        descriptionEvent, currentPosition);
+                        descriptionEvent);
                 break;
             case MysqlBinlog.DELETE_FILE_EVENT :
                 if (logger.isDebugEnabled())
                     logger.debug("reading DELETE_FILE_EVENT");
                 event = new DeleteFileLogEvent(buffer, eventLength,
-                        descriptionEvent, currentPosition);
+                        descriptionEvent);
                 break;
             case MysqlBinlog.EXEC_LOAD_EVENT :
                 logger.warn("Skipping unsupported EXEC_LOAD_EVENT");
@@ -230,78 +220,81 @@ public abstract class LogEvent
                 logger.warn("Skipping unsupported START_EVENT_V3");
                 break;
             case MysqlBinlog.STOP_EVENT :
-                event = new StopLogEvent(buffer, eventLength, descriptionEvent,
-                        currentPosition);
+                event = new StopLogEvent(buffer, eventLength, descriptionEvent);
                 break;
             case MysqlBinlog.INTVAR_EVENT :
                 if (logger.isDebugEnabled())
                     logger.debug("extracting INTVAR_EVENT");
                 event = new IntvarLogEvent(buffer, eventLength,
-                        descriptionEvent, currentPosition);
+                        descriptionEvent);
                 break;
             case MysqlBinlog.XID_EVENT :
-                event = new XidLogEvent(buffer, eventLength, descriptionEvent,
-                        currentPosition);
+                event = new XidLogEvent(buffer, eventLength, descriptionEvent);
                 break;
             case MysqlBinlog.RAND_EVENT :
-                event = new RandLogEvent(buffer, eventLength, descriptionEvent,
-                        currentPosition);
+                event = new RandLogEvent(buffer, eventLength, descriptionEvent);
                 break;
             case MysqlBinlog.USER_VAR_EVENT :
                 event = new UserVarLogEvent(buffer, eventLength,
-                        descriptionEvent, currentPosition);
+                        descriptionEvent);
                 break;
             case MysqlBinlog.FORMAT_DESCRIPTION_EVENT :
                 event = new FormatDescriptionLogEvent(buffer, eventLength,
-                        descriptionEvent, currentPosition);
+                        descriptionEvent);
                 break;
             case MysqlBinlog.PRE_GA_WRITE_ROWS_EVENT :
                 logger.warn("Skipping unsupported PRE_GA_WRITE_ROWS_EVENT");
+                // ev = new Write_rows_log_event_old(buf, event_len,
+                // description_event);
                 break;
             case MysqlBinlog.PRE_GA_UPDATE_ROWS_EVENT :
                 logger.warn("Skipping unsupported PRE_GA_UPDATE_ROWS_EVENT");
+                // ev = new Update_rows_log_event_old(buf, event_len,
+                // description_event);
                 break;
             case MysqlBinlog.PRE_GA_DELETE_ROWS_EVENT :
                 logger.warn("Skipping unsupported PRE_GA_DELETE_ROWS_EVENT");
+                // ev = new Delete_rows_log_event_old(buf, event_len,
+                // description_event);
                 break;
             case MysqlBinlog.WRITE_ROWS_EVENT :
             case MysqlBinlog.NEW_WRITE_ROWS_EVENT :
                 if (logger.isDebugEnabled())
                     logger.debug("reading WRITE_ROWS_EVENT");
                 event = new WriteRowsLogEvent(buffer, eventLength,
-                        descriptionEvent, useBytesForString, currentPosition);
+                        descriptionEvent, useBytesForString);
                 break;
             case MysqlBinlog.UPDATE_ROWS_EVENT :
             case MysqlBinlog.NEW_UPDATE_ROWS_EVENT :
                 if (logger.isDebugEnabled())
                     logger.debug("reading UPDATE_ROWS_EVENT");
                 event = new UpdateRowsLogEvent(buffer, eventLength,
-                        descriptionEvent, useBytesForString, currentPosition);
+                        descriptionEvent, useBytesForString);
                 break;
             case MysqlBinlog.DELETE_ROWS_EVENT :
             case MysqlBinlog.NEW_DELETE_ROWS_EVENT :
                 if (logger.isDebugEnabled())
                     logger.debug("reading DELETE_ROWS_EVENT");
                 event = new DeleteRowsLogEvent(buffer, eventLength,
-                        descriptionEvent, useBytesForString, currentPosition);
+                        descriptionEvent, useBytesForString);
                 break;
             case MysqlBinlog.TABLE_MAP_EVENT :
                 if (logger.isDebugEnabled())
                     logger.debug("reading TABLE_MAP_EVENT");
                 event = new TableMapLogEvent(buffer, eventLength,
-                        descriptionEvent, currentPosition);
+                        descriptionEvent);
                 break;
             case MysqlBinlog.BEGIN_LOAD_QUERY_EVENT :
                 if (logger.isDebugEnabled())
                     logger.debug("reading BEGIN_LOAD_QUERY_EVENT");
                 event = new BeginLoadQueryLogEvent(buffer, eventLength,
-                        descriptionEvent, currentPosition);
+                        descriptionEvent);
                 break;
             case MysqlBinlog.EXECUTE_LOAD_QUERY_EVENT :
                 if (logger.isDebugEnabled())
                     logger.debug("reading EXECUTE_LOAD_QUERY_EVENT");
                 event = new ExecuteLoadQueryLogEvent(buffer, eventLength,
-                        descriptionEvent, parseStatements, currentPosition);
+                        descriptionEvent, parseStatements);
                 break;
             case MysqlBinlog.INCIDENT_EVENT :
                 if (logger.isDebugEnabled())
@@ -325,8 +318,6 @@ public abstract class LogEvent
 
         try
         {
-            String currentPosition = position.toString();
-
             // read the header part
             // timeout is set to 2 minutes.
             readDataFromBinlog(runtime, position, header, 0, header.length, 120);
@@ -346,9 +337,8 @@ public abstract class LogEvent
 
             System.arraycopy(header, 0, fullEvent, 0, header.length);
 
-            LogEvent event = readLogEvent(parseStatements, currentPosition,
-                    fullEvent, fullEvent.length, descriptionEvent,
-                    useBytesForString);
+            LogEvent event = readLogEvent(parseStatements, fullEvent,
+                    fullEvent.length, descriptionEvent, useBytesForString);
 
             // If schema name has to be prefetched, check if it is a BEGIN LOAD
             // EVENT
@@ -369,10 +359,8 @@ public abstract class LogEvent
                 boolean found = false;
                 byte[] tmpHeader = new byte[descriptionEvent.commonHeaderLength];
 
-                String tempPos;
                 while (!found)
                 {
-                    tempPos = tempPosition.toString();
                     readDataFromBinlog(runtime, tempPosition, tmpHeader, 0,
                             tmpHeader.length, 60);
 
@@ -392,8 +380,8 @@ public abstract class LogEvent
                                 tmpHeader.length);
 
                         LogEvent tempEvent = readLogEvent(parseStatements,
-                                tempPos, fullEvent, fullEvent.length,
-                                descriptionEvent, useBytesForString);
+                                fullEvent, fullEvent.length, descriptionEvent,
+                                useBytesForString);
 
                         if (tempEvent instanceof ExecuteLoadQueryLogEvent)
                         {
@@ -452,8 +440,7 @@ public abstract class LogEvent
      */
     private static void readDataFromBinlog(ReplicatorRuntime runtime,
             BinlogReader binlog, byte[] data, int offset, int length,
-            int timeout) throws IOException, ReplicatorException,
-            InterruptedException
+            int timeout) throws IOException, ReplicatorException
     {
         boolean alreadyLogged = false;
         int spentTime = 0;
@@ -543,161 +530,22 @@ public abstract class LogEvent
             if (checksum > -1)
                 try
                 {
-                    long binlogChecksum = LittleEndianConversion
-                            .convert4BytesToLong(buffer, eventLength);
-                    if (checksum != binlogChecksum)
+                    if (checksum != LittleEndianConversion.convert4BytesToLong(
+                            buffer, eventLength))
                     {
-                        throw new ExtractorException(
-                                "Corrupted event in binlog (checksums do not match) at position "
-                                        + startPosition
-                                        + ". \nCalculated checksum : "
-                                        + checksum + " - Binlog checksum : "
-                                        + binlogChecksum
-                                        + "\nNext event position :"
-                                        + getNextEventPosition());
+                        // TODO: This should be a setting
+                        if (true)
+                            throw new ExtractorException(
+                                    "Corrupted event in binlog - checksum do not match");
+                        else
+                            logger.warn("Checksums do not match - event may be corrupted");
 
                     }
                 }
                 catch (IOException ignore)
                 {
-                    logger.warn("Failed to compute checksum", ignore);
                 }
         }
-    }
-
-    protected BigDecimal extractDecimal(byte[] buffer, int precision, int scale)
-    {
-        //
-        // Decimal representation in binlog seems to be as follows:
-        // 1 byte - 'precision'
-        // 1 byte - 'scale'
-        // remaining n bytes - integer such that value = n / (10^scale)
-        // Integer is represented as follows:
-        // 1st bit - sign such that set == +, unset == -
-        // every 4 bytes represent 9 digits in big-endian order, so that if
-        // you print the values of these quads as big-endian integers one after
-        // another, you get the whole number string representation in decimal.
-        // What remains is to put a sign and a decimal dot.
-        // 13 0a 80 00 00 05 1b 38 b0 60 00 means:
-        // 0x13 - precision = 19
-        // 0x0a - scale = 10
-        // 0x80 - positive
-        // 0x00000005 0x1b38b060 0x00
-        // 5 456700000 0
-        // 54567000000 / 10^{10} = 5.4567
-        //
-        // int_size below shows how long is integer part
-        //
-        // offset = offset + 2; // offset of the number part
-        //
-        int intg = precision - scale;
-        int intg0 = intg / MysqlBinlog.DIG_PER_INT32;
-        int frac0 = scale / MysqlBinlog.DIG_PER_INT32;
-        int intg0x = intg - intg0 * MysqlBinlog.DIG_PER_INT32;
-        int frac0x = scale - frac0 * MysqlBinlog.DIG_PER_INT32;
-
-        int offset = 0;
-
-        int sign = (buffer[offset] & 0x80) == 0x80 ? 1 : -1;
-
-        // how many bytes are used to represent given amount of digits?
-        int integerSize = intg0 * MysqlBinlog.SIZE_OF_INT32
-                + MysqlBinlog.dig2bytes[intg0x];
-        int decimalSize = frac0 * MysqlBinlog.SIZE_OF_INT32
-                + MysqlBinlog.dig2bytes[frac0x];
-
-        if (logger.isDebugEnabled())
-            logger.debug("Integer size in bytes = " + integerSize
-                    + " - Fraction size in bytes = " + decimalSize);
-        int bin_size = integerSize + decimalSize; // total bytes
-        byte[] d_copy = new byte[bin_size];
-
-        if (bin_size > buffer.length)
-        {
-            throw new ArrayIndexOutOfBoundsException("Calculated bin_size: "
-                    + bin_size + ", available bytes: " + buffer.length);
-        }
-
-        // Invert first bit
-        d_copy[0] = buffer[0];
-        d_copy[0] ^= 0x80;
-        if (sign == -1)
-        {
-            // Invert every byte
-            d_copy[0] ^= 0xFF;
-        }
-
-        for (int i = 1; i < bin_size; i++)
-        {
-            d_copy[i] = buffer[i];
-            if (sign == -1)
-            {
-                // Invert every byte
-                d_copy[i] ^= 0xFF;
-            }
-        }
-
-        // Integer part
-        offset = MysqlBinlog.dig2bytes[intg0x];
-
-        BigDecimal intPart = new BigDecimal(0);
-
-        if (offset > 0)
-            intPart = BigDecimal.valueOf(BigEndianConversion
-                    .convertNBytesToInt(d_copy, 0, offset));
-
-        while (offset < integerSize)
-        {
-            intPart = intPart.movePointRight(MysqlBinlog.DIG_PER_DEC1).add(
-                    BigDecimal.valueOf(BigEndianConversion.convert4BytesToInt(
-                            d_copy, offset)));
-            offset += 4;
-        }
-
-        // Decimal part
-        BigDecimal fracPart = new BigDecimal(0);
-        int shift = 0;
-        for (int i = 0; i < frac0; i++)
-        {
-            shift += MysqlBinlog.DIG_PER_DEC1;
-            fracPart = fracPart.add(BigDecimal.valueOf(
-                    BigEndianConversion.convert4BytesToInt(d_copy, offset))
-                    .movePointLeft(shift));
-            offset += 4;
-        }
-
-        if (MysqlBinlog.dig2bytes[frac0x] > 0)
-        {
-            fracPart = fracPart.add(BigDecimal.valueOf(
-                    BigEndianConversion.convertNBytesToInt(d_copy, offset,
-                            MysqlBinlog.dig2bytes[frac0x])).movePointLeft(
-                    shift + frac0x));
-        }
-
-        return BigDecimal.valueOf(sign).multiply(intPart.add(fracPart));
-
-    }
-
-    /**
-     * Returns the number of bytes that is used to store a decimal whose
-     * precision and scale are given
-     * 
-     * @param precision of the decimal
-     * @param scale of the decimal
-     * @return number of bytes used to store the decimal(precision, scale)
-     */
-    protected int getDecimalBinarySize(int precision, int scale)
-    {
-        int intg = precision - scale;
-        int intg0 = intg / MysqlBinlog.DIG_PER_DEC1;
-        int frac0 = scale / MysqlBinlog.DIG_PER_DEC1;
-        int intg0x = intg - intg0 * MysqlBinlog.DIG_PER_DEC1;
-        int frac0x = scale - frac0 * MysqlBinlog.DIG_PER_DEC1;
-
-        assert (scale >= 0 && precision > 0 && scale <= precision);
-
-        return intg0 * (4) + MysqlBinlog.dig2bytes[intg0x] + frac0 * (4)
-                + MysqlBinlog.dig2bytes[frac0x];
     }
 
     public static String hexdump(byte[] buffer)

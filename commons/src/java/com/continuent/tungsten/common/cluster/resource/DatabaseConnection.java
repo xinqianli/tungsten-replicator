@@ -22,10 +22,8 @@
 
 package com.continuent.tungsten.common.cluster.resource;
 
-import java.net.Socket;
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.Date;
 
 import com.continuent.tungsten.common.patterns.order.Sequence;
 import com.continuent.tungsten.common.utils.CLUtils;
@@ -34,26 +32,21 @@ public class DatabaseConnection
 {
     public enum ConnectionType
     {
-        DIRECT, CLUSTER, CONNECTOR, BRIDGED
+        DIRECT, CLUSTER, CONNECTOR
     };
 
     private ConnectionType type     = ConnectionType.DIRECT;
     private String         name;
     private Connection     connection;
     private Sequence       sequence = null;
-    private DataSource     ds       = null;
     private Object         context;
-    
-    /** Last time the connection was used */
-    private Date lastUsed = new Date();
 
     public DatabaseConnection(ConnectionType type, String name,
-            Connection connection, DataSource ds, Object context)
+            Connection connection, Object context)
     {
         this.type = type;
         this.name = name;
         this.connection = connection;
-        this.ds = ds;
         setContext(context);
     }
 
@@ -91,8 +84,11 @@ public class DatabaseConnection
     {
         this.context = context;
 
-        if (ds != null)
-            this.sequence = ds.getSequence();
+        if (context instanceof DataSource)
+        {
+            this.sequence = ((DataSource) context).getSequence();
+
+        }
     }
 
     public Sequence getSequence()
@@ -107,26 +103,12 @@ public class DatabaseConnection
 
     public DataSource getDs()
     {
-        return ds;
-    }
-    
-    /**
-     * Returns the lastUsed value.
-     * 
-     * @return Returns the lastUsed.
-     */
-    public Date getLastUsed()
-    {
-        return lastUsed;
-    }
+        if (type == ConnectionType.DIRECT)
+        {
+            return (DataSource) context;
+        }
 
-    /**
-     * Updates the lastUsed value to the current Date/Time.
-     * 
-     */
-    public void touch()
-    {
-        this.lastUsed = new Date();
+        return null;
     }
 
     public String toString()
@@ -138,6 +120,7 @@ public class DatabaseConnection
     {
         if (type == ConnectionType.DIRECT)
         {
+            DataSource ds = (DataSource) getContext();
             return String.format("%s(%s) DIRECT TO %s", name, liveness(),
                     ds.toString());
         }
@@ -152,10 +135,6 @@ public class DatabaseConnection
         {
             return String.format("%s(%s) CONNECTOR TO HOST %s", name,
                     liveness(), getContext());
-        }
-        else if (type == ConnectionType.BRIDGED)
-        {
-            return name + " BRIDGED to " + ds != null ? ds.getName() : "null";
         }
         else
         {
@@ -198,10 +177,6 @@ public class DatabaseConnection
 
     public boolean isClosed() throws SQLException
     {
-        if (type == ConnectionType.BRIDGED)
-        {
-            return ((Socket) context).isClosed();
-        }
         return connection.isClosed();
     }
 }

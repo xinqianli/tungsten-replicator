@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2013 Continuent Inc.
+ * Copyright (C) 2007-2012 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Teemu Ollakka
- * Contributor(s): Robert Hodges, Linas Virbalas
+ * Contributor(s): Robert Hodges
  */
 
 package com.continuent.tungsten.replicator.thl;
@@ -27,20 +27,18 @@ import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 
 import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.common.config.TungstenProperties;
-import com.continuent.tungsten.common.sockets.SocketWrapper;
 import com.continuent.tungsten.common.utils.ManifestParser;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.conf.ReplicatorConf;
-import com.continuent.tungsten.replicator.conf.ReplicatorRuntime;
 import com.continuent.tungsten.replicator.event.ReplDBMSEvent;
 import com.continuent.tungsten.replicator.event.ReplDBMSFilteredEvent;
 import com.continuent.tungsten.replicator.event.ReplEvent;
-import com.continuent.tungsten.replicator.management.OpenReplicatorManager;
 import com.continuent.tungsten.replicator.plugin.PluginContext;
 
 /**
@@ -61,7 +59,7 @@ public class Protocol
     public static String         MAX_SEQNO                = "max_seqno";
 
     protected PluginContext      pluginContext            = null;
-    protected SocketWrapper      socket                   = null;
+    protected SocketChannel      channel                  = null;
 
     // Capabilities from a THL server.
     protected TungstenProperties serverCapabilities;
@@ -88,9 +86,6 @@ public class Protocol
     private ArrayList<ReplEvent> buffer                   = new ArrayList<ReplEvent>();
     private boolean              buffering                = false;
 
-    private String               rmiHost                  = null;
-    private int                  rmiPort                  = -1;
-
     /**
      * Creates a new <code>Protocol</code> object
      */
@@ -100,37 +95,27 @@ public class Protocol
 
     /**
      * Creates a new <code>Protocol</code> object
+     * 
+     * @param channel
+     * @throws IOException
      */
-    public Protocol(PluginContext context, SocketWrapper socket)
+    public Protocol(PluginContext context, SocketChannel channel)
             throws IOException
     {
         this.pluginContext = context;
-        this.socket = socket;
+        this.channel = channel;
 
-        oos = new ObjectOutputStream(new BufferedOutputStream(
-                socket.getOutputStream()));
+        oos = new ObjectOutputStream(new BufferedOutputStream(this.channel
+                .socket().getOutputStream()));
         oos.flush();
-
-        // Retrieve parameters available only in a casual Replicator service.
-        if (context instanceof ReplicatorRuntime)
-        {
-            ReplicatorRuntime runtime = (ReplicatorRuntime) context;
-            if (runtime.getOpenReplicatorContext() instanceof OpenReplicatorManager)
-            {
-                OpenReplicatorManager manager = (OpenReplicatorManager) runtime
-                        .getOpenReplicatorContext();
-                rmiHost = manager.getRmiHost();
-                rmiPort = manager.getRmiPort();
-            }
-        }
 
         resetPeriod = 1;
     }
 
-    public Protocol(PluginContext context, SocketWrapper socket, int resetPeriod)
-            throws IOException
+    public Protocol(PluginContext context, SocketChannel channel,
+            int resetPeriod) throws IOException
     {
-        this(context, socket);
+        this(context, channel);
         this.resetPeriod = resetPeriod;
         this.bufferSize = context.getReplicatorProperties().getInt(
                 ReplicatorConf.THL_PROTOCOL_BUFFER_SIZE);
@@ -183,8 +168,8 @@ public class Protocol
     {
         if (ois == null)
         {
-            ois = new ObjectInputStream(new BufferedInputStream(
-                    socket.getInputStream()));
+            ois = new ObjectInputStream(new BufferedInputStream(this.channel
+                    .socket().getInputStream()));
         }
         Object obj;
         try
@@ -294,8 +279,6 @@ public class Protocol
                 heartbeatMillis);
         response.setOption(VERSION,
                 ManifestParser.parseReleaseWithBuildNumber());
-        response.setOption(ProtocolParams.RMI_HOST, rmiHost);
-        response.setOption(ProtocolParams.RMI_PORT, Integer.toString(rmiPort));
         if (lastEventId != null)
             response.setOption(ProtocolParams.INIT_EVENT_ID, lastEventId);
         writeMessage(response);

@@ -106,25 +106,11 @@ end
 # Validation
 #
 class MongoDBValidationCheck < ConfigureValidationCheck
-  include ReplicationServiceValidationCheck
   def get_variable(name)
     mongodb("show #{name}").chomp.strip;
   end
 
-  def set_vars
-    @title = "MongoDB parallel apply check"
-  end
-
   def enabled?
-    super() && (get_extractor_datasource().is_a?(MongoDBDatabasePlatform))
+    super() && @config.getProperty(REPL_DBTYPE) == DBMS_MONGODB
   end
-
-  def validate
-    debug("Checking to ensure parallel apply is disabled")
-    ptype = @config.getProperty(get_member_key(REPL_SVC_PARALLELIZATION_TYPE))
-    if ptype == "disk" || ptype == "memory"
-      error("The MongoDB applier does not support parallel apply")
-      help("Use --svc-parallelization-type=none or omit the option entirely")
-    end
-  end
-end 
+end

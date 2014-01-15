@@ -40,7 +40,7 @@ module DatasourcePrompt
       @config.getProperty(get_member_key(REPL_DBHOST)),
       @config.getProperty(get_member_key(REPL_DBPORT)),
       @config.getProperty(get_member_key(REPL_DBLOGIN)),
-      @config.getProperty(get_member_key(REPL_DBPASSWORD)), @config, get_member())
+      @config.getProperty(get_member_key(REPL_DBPASSWORD)), @config)
   end
   
   def get_command_line_argument()
@@ -329,19 +329,6 @@ class DatasourceVendor < ConfigurePrompt
   
   def get_template_value(transform_values_method)
     get_datasource().getVendor()
-  end
-end
-
-class DatasourceJDBCScheme < ConfigurePrompt
-  include DatasourcePrompt
-  include ConstantValueModule
-  
-  def initialize
-    super(REPL_DBJDBCSCHEME, "Datasource JDBC Scheme")
-  end
-  
-  def get_template_value(transform_values_method)
-    get_datasource().getJdbcScheme()
   end
 end
 

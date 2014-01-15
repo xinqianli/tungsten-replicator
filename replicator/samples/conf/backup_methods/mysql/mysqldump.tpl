@@ -1,6 +1,9 @@
 # MySqlDump Agent--backup using mysql dump utility; restore with mysql.
-replicator.backup.agent.mysqldump=com.continuent.tungsten.replicator.backup.generic.ScriptDumpAgent
-replicator.backup.agent.mysqldump.script=${replicator.home.dir}/scripts/mysqldump.sh
+replicator.backup.agent.mysqldump=com.continuent.tungsten.replicator.backup.mysql.MySqlDumpAgent
+replicator.backup.agent.mysqldump.host=${replicator.global.db.host}
+replicator.backup.agent.mysqldump.port=${replicator.global.db.port}
+replicator.backup.agent.mysqldump.user=${replicator.global.db.user}
+replicator.backup.agent.mysqldump.password=${replicator.global.db.password}
+replicator.backup.agent.mysqldump.dumpDir=@{REPL_BACKUP_DUMP_DIR}
+replicator.backup.agent.mysqldump.mysqldumpOptions=--opt --single-transaction --all-databases --add-drop-database --master-data=1
 replicator.backup.agent.mysqldump.hotBackupEnabled=true
-replicator.backup.agent.mysqldump.logFilename=${replicator.home.dir}/log/mysqldump.log
-replicator.backup.agent.mysqldump.options=tungsten_backups=@{SERVICE.REPL_BACKUP_STORAGE_DIR}&my_cnf=@{APPLIER.REPL_MYSQL_SERVICE_CONF}&gz=true&service=@{SERVICE.DEPLOYMENT_SERVICE}

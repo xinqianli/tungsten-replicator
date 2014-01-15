@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2013 Continuent Inc.
+ * Copyright (C) 2010 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Robert Hodges
- * Contributor(s): Gilles Rayrat, Stephane Giron
+ * Contributor(s): Gilles Rayrat
  */
 
 package com.continuent.tungsten.replicator.extractor.mysql;
@@ -391,10 +391,6 @@ public class RelayLogClient
         }
         catch (SQLException e1)
         {
-            if (logger.isDebugEnabled())
-                logger.debug("This server does not support checksums", e1);
-            else
-                logger.info("This server does not support checksums");
         }
         finally
         {

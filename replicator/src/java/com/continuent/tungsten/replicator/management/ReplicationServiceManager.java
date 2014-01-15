@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2013 Continuent Inc.
+ * Copyright (C) 2010 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Robert Hodges
- * Contributor(s): Linas Virbalas, Stephane Giron
+ * Contributor(s):
  */
 
 package com.continuent.tungsten.replicator.management;
@@ -35,12 +35,15 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.Vector;
 
+import javax.management.remote.JMXConnector;
+
 import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.common.cluster.resource.ResourceState;
 import com.continuent.tungsten.common.cluster.resource.physical.Replicator;
 import com.continuent.tungsten.common.config.TungstenProperties;
 import com.continuent.tungsten.common.config.cluster.ConfigurationException;
+import com.continuent.tungsten.common.exec.ProcessExecutor;
 import com.continuent.tungsten.common.jmx.DynamicMBeanHelper;
 import com.continuent.tungsten.common.jmx.JmxManager;
 import com.continuent.tungsten.common.jmx.MethodDesc;
@@ -67,10 +70,6 @@ public class ReplicationServiceManager
         implements
             ReplicationServiceManagerMBean
 {
-    public static final String                          CONFIG_SERVICES       = "services.properties";
-    public static final String                          CONFIG_FILE_PREFIX    = "static-";
-    public static final String                          CONFIG_FILE_SUFFIX    = ".properties";
-
     private static Logger                               logger                = Logger.getLogger(ReplicationServiceManager.class);
     private TungstenProperties                          serviceProps          = null;
     private TreeMap<String, OpenReplicatorManagerMBean> replicators           = new TreeMap<String, OpenReplicatorManagerMBean>();
@@ -79,8 +78,10 @@ public class ReplicationServiceManager
     private int                                         masterListenPortStart = 2111;
     private int                                         masterListenPortMax   = masterListenPortStart;
 
-    private String                                      managerRMIHost        = null;
     private int                                         managerRMIPort        = -1;
+
+    private static final String                         CONFIG_FILE_PREFIX    = "static-";
+    private static final String                         CONFIG_FILE_SUFFIX    = ".properties";
 
     /**
      * Creates a new <code>ReplicatorManager</code> object
@@ -93,27 +94,20 @@ public class ReplicationServiceManager
 
     /**
      * Start replicator services.
-     * 
-     * @param forceOffline Forces the replicator to start every services offline
      */
-    public void go(boolean forceOffline) throws ReplicatorException
+    public void go() throws ReplicatorException
     {
         // Find and load the service.properties file.
         File confDir = ReplicatorRuntimeConf.locateReplicatorConfDir();
-        File propsFile = new File(confDir, CONFIG_SERVICES);
+        File propsFile = new File(confDir, "services.properties");
         serviceProps = PropertiesManager.loadProperties(propsFile);
 
-        // Get Authentication and encryption parameters for JMX and set SSL
-        // parameters required for secure operation.
+        // --- Get Authentication and Encryption parameters ---
         TungstenProperties jmxProperties = null;
         try
         {
-            logger.info("Loading security information");
             AuthenticationInfo authenticationInfo = SecurityHelper
-                    .loadAuthenticationInformation(); // Load security
-                                                      // information and set
-                                                      // critical properties as
-                                                      // system properties
+                    .loadAuthenticationInformation();
             jmxProperties = authenticationInfo.getAsTungstenProperties();
         }
         catch (ConfigurationException ce)
@@ -129,9 +123,9 @@ public class ReplicationServiceManager
         // --- Start JMX registry ----
         managerRMIPort = serviceProps.getInt(ReplicatorConf.RMI_PORT,
                 ReplicatorConf.RMI_DEFAULT_PORT, false);
-        managerRMIHost = getHostName(serviceProps);
+        String rmiHost = getHostName(serviceProps);
 
-        JmxManager jmxManager = new JmxManager(managerRMIHost, managerRMIPort,
+        JmxManager jmxManager = new JmxManager(rmiHost, managerRMIPort,
                 ReplicatorConf.RMI_DEFAULT_SERVICE_NAME, jmxProperties);
         jmxManager.start();
 
@@ -149,7 +143,6 @@ public class ReplicationServiceManager
                     .getString(ReplicatorConf.SERVICE_TYPE);
             boolean isDetached = replProps.getBoolean(ReplicatorConf.DETACHED);
 
-            replProps.setBoolean(ReplicatorConf.FORCE_OFFLINE, forceOffline);
             if (serviceType.equals("local"))
             {
                 // Get properties file name if specified or generate default.
@@ -217,8 +210,6 @@ public class ReplicationServiceManager
         ManifestParser.logReleaseWithBuildNumber(logger);
         logger.info("Starting replication service manager");
 
-        boolean forceOffline = false;
-
         // Parse global options and command.
         for (int i = 0; i < argv.length; i++)
         {
@@ -233,11 +224,6 @@ public class ReplicationServiceManager
                 printHelp();
                 System.exit(0);
             }
-            else if ("-offline".equalsIgnoreCase(curArg)
-                    || "offline".equalsIgnoreCase(curArg))
-            {
-                forceOffline = true;
-            }
             else
             {
                 System.err.println("Unrecognized option: " + curArg);
@@ -248,7 +234,7 @@ public class ReplicationServiceManager
         try
         {
             ReplicationServiceManager rmgr = new ReplicationServiceManager();
-            rmgr.go(forceOffline);
+            rmgr.go();
             try
             {
                 Thread.sleep(Long.MAX_VALUE);
@@ -311,7 +297,7 @@ public class ReplicationServiceManager
      * @see com.continuent.tungsten.replicator.management.ReplicationServiceManagerMBean#startService(java.lang.String)
      */
     @MethodDesc(description = "Start individual replication service", usage = "startService name")
-    public boolean loadService(
+    public boolean startService(
             @ParamDesc(name = "name", description = "service name") String name)
             throws Exception
     {
@@ -338,7 +324,7 @@ public class ReplicationServiceManager
      * @see com.continuent.tungsten.replicator.management.ReplicationServiceManagerMBean#stopService(java.lang.String)
      */
     @MethodDesc(description = "Stop individual replication service", usage = "stopService name")
-    public boolean unloadService(
+    public boolean stopService(
             @ParamDesc(name = "name", description = "service name") String name)
             throws Exception
     {
@@ -369,21 +355,9 @@ public class ReplicationServiceManager
             @ParamDesc(name = "name", description = "service name") String name)
             throws Exception
     {
-        return resetService(name, null);
-    }
-
-    /**
-     * Resets a replication service. {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.management.ReplicationServiceManagerMBean#resetService(java.lang.String)
-     */
-    @MethodDesc(description = "Reset individual replication service", usage = "resetService name")
-    public Map<String, String> resetService(
-            @ParamDesc(name = "name", description = "service name") String name,
-            @ParamDesc(name = "controlParams", description = "0 or more control parameters expressed as name-value pairs") Map<String, String> controlParams)
-            throws Exception
-    {
         loadServiceConfigurations();
+
+        Map<String, String> progress = new LinkedHashMap<String, String>();
 
         // Make sure we have heard of this replicator.
         if (!serviceConfigurations.keySet().contains(name))
@@ -393,80 +367,33 @@ public class ReplicationServiceManager
 
         // If the replicator is started, we cannot delete it.
         OpenReplicatorManagerMBean orm = replicators.get(name);
-        if (orm != null && !orm.getState().startsWith("OFFLINE"))
+        if (orm != null)
         {
-            throw new Exception("Replication service " + name
-                    + " must be offline before resetting.\n"
-                    + "(Use 'trepctl -service " + name + " offline' first)");
+            throw new Exception(
+                    "Must stop replication service before trying to reset: "
+                            + name);
         }
 
         // Get service information.
+        logger.info("Resetting replication service: name=" + name);
         TungstenProperties serviceProps = serviceConfigurations.get(name);
         TungstenProperties.substituteSystemValues(serviceProps.getProperties());
 
-        Map<String, String> progress = new LinkedHashMap<String, String>();
-
-        String option = null;
-        if (controlParams != null)
-            option = controlParams.get("option");
-
-        if (option == null || option.equalsIgnoreCase("-all"))
-        {
-            logger.info("Resetting replication service: name=" + name);
-
-            resetDatabase(serviceProps, progress);
-
-            resetTHL(serviceProps, progress);
-
-            resetRelay(serviceProps, progress);
-        }
-        else if (option.equalsIgnoreCase("-thl"))
-        {
-            logger.info("Resetting THL for service " + name);
-            resetTHL(serviceProps, progress);
-
-        }
-        else if (option.equalsIgnoreCase("-relay"))
-        {
-            logger.info("Resetting relay logs for service " + name);
-            resetRelay(serviceProps, progress);
-        }
-        else if (option.equalsIgnoreCase("-db"))
-        {
-            logger.info("Resetting database for service " + name);
-            resetDatabase(serviceProps, progress);
-        }
-        else
-        {
-            logger.info("Unimplemented reset option : " + option);
-        }
-
-        logger.info("\n" + CLUtils.formatMap("progress", progress, "", false)
-                + "\n");
-        return progress;
-    }
-
-    private void resetDatabase(TungstenProperties serviceProps,
-            Map<String, String> progress)
-    {
         // Remove schema.
-        String schemaName = serviceProps
-                .getString(ReplicatorConf.METADATA_SCHEMA);
-        String userName = serviceProps.getString(ReplicatorConf.GLOBAL_DB_USER);
+        String schemaName = serviceProps.getString("replicator.schema");
+        String userName = serviceProps.getString("replicator.global.db.user");
         String password = serviceProps
-                .getString(ReplicatorConf.GLOBAL_DB_PASSWORD);
-        String url = serviceProps.getString(ReplicatorConf.THL_DB_URL);
+                .getString("replicator.global.db.password");
+        String url = serviceProps.getString("replicator.store.thl.url");
 
         Database db = null;
 
         try
         {
-            db = DatabaseFactory.createDatabase(url, userName, password, true);
-            db.connect(false);
+            db = DatabaseFactory.createDatabase(url, userName, password);
+            db.connect();
             progress.put("drop schema", schemaName);
-            db.dropTungstenCatalog(schemaName,
-                    serviceProps.getString(ReplicatorConf.METADATA_TABLE_TYPE),
-                    serviceProps.getString(ReplicatorConf.SERVICE_NAME));
+            db.dropSchema(schemaName);
             db.close();
         }
         catch (Exception e)
@@ -479,35 +406,10 @@ public class ReplicationServiceManager
             if (db != null)
                 db.close();
         }
-    }
 
-    private void resetRelay(TungstenProperties serviceProps,
-            Map<String, String> progress)
-    {
-        // Remove relay logs, if present.
-        String relayLogDirName = serviceProps
-                .getString("replicator.extractor.dbms.relayLogDir");
-
-        if (relayLogDirName != null)
-        {
-            File relayLogDir = new File(relayLogDirName);
-
-            if (!removeDirectory(relayLogDir, progress))
-            {
-                logger.error(String.format(
-                        "Could not remove the relay log directory %s",
-                        relayLogDirName));
-            }
-        }
-    }
-
-    private void resetTHL(TungstenProperties serviceProps,
-            Map<String, String> progress)
-    {
         // Remove THL files.
         String logDirName = serviceProps
                 .getString("replicator.store.thl.log_dir");
-
         File logDir = new File(logDirName);
 
         if (!removeDirectory(logDir, progress))
@@ -515,6 +417,21 @@ public class ReplicationServiceManager
             logger.error(String.format("Could not remove the log directory %s",
                     logDirName));
         }
+
+        // Remove relay logs, if present.
+        String relayLogDirName = serviceProps
+                .getString("replicator.extractor.dbms.relayLogDir");
+        File relayLogDir = new File(relayLogDirName);
+
+        if (!removeDirectory(relayLogDir, progress))
+        {
+            logger.error(String.format(
+                    "Could not remove the relay log directory %s", logDirName));
+        }
+
+        logger.info("\n" + CLUtils.formatMap("progress", progress, "", false)
+                + "\n");
+        return progress;
     }
 
     /**
@@ -660,8 +577,7 @@ public class ReplicationServiceManager
         {
             if (isDetached)
             {
-                throw new ReplicatorException(
-                        "Creating of detached service is no longer supported");
+                orm = createDetachedService(serviceName);
             }
             else
             {
@@ -671,7 +587,7 @@ public class ReplicationServiceManager
             // Put the service in the list of replicators now, as the start
             // might fail.
             replicators.put(serviceName, orm);
-            orm.start(replProps.getBoolean(ReplicatorConf.FORCE_OFFLINE));
+            orm.start();
 
             int listenPort = orm.getMasterListenPort();
             if (listenPort > masterListenPortMax)
@@ -705,7 +621,6 @@ public class ReplicationServiceManager
         try
         {
             OpenReplicatorManager orm = new OpenReplicatorManager(serviceName);
-            orm.setRmiHost(managerRMIHost);
             orm.setRmiPort(managerRMIPort);
             orm.advertiseInternal();
             return (OpenReplicatorManagerMBean) orm;
@@ -716,6 +631,50 @@ public class ReplicationServiceManager
                     "Unable to instantiate replication service '%s'",
                     serviceName), e);
         }
+    }
+
+    /**
+     * Creates a replication service that will run in a separate process/JVM but
+     * that can also be controlled from this manager.
+     * 
+     * @param serviceName
+     * @throws Exception
+     */
+    private OpenReplicatorManagerMBean createDetachedService(String serviceName)
+            throws Exception
+    {
+
+        TungstenProperties replProps = OpenReplicatorManager
+                .getConfigurationProperties(serviceName);
+
+        ArrayList<String> execList = new ArrayList<String>();
+
+        int serviceRMIPort = replProps.getInt(ReplicatorConf.RMI_PORT);
+
+        logger.info(String.format(
+                "Starting replication service: name=%s, port=%d", serviceName,
+                serviceRMIPort));
+
+        execList.add("/home/edward/tungsten/tungsten-replicator/bin/repservice");
+        execList.add("start");
+        execList.add(serviceName);
+        execList.add(Integer.toString(serviceRMIPort));
+
+        ProcessExecutor processExecutor = new ProcessExecutor();
+        processExecutor.setWorkDirectory(null); // Uses current working dir.
+        processExecutor
+                .setCommands(execList.toArray(new String[execList.size()]));
+        processExecutor.run();
+
+        String stdOut = processExecutor.getStdout();
+        String stdErr = processExecutor.getStderr();
+
+        if (stdOut != null)
+            logger.info(stdOut);
+        if (stdErr != null)
+            logger.info(stdErr);
+
+        return getReplicationServiceMBean(serviceName, serviceRMIPort);
     }
 
     // Utility routine to start a replication service.
@@ -740,7 +699,7 @@ public class ReplicationServiceManager
     /**
      * Returns the hostname to be used to bind ports for RMI use.
      */
-    public static String getHostName(TungstenProperties properties)
+    private static String getHostName(TungstenProperties properties)
     {
         String defaultHost = properties.getString(ReplicatorConf.RMI_HOST);
         String hostName = System.getProperty(ReplicatorConf.RMI_HOST,
@@ -771,7 +730,6 @@ public class ReplicationServiceManager
         println("             [global-options]");
         println("Global Options:");
         println("\t-clear      Clear dynamic properties and start from defaults only");
-        println("\t-offline    Start replicator and leave all services offline");
         println("\t-help       Print help");
     }
 
@@ -884,6 +842,31 @@ public class ReplicationServiceManager
     public void setMaxPort(int maxPort)
     {
         this.masterListenPortMax = maxPort;
+    }
+
+    /**
+     * Returns the MBean for an open replicator. This is to be used when we
+     * start an OpenReplicatorManager that is in a separate process.
+     * 
+     * @param serviceName
+     * @param rmiPort
+     * @return
+     * @throws Exception
+     */
+    private OpenReplicatorManagerMBean getReplicationServiceMBean(
+            String serviceName, int rmiPort) throws Exception
+    {
+
+        JMXConnector connection = JmxManager.getRMIConnector(
+                JmxManager.getHostName(), rmiPort, serviceName);
+
+        // Fetch MBean with service name.
+        OpenReplicatorManagerMBean openReplicatorMBean = (OpenReplicatorManagerMBean) JmxManager
+                .getMBeanProxy(connection, OpenReplicatorManager.class,
+                        OpenReplicatorManagerMBean.class, serviceName, false,
+                        false);
+
+        return openReplicatorMBean;
     }
 
     /**

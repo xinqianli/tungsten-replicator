@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2013 Continuent Inc.
+ * Copyright (C) 2007-2012 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -24,13 +24,11 @@ package com.continuent.tungsten.replicator.thl;
 
 import java.io.EOFException;
 import java.io.IOException;
-
-import javax.net.ssl.SSLHandshakeException;
+import java.nio.channels.SocketChannel;
 
 import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.common.config.TungstenProperties;
-import com.continuent.tungsten.common.sockets.SocketWrapper;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.database.EventId;
 import com.continuent.tungsten.replicator.database.EventIdFactory;
@@ -51,23 +49,20 @@ import com.continuent.tungsten.replicator.thl.log.LogTimeoutException;
  */
 public class ConnectorHandler implements ReplicatorPlugin, Runnable
 {
-    private Server           server          = null;
-    private PluginContext    context         = null;
-    private Thread           thd             = null;
-    private SocketWrapper    socket;
-    private THL              thl             = null;
+    private Server           server    = null;
+    private PluginContext    context   = null;
+    private Thread           thd       = null;
+    private SocketChannel    channel   = null;
+    private THL              thl       = null;
     private int              resetPeriod;
     private int              heartbeatMillis;
-    private long             altSeqno        = -1;
-    private volatile boolean cancelled       = false;
-    private volatile boolean finished        = false;
-
-    private String           rmiHost         = null;
-    private String           rmiPort         = null;
+    private long             altSeqno  = -1;
+    private volatile boolean cancelled = false;
+    private volatile boolean finished  = false;
 
     private volatile boolean checkFirstSeqno = true;
 
-    private static Logger    logger          = Logger.getLogger(ConnectorHandler.class);
+    private static Logger    logger    = Logger.getLogger(ConnectorHandler.class);
 
     // Implements call-back to check log consistency between client and
     // master.
@@ -93,15 +88,9 @@ public class ConnectorHandler implements ReplicatorPlugin, Runnable
                     + handshakeResponse.getSourceId()
                     + " heartbeatMillis="
                     + heartbeatMillis
-                    + " socketType="
-                    + socket.getSocket().getClass().getSimpleName()
                     + " options="
                     + new TungstenProperties(handshakeResponse.getOptions())
                             .toString());
-
-            setRmiHost(handshakeResponse.getOption(ProtocolParams.RMI_HOST));
-            setRmiPort(handshakeResponse.getOption(ProtocolParams.RMI_PORT));
-
             if (heartbeatMillis <= 0)
                 throw new THLException(
                         "Client heartbeat requests must be greater than zero: "
@@ -153,15 +142,13 @@ public class ConnectorHandler implements ReplicatorPlugin, Runnable
                         if (event == null)
                         {
                             throw new THLException(
-                                    "Master log does not contain requested transaction: client source ID="
+                                "Master log does not contain requested transaction: client source ID="
                                             + handshakeResponse.getSourceId()
                                             + " seqno=" + clientLastSeqno
-                                            + " epoch number="
-                                            + clientLastEpochNumber
-                                            + " master min seqno="
-                                            + masterMinSeqno
-                                            + " master max seqno="
-                                            + masterMaxSeqno);
+                                        + " epoch number="
+                                        + clientLastEpochNumber
+                                        + " master min seqno=" + masterMinSeqno
+                                        + " master max seqno=" + masterMaxSeqno);
                         }
                         else
                         {
@@ -308,17 +295,7 @@ public class ConnectorHandler implements ReplicatorPlugin, Runnable
         Protocol protocol;
         try
         {
-            protocol = new Protocol(context, socket, resetPeriod);
-        }
-        catch (SSLHandshakeException e)
-        {
-            if (logger.isDebugEnabled())
-            {
-                logger.debug("Received SSL handshake exception", e);
-            }
-            logger.error("SSL handshake failed; ensure client replicator has SSL enabled: host="
-                    + socket.getSocket().getInetAddress().toString());
-            return;
+            protocol = new Protocol(context, channel, resetPeriod);
         }
         catch (IOException e)
         {
@@ -396,14 +373,6 @@ public class ConnectorHandler implements ReplicatorPlugin, Runnable
                     catch (LogTimeoutException e)
                     {
                         sendHeartbeat(protocol);
-                        continue;
-                    }
-
-                    if (event == null)
-                    {
-                        // connection.next can return null if the event was not
-                        // yet fully flushed on disk, for example, by the writer
-                        // thread. Just try to read it again.
                         continue;
                     }
 
@@ -519,33 +488,14 @@ public class ConnectorHandler implements ReplicatorPlugin, Runnable
         }
         catch (THLException e)
         {
-            // If this is an error we need to signal back to the slave, if it is
-            // there.
-            String message = "Connector handler terminated by THL exception: "
-                    + e.getMessage();
-
-            logger.error(message, e);
-            try
-            {
-                sendError(protocol, message);
-            }
-            catch (IOException e2)
-            {
-                logger.warn("Unable to send error to client, disconnecting");
-            }
+            logger.error(
+                    "Connector handler terminated by THL exception: "
+                            + e.getMessage(), e);
         }
         catch (Throwable t)
         {
-            String message = "Connector handler terminated by unexpected exception";
-            logger.error(message, t);
-            try
-            {
-                sendError(protocol, message);
-            }
-            catch (IOException e2)
-            {
-                logger.warn("Unable to send error to client, disconnecting");
-            }
+            logger.error(
+                    "Connector handler terminated by unexpected exception", t);
         }
         finally
         {
@@ -556,7 +506,7 @@ public class ConnectorHandler implements ReplicatorPlugin, Runnable
             // Close TCP/IP.
             try
             {
-                socket.close();
+                channel.close();
             }
             catch (Exception e)
             {
@@ -663,20 +613,22 @@ public class ConnectorHandler implements ReplicatorPlugin, Runnable
 
     /**
      * Sets the server value.
-     */
-    public void setSocket(SocketWrapper socket)
-    {
-        this.socket = socket;
-    }
-
-    /**
-     * Sets the server value.
      * 
      * @param server The server to set.
      */
     public void setServer(Server server)
     {
         this.server = server;
+    }
+
+    /**
+     * Sets the channel value.
+     * 
+     * @param channel The channel to set.
+     */
+    public void setChannel(SocketChannel channel)
+    {
+        this.channel = channel;
     }
 
     /**
@@ -687,37 +639,5 @@ public class ConnectorHandler implements ReplicatorPlugin, Runnable
     public void setThl(THL thl)
     {
         this.thl = thl;
-    }
-
-    /**
-     * Sets client's RMI host.
-     */
-    public void setRmiHost(String rmiHost)
-    {
-        this.rmiHost = rmiHost;
-    }
-
-    /**
-     * Sets client's RMI port.
-     */
-    public void setRmiPort(String rmiPort)
-    {
-        this.rmiPort = rmiPort;
-    }
-
-    /**
-     * Gets client's RMI host.
-     */
-    public String getRmiHost()
-    {
-        return rmiHost;
-    }
-
-    /**
-     * Gets client's RMI port.
-     */
-    public String getRmiPort()
-    {
-        return rmiPort;
     }
 }

@@ -22,7 +22,6 @@
 
 package com.continuent.tungsten.replicator.util;
 
-import java.sql.Timestamp;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -53,8 +52,8 @@ public class AtomicIntervalGuard<D>
         long           time;
         D              datum;
         long           reportTime;
-        ThreadPosition before;    // Lower seqno
-        ThreadPosition after;     // Higher seqno
+        ThreadPosition before;
+        ThreadPosition after;
 
         public String toString()
         {
@@ -64,22 +63,19 @@ public class AtomicIntervalGuard<D>
     }
 
     // Map to hold information on each thread.
-    private Map<Integer, ThreadPosition> array;
-
-    // The first thread position in the list. This has the lowest seqno value.
+    private Map<Integer, ThreadPosition> array = new HashMap<Integer, ThreadPosition>();
     private ThreadPosition               head;
-
-    // The last thread position in the list. This has the highest seqno value.
     private ThreadPosition               tail;
+    private int                          size;
 
     /**
      * Allocates a thread interval array.
      * 
-     * @param expected Expected number of threads for correct operation
+     * @param size Expected number of threads for correct operation
      */
-    public AtomicIntervalGuard(int expected)
+    public AtomicIntervalGuard(int size)
     {
-        array = new HashMap<Integer, ThreadPosition>(expected);
+        this.size = size;
     }
 
     /**
@@ -99,6 +95,7 @@ public class AtomicIntervalGuard<D>
      * @param seqno Sequence number reached by thread
      * @param time Original timestamp of transaction
      * @param datum An optional datum associated with the transaction
+     * @throws ReplicatorException Thrown if there is an illegal update.
      */
     public synchronized void report(int id, long seqno, long time, D datum)
     {
@@ -133,9 +130,6 @@ public class AtomicIntervalGuard<D>
 
     }
 
-    /**
-     * Insert the reported position into the array using the seqno for ordering.
-     */
     private void processReport(int id, long seqno, long time, D datum)
     {
         ThreadPosition tp = array.get(id);
@@ -236,55 +230,6 @@ public class AtomicIntervalGuard<D>
             if (tp.after == null)
                 tail = tp;
         }
-    }
-
-    /**
-     * Remove a particular task from the reported position array.
-     * 
-     * @param id Thread ID
-     */
-    public synchronized void unreport(int id)
-    {
-        ThreadPosition tp = array.remove(id);
-        if (tp == null)
-        {
-            // Removal is idempotent, so we do nothing if the thread position
-            // does not exist.
-        }
-        else
-        {
-            // Fill in the link from the tail to the head.
-            if (tp.after == null)
-            {
-                // We are at the tail.
-                tail = tp.before;
-            }
-            else
-            {
-                // We are before the tail.
-                tp.after.before = tp.before;
-            }
-
-            // Fill in the link from the head to the tail.
-            if (tp.before == null)
-            {
-                // We are at the head.
-                head = tp.after;
-            }
-            else
-            {
-                // We are after the head.
-                tp.before.after = tp.after;
-            }
-        }
-    }
-
-    /**
-     * Return the number of entries currently in the array.
-     */
-    public synchronized int size()
-    {
-        return array.size();
     }
 
     /**
@@ -389,26 +334,30 @@ public class AtomicIntervalGuard<D>
 
     /**
      * Wait until the minimum time in array is greater than or equal to the
-     * request time. If there is nothing in the array we return immediately.
+     * request time.
      * 
      * @param time Return if this time is less than or equal to the trailing
      *            commit timestamp
      * @param seqno Return if this seqno is less than or equal to the trailing
      *            seqno
-     * @return Returns the head time or 0 if array is empty
      */
     public synchronized long waitMinTime(long time, long seqno)
             throws InterruptedException
     {
-        // while (time > head.time && seqno > head.seqno)
-        while (head != null && time > head.time)
+        assertArrayReady();
+        while (time > head.time && seqno > head.seqno)
         {
             wait(1000);
         }
-        if (head == null)
-            return 0;
-        else
-            return head.time;
+        return head.time;
+    }
+
+    // Assert that array is full.
+    private void assertArrayReady()
+    {
+        if (size != array.size())
+            throw new RuntimeException("Invalid access to array: size=" + size
+                    + " actual=" + array.size());
     }
 
     /**
@@ -420,18 +369,12 @@ public class AtomicIntervalGuard<D>
     {
         StringBuffer sb = new StringBuffer();
         sb.append(this.getClass().getSimpleName());
+        sb.append(" size=").append(size);
         if (array.size() > 0)
         {
             sb.append(" low_seqno=").append(head.seqno);
-            sb.append(" low_timestamp=").append(new Timestamp(head.time));
             sb.append(" hi_seqno=").append(tail.seqno);
-            sb.append(" hi_timestamp=").append(new Timestamp(tail.time));
-            sb.append(" time_interval=").append(tail.time - head.time)
-                    .append("ms");
-        }
-        else
-        {
-            sb.append(" (array is empty)");
+            sb.append(" time_interval=").append(tail.time - head.time);
         }
         return sb.toString();
     }

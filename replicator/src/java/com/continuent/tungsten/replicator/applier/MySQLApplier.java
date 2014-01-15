@@ -188,8 +188,6 @@ public class MySQLApplier extends JdbcApplier
 
         Column column = new Column(columnName, dataType, false, isSigned);
         column.setTypeDescription(typeDesc);
-        column.setLength(rs.getLong("column_size"));
-
         return column;
     }
 

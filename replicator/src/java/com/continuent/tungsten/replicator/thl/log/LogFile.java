@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2013 Continuent Inc.
+ * Copyright (C) 2010-2011 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -50,7 +50,7 @@ public class LogFile
     private static final short MINOR_VERSION      = 0x0001;
     private static final int   RECORD_LENGTH_SIZE = 4;
     // Length of header in bytes.
-    public static final int    HEADER_LENGTH      = 16;
+    private static final int   HEADER_LENGTH      = 16;
     // Length of time to wait for a partially written header to appear.
     private static final int   HEADER_WAIT_MILLIS = 5000;
 
@@ -526,7 +526,7 @@ public class LogFile
                 // empty record.
                 if (logger.isDebugEnabled())
                     logger.debug("Read empty record");
-                return new LogRecord(file, offset, false);
+                return new LogRecord(offset, false);
             }
             else if (available < RECORD_LENGTH_SIZE)
             {
@@ -534,7 +534,7 @@ public class LogFile
                 // to wait, this is a truncated record.
                 if (logger.isDebugEnabled())
                     logger.debug("Length is truncated; returning immediately");
-                return new LogRecord(file, offset, true);
+                return new LogRecord(offset, true);
             }
         }
 
@@ -546,7 +546,7 @@ public class LogFile
             logger.warn("Record length is invalid, log may be corrupt: offset="
                     + offset + " record length=" + recordLength);
             dataInput.reset();
-            return new LogRecord(file, offset, true);
+            return new LogRecord(offset, true);
         }
         if (logger.isDebugEnabled())
             logger.debug("Record length=" + recordLength);
@@ -572,7 +572,7 @@ public class LogFile
             else
             {
                 // Not enough data, so return a partial record.
-                return new LogRecord(file, offset, true);
+                return new LogRecord(offset, true);
             }
         }
 
@@ -581,7 +581,7 @@ public class LogFile
         dataInput.readFully(bytesToRead);
         byte crcType = dataInput.readByte();
         long crc = dataInput.readLong();
-        return new LogRecord(file, offset, bytesToRead, crcType, crc);
+        return new LogRecord(offset, bytesToRead, crcType, crc);
     }
 
     /** Reads a single short. */

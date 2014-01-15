@@ -98,7 +98,7 @@ public class InMemoryQueueStore implements Store
      */
     public long getMinStoredSeqno()
     {
-        return -1;
+        return 0;
     }
 
     // PSEUDO-PARALLEL QUEUE INTERFACE -- Allows this store to masquerade as a

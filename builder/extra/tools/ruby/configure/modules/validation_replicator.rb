@@ -68,7 +68,7 @@ module ReplicationServiceValidationCheck
       @config.getProperty([DATASOURCES, ds, REPL_DBHOST]),
       @config.getProperty([DATASOURCES, ds, REPL_DBPORT]),
       @config.getProperty([DATASOURCES, ds, REPL_DBLOGIN]),
-      @config.getProperty([DATASOURCES, ds, REPL_DBPASSWORD]), @config, ds)
+      @config.getProperty([DATASOURCES, ds, REPL_DBPASSWORD]), @config)
   end
   
   def get_extractor_datasource
@@ -83,7 +83,7 @@ module ReplicationServiceValidationCheck
         @config.getProperty([DATASOURCES, ds, REPL_DBHOST]),
         @config.getProperty([DATASOURCES, ds, REPL_DBPORT]),
         @config.getProperty([DATASOURCES, ds, REPL_DBLOGIN]),
-        @config.getProperty([DATASOURCES, ds, REPL_DBPASSWORD]), @config, ds)
+        @config.getProperty([DATASOURCES, ds, REPL_DBPASSWORD]), @config)
     else
       get_applier_datasource()
     end
@@ -174,7 +174,6 @@ end
 
 class THLStorageCheck < ConfigureValidationCheck
   include ReplicationServiceValidationCheck
-  include NotTungstenUpdateCheck
   
   def set_vars
     @title = "THL storage check"

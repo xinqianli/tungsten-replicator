@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2013 Continuent Inc.
+ * Copyright (C) 2010-2012 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -65,10 +65,6 @@ public class InMemoryTransactionalQueue implements Store
     private volatile long                              eventCount    = 0;
     private volatile long                              commitCount   = 0;
     private CommitAction                               commitAction;
-
-    // Metadata tag used to recognize it's time to fail. If this is set in the
-    // event metadata we will fail.
-    private static final String                        FAILURE_TAG   = "fail";
 
     /**
      * {@inheritDoc}
@@ -165,7 +161,7 @@ public class InMemoryTransactionalQueue implements Store
      */
     public long getMinStoredSeqno()
     {
-        return -1;
+        return 0;
     }
 
     /**
@@ -173,23 +169,16 @@ public class InMemoryTransactionalQueue implements Store
      * until commit or rollback.
      */
     public void put(int taskId, ReplDBMSEvent event)
-            throws InterruptedException, ReplicatorException
+            throws InterruptedException
     {
         if (logger.isDebugEnabled())
         {
-            logger.debug("Write to task queue: taskId=" + taskId + " seqno="
+            logger.debug("Commit to task queue: taskId=" + taskId + " seqno="
                     + event.getSeqno() + " shardId=" + event.getShardId());
         }
-
-        // See if we want to fail now.
-        String failTag = event.getDBMSEvent().getMetadataOptionValue(
-                FAILURE_TAG);
-        if (failTag != null)
-            throw new ReplicatorException("Failure triggered by " + FAILURE_TAG
-                    + "=" + failTag);
+        ConcurrentLinkedQueue<ReplDBMSEvent> queue = taskQueues.get(taskId);
 
         // Following operations are linked, hence we synchronize.
-        ConcurrentLinkedQueue<ReplDBMSEvent> queue = taskQueues.get(taskId);
         synchronized (queue)
         {
             queue.add(event);

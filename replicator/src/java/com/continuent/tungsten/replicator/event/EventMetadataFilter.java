@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2013 Continuent Inc.
+ * Copyright (C) 2007-2012 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -394,16 +394,6 @@ public class EventMetadataFilter implements Filter
     private ReplDBMSEvent adornEvent(ReplDBMSEvent event,
             Map<String, String> tags, boolean needsServiceSessionVar)
     {
-        // Shard IDs may not be an empty string. This can occur due to
-        // transactions extracted from an older Tungsten 1.5 replicator.
-        if ("".equals(tags.get(ReplOptionParams.SHARD_ID)))
-        {
-            tags.put(ReplOptionParams.SHARD_ID,
-                    ReplOptionParams.SHARD_ID_UNKNOWN);
-            logger.info("Overriding empty shard ID: seqno=" + event.getSeqno()
-                    + " fragno=" + event.getFragno());
-        }
-
         // Service names need to be consistent across all fragments. We store
         // the service name from the first fragment and use it for all
         // succeeding fragments.
@@ -478,7 +468,7 @@ public class EventMetadataFilter implements Filter
         // IMPORTANT: We know the type and presence of the StatementData
         // instance below thanks to previous check whether session variable is
         // required.
-        if (needsServiceSessionVar && sqlCommentsEnabled)
+        if (needsServiceSessionVar)
         {
             // However, don't let replication break if we are somehow wrong.
             try
@@ -549,6 +539,7 @@ public class EventMetadataFilter implements Filter
         this.context = context;
 
         // Set the policy for assigning schema from the default.
+        // TODO: Make this less of a hack!
         TungstenProperties replProps = context.getReplicatorProperties();
         String defaultSchema = replProps.getString(
                 ReplicatorConf.SHARD_DEFAULT_DB_USAGE, STRINGENT, true);
@@ -564,8 +555,7 @@ public class EventMetadataFilter implements Filter
         logger.info("Use default schema for unknown SQL statements: "
                 + unknownSqlUsesDefaultDb);
 
-        // Check to see if SQL commenting is enabled. WARNING: comments can
-        // corrupt statements that have mixed or mis-labeled character sets.
+        // Check to see if SQL commenting is enabled.
         sqlCommentsEnabled = replProps.getBoolean(
                 ReplicatorConf.SERVICE_COMMENTS_ENABLED,
                 ReplicatorConf.SERVICE_COMMENTS_ENABLED_DEFAULT, true);

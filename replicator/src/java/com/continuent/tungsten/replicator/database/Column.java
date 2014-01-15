@@ -254,15 +254,4 @@ public class Column implements Serializable
     {
         return "Column name=" + name;
     }
-    
-    /**
-     * Sets the length value.
-     * 
-     * @param length The length to set.
-     */
-    public void setLength(long length)
-    {
-        this.length = length;
-    }
-
 }

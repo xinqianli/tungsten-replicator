@@ -37,7 +37,6 @@
     <property name="test.src.dir" value="test/java"/>
     <property name="lib-ext.dir" value="lib-ext"/>
 	<property name="samples.dir" value="samples"/>
-	<property name="scripts.dir" value="scripts"/>
     <property name="classes.dir" value="${build.dir}/java/classes"/>
     <property name="test.classes.dir" value="${build.dir}/test/classes"/>
     <property name="test.reports" value="${build.dir}/reports"/>
@@ -221,12 +220,16 @@
 	<copy todir="${dist.dir}/bin">
 	    <fileset dir="${bin.dir}">
 	        <include name="*"/>
-	    	<include name="pg/**"/>
+	        <exclude name="wrapper*"/>
 	        <exclude name="extras"/>
 	    </fileset>
 	</copy>
+	<copy todir="${dist.dir}/bin">
+	    <fileset dir="${bin.dir}">
+	        <include name="wrapper*"/>
+	    </fileset>
+	</copy>
 	<chmod dir="${dist.dir}/bin" perm="ug+rx" includes="*" excludes="*.bat"/>
-    <chmod dir="${dist.dir}/bin/pg" perm="ug+rx" includes="pg-*"/>
     	<copy todir="${dist.dir}/conf">
             <fileset dir="conf" excludes="replicator.properties"/>
         </copy>
@@ -239,11 +242,24 @@
             <fileset dir="${jars.dir}"/>
         </copy>
         <copy todir="${dist.dir}/lib">
+            <fileset dir="${project.common}/lib">
+            	<include name="*.jar"/>
+            </fileset>
+        </copy>
+        <copy todir="${dist.dir}/lib">
+            <fileset dir="${common.build.dir}/jars"/>
+        </copy>
+        <copy todir="${dist.dir}/lib">
              <fileset dir="lib/">
              	<include name="*.jar" unless="library.compile.files"/>
              	<include name="${library.compile.files}" if="library.compile.files"/>
-             	<include name="ruby/*" />
                 <exclude name="vertica*.jar"/>
+             </fileset>
+         </copy>
+        <copy todir="${dist.dir}/lib/wrapper">
+             <fileset dir="lib/wrapper/">
+             	<include name="*.jar"/>
+             	<include name="lib*"/>
              </fileset>
          </copy>
         <mkdir dir="${dist.dir}/lib-ext"/>
@@ -262,11 +278,6 @@
 	<chmod dir="${dist.dir}/samples/scripts/backup" perm="ugoa+rx" includes="*.rb"/>
         <mkdir dir="${dist.dir}/log"/>
         <mkdir dir="${dist.dir}/var"/>
-    	
-		<mkdir dir="${dist.dir}/scripts"/>
-		<exec executable="rsync">
-		    <arg line="-Ca ${scripts.dir}/ ${dist.dir}/scripts/"/>
-		</exec>
     </target>
 
     <target name="refresh-services" description="--> refresh JWS scripts and libraries">
@@ -310,7 +321,6 @@
             <tarfileset dir="${dist.dir}" mode="755" prefix="${build.name}">
                 <include name="bin/*"/>
                 <include name="samples/**/*.sh"/>
-            	<include name="scripts/**/*.sh"/>
                 <exclude name="bin/*.bat"/>
             </tarfileset>
             <tarfileset dir="${dist.dir}" prefix="${build.name}">
@@ -319,13 +329,11 @@
             <tarfileset dir="${dist.dir}" prefix="${build.name}">
                 <exclude name="bin/**"/>
                 <exclude name="samples/**/*.sh"/>
-            	<exclude name="scripts/**/*.sh"/>
             </tarfileset>
         </tar>
         <zip destfile="${dist.dir}.zip" basedir="${dist.dir}" includes="tungsten/**">
             <zipfileset dir="${dist.dir}" filemode="755" prefix="${build.name}">
                 <include name="samples/**/*.sh"/>
-            	<include name="scripts/**/*.sh"/>
                 <include name="bin/*"/>
             </zipfileset>
             <zipfileset dir="${dist.dir}" prefix="${build.name}">

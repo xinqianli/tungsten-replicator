@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2009-2013 Continuent Inc.
+ * Copyright (C) 2009 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -55,7 +55,7 @@ public class UserVarLogEvent extends LogEvent
      * </ul>
      * Source : http://forge.mysql.com/wiki/MySQL_Internals_Binary_Log
      */
-    static Logger            logger         = Logger.getLogger(UserVarLogEvent.class);
+    static Logger            logger         = Logger.getLogger(MySQLExtractor.class);
 
     private String           query;
     private int              variableNameLength;
@@ -82,15 +82,10 @@ public class UserVarLogEvent extends LogEvent
     }
 
     public UserVarLogEvent(byte[] buffer, int eventLength,
-            FormatDescriptionLogEvent descriptionEvent, String currentPosition)
+            FormatDescriptionLogEvent descriptionEvent)
             throws ReplicatorException
     {
         super(buffer, descriptionEvent, MysqlBinlog.USER_VAR_EVENT);
-
-        this.startPosition = currentPosition;
-        if (logger.isDebugEnabled())
-            logger.debug("Extracting event at position  : " + startPosition
-                    + " -> " + getNextEventPosition());
 
         int commonHeaderLength, postHeaderLength;
         int offset;
@@ -211,22 +206,12 @@ public class UserVarLogEvent extends LogEvent
                         throw new MySQLExtractException(
                                 "ROW_RESULT user variable type is unsupported");
                     case DECIMAL_RESULT :
-                        byte precision = buffer[variableValueIndex];
-                        byte scale = buffer[variableValueIndex + 1];
-
                         if (logger.isDebugEnabled())
                             logger.debug("Decimal value dump: "
-                                    + hexdump(buffer, variableValueIndex + 2)
-                                    + " precision = " + precision + " scale = "
-                                    + scale);
-                        int bin_size = getDecimalBinarySize(precision, scale);
-                        byte[] dec = new byte[bin_size];
-                        for (int i = 0; i < bin_size; i++)
-                            dec[i] = buffer[variableValueIndex + 2 + i];
+                                    + hexdump(buffer, variableValueIndex));
 
-                        value = extractDecimal(dec, precision, scale)
-                                .toString();
-
+                        value = MysqlBinlog.convertDecimalToString(buffer,
+                                variableValueIndex, variableValueLength);
                         break;
                     default :
                         throw new MySQLExtractException(

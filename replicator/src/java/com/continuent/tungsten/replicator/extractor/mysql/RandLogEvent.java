@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2009-2013 Continuent Inc.
+ * Copyright (C) 2009-2103 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -45,7 +45,7 @@ public class RandLogEvent extends LogEvent
      * Source : http://forge.mysql.com/wiki/MySQL_Internals_Binary_Log
      */
 
-    static Logger  logger = Logger.getLogger(RandLogEvent.class);
+    static Logger  logger = Logger.getLogger(MySQLExtractor.class);
 
     private String query;
     private long   seed1;
@@ -57,15 +57,10 @@ public class RandLogEvent extends LogEvent
     }
 
     public RandLogEvent(byte[] buffer, int eventLength,
-            FormatDescriptionLogEvent descriptionEvent, String currentPosition)
+            FormatDescriptionLogEvent descriptionEvent)
             throws ReplicatorException
     {
         super(buffer, descriptionEvent, MysqlBinlog.RAND_EVENT);
-
-        this.startPosition = currentPosition;
-        if (logger.isDebugEnabled())
-            logger.debug("Extracting event at position  : " + startPosition
-                    + " -> " + getNextEventPosition());
 
         int commonHeaderLength, postHeaderLength;
         int offset;

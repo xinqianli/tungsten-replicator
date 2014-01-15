@@ -8,7 +8,8 @@
 # OVERVIEW:
 #   This script performs a full build of the replicator and all its
 #   dependencies, plus bristlecone and cookbook tools.
-#   It checks out and builds all components: replicator, commons.
+#   It checks out and builds all components: replicator, commons, and
+#   replicator-extra.
 #
 #   Before building you should review properties in the 'config' file. If
 #   you need to override them, do so in config.local (which is svn:ignored)
@@ -149,16 +150,13 @@ fi
 source_commons=${SRC_DIR}/commons
 source_bristlecone=${SRC_DIR}/bristlecone
 source_replicator=${SRC_DIR}/replicator
-#source_replicator_extra=${SRC_DIR}/replicator-extra
+source_replicator_extra=${SRC_DIR}/replicator-extra
 source_community_extra=extra
 source_cookbook=${SRC_DIR}/cookbook
 
 extra_replicator=${source_community_extra}/replicator
 extra_cluster_home=${source_community_extra}/cluster-home
 extra_tools=${source_community_extra}/tools
-
-jars_commons=${source_commons}/build/jars
-lib_commons=${source_commons}/lib
 
 ##########################################################################
 # Handle platform differences.  This script works on MacOSX & Linux.
@@ -233,7 +231,7 @@ fi
 echo "### List of source locations"
 echo "# Commons:    $source_commons"
 echo "# Replicator: $source_replicator"
-#echo "# Replicator Extras: $source_replicator_extra"
+echo "# Replicator Extras: $source_replicator_extra"
 echo "# Bristlecone: $source_bristlecone"
 echo "# Cookbook: $source_cookbook"
 
@@ -242,7 +240,7 @@ if [ ${SKIP_CHECKOUT} -eq 1 ]; then
 else
   doSvnCheckout commons ${TCOM_SVN_URL} $source_commons
   doSvnCheckout replicator ${TREP_SVN_URL} $source_replicator
-  #doSvnCheckout replicator-extra ${TREP_EXT_SVN_URL} $source_replicator_extra
+  doSvnCheckout replicator-extra ${TREP_EXT_SVN_URL} $source_replicator_extra
   doSvnCheckout bristlecone ${BRI_SVN_URL} $source_bristlecone
   doSvnCheckout cookbook ${COOK_SVN_URL} $source_cookbook
 fi
@@ -302,21 +300,28 @@ fixWrapperBin $replicator_bin
 echo "### Creating cluster home"
 cluster_home=$reldir/cluster-home
 mkdir -p $cluster_home/conf/cluster
-mkdir -p $cluster_home/log					# log directory for cluster-home/bin programs
 
-echo "# Copying cluser-home/conf files"
-cp -r $extra_cluster_home/conf/* $cluster_home/conf
+mkdir -p $cluster_home/bin
+echo "# Copying Nagios scripts"
+cp extra/cluster-home/bin/check* $cluster_home/bin/
+echo "# Moving wrapper binaries"
+\mv $reldir_replicator/bin/wrapper* $cluster_home/bin/
+chmod 755 $cluster_home/bin/* > /dev/null 2>&1
+echo "# Moving wrapper libraries"
+mkdir -p $cluster_home/lib
+\mv $reldir_replicator/lib/wrapper/* $cluster_home/lib/
+echo "# Moving wrapper libraries"
 
-echo "# Copying cluser-home bin scripts"
-cp -r $extra_cluster_home/bin $cluster_home
+echo "### Adding configuration files"
+echo "# Adding and setting permissions for configure script"
+cp $extra_cluster_home/old-configure $reldir
+chmod 755 $reldir/old-configure
+cp $extra_cluster_home/old-configure-service $reldir
+chmod 755 $reldir/old-configure-service
 
 echo "# Copying in Ruby configuration libraries"
 cp -r $extra_cluster_home/lib $cluster_home
 cp -r $extra_cluster_home/samples $cluster_home
-
-echo "# Copying in oss-commons libraries"
-cp -r $jars_commons/* $cluster_home/lib
-cp -r $lib_commons/* $cluster_home/lib
 
 echo "### Creating tools"
 tools_dir=$reldir/tools
@@ -326,16 +331,6 @@ cp $extra_tools/configure-service $tools_dir
 cp $extra_tools/tungsten-installer $tools_dir
 cp $extra_tools/update $tools_dir
 rsync -Ca $extra_tools/ruby $tools_dir
-
-if [ ${INCLUDE_TPM} -eq 1 ]
-then
-	cp $extra_tools/tpm $tools_dir
-	rsync -Ca $extra_tools/ruby-tpm $tools_dir
-fi
-
-echo "### Deleting duplicate librairies in Bristlecone ###"
-echo "# tungsten-common"
-rm -vf $reldir/bristlecone/lib/tungsten-common*.jar
 
 ##########################################################################
 # Create manifest file.
@@ -362,7 +357,7 @@ echo "HOST: `hostname`" >> $manifest
 echo "SVN URLs:" >> $manifest
 echo "  ${TCOM_SVN_URL}" >> $manifest
 echo "  ${TREP_SVN_URL}" >> $manifest
-#echo "  ${TREP_EXT_SVN_URL}" >> $manifest
+echo "  ${TREP_EXT_SVN_URL}" >> $manifest
 echo "  ${BRI_SVN_URL}" >> $manifest
 echo "  ${COOK_SVN_URL}" >> $manifest
 
@@ -371,8 +366,8 @@ echo -n "  commons: " >> $manifest
 svn info $source_commons | grep Revision: >> $manifest
 echo -n "  replicator: " >> $manifest
 svn info $source_replicator | grep Revision: >> $manifest
-#echo -n "  replicator-extra: " >> $manifest
-#svn info $source_replicator_extra | grep Revision: >> $manifest
+echo -n "  replicator-extra: " >> $manifest
+svn info $source_replicator_extra | grep Revision: >> $manifest
 echo -n "  bristlecone: " >> $manifest
 svn info $source_bristlecone | grep Revision: >> $manifest
 echo -n "  cookbook: " >> $manifest
@@ -429,12 +424,12 @@ echo    "      \"URL\": \"${TREP_SVN_URL}\"," >> $manifestJSON
 echo -n "      \"revision\": " >> $manifestJSON
 echo           "`extractRevision $source_replicator`" >> $manifestJSON
 echo    "    }," >> $manifestJSON
-#echo    "    \"replicator-extra\":" >> $manifestJSON
-#echo    "    {" >> $manifestJSON
-#echo    "      \"URL\": \"${TREP_EXT_SVN_URL}\"," >> $manifestJSON
-#echo -n "      \"revision\": " >> $manifestJSON
-#echo           "`extractRevision $source_replicator_extra`" >> $manifestJSON
-#echo    "    }," >> $manifestJSON
+echo    "    \"replicator-extra\":" >> $manifestJSON
+echo    "    {" >> $manifestJSON
+echo    "      \"URL\": \"${TREP_EXT_SVN_URL}\"," >> $manifestJSON
+echo -n "      \"revision\": " >> $manifestJSON
+echo           "`extractRevision $source_replicator_extra`" >> $manifestJSON
+echo    "    }," >> $manifestJSON
 echo    "    \"bristlecone\":" >> $manifestJSON
 echo    "    {" >> $manifestJSON
 echo    "      \"URL\": \"${BRI_SVN_URL}\"," >> $manifestJSON
@@ -452,22 +447,26 @@ echo    "}" >> $manifestJSON
 
 ##########################################################################
 
-#extra_ent_replicator=$source_replicator_extra
-#reldir_replicator=$reldir/tungsten-replicator
+extra_ent_replicator=$source_replicator_extra
+reldir_replicator=$reldir/tungsten-replicator
 
-#echo "### Adding extra bin scripts for replicator plugins"
-#cp -r $extra_ent_replicator/bin/pg $reldir_replicator/bin
+echo "### Adding extra bin scripts for replicator plugins"
+cp -r $extra_ent_replicator/bin/pg $reldir_replicator/bin
 
-#echo "### Copying in Ruby replication plugin libraries"
-#cp -r $extra_ent_replicator/lib/ruby $reldir_replicator/lib
+echo "### Adding extra conf files for PostgreSQL"
+cp $extra_ent_replicator/conf/sample.* $reldir_replicator/conf
 
-#echo "### Copying in extra sample scripts"
-#cp -r $extra_ent_replicator/samples $reldir_replicator
+echo "### Copying in Ruby replication plugin libraries"
+cp -r $extra_ent_replicator/lib/ruby $reldir_replicator/lib
 
-##########################################################################
-# Create the bash auto-completion file 
-##########################################################################
-$reldir/tools/tpm write-completion
+echo "### Copying in Python replication plugin libraries"
+cp -r $extra_ent_replicator/lib/python $reldir_replicator/lib
+
+echo "### Copying in extra sample scripts"
+cp -r $extra_ent_replicator/samples $reldir_replicator
+
+echo "### Removing old protobuf libraries"
+mv $reldir_replicator/lib/protobuf-java-2.2.0.jar $reldir_replicator/lib/protobuf-java-2.2.0.jar.old
 
 cat $manifest
 
@@ -504,7 +503,7 @@ if [ "$SKIP_SOURCE" = 0 ]; then
   cp -r $SRC_DIR/replicator $modules_sources_folder
   cp -r $SRC_DIR/commons $modules_sources_folder
   cp -r $SRC_DIR/bristlecone $modules_sources_folder
-  #cp -r $SRC_DIR/replicator-extra $modules_sources_folder
+  cp -r $SRC_DIR/replicator-extra $modules_sources_folder
   cp -r $SRC_DIR/cookbook $modules_sources_folder
   cp -r build.sh config extra $builder_folder/
   echo "SKIP_CHECKOUT=1" > $builder_folder/config.local
@@ -546,19 +545,10 @@ then
   mkdir -p ${reldir_tools}
   mkdir -p ${reldir_tools}/.runtime
 
-	cp $extra_tools/configure $reldir_tools
-	cp $extra_tools/configure-service $reldir_tools
-	cp $extra_tools/tungsten-installer $reldir_tools
-	cp $extra_tools/update $reldir_tools
+  cp $extra_tools/configure $reldir_tools
+  cp $extra_tools/tungsten-installer $reldir_tools
   rsync -Ca $extra_tools/ruby $reldir_tools
   rsync -Ca $extra_tools/ruby-tools-only/* $reldir_tools/ruby/
-
-  if [ ${INCLUDE_TPM} -eq 1 ]
-	then
-		cp $extra_tools/tpm $reldir_tools
-		rsync -Ca $extra_tools/ruby-tpm $reldir_tools
-	  rsync -Ca $extra_tools/ruby-tools-only/* $reldir_tools/ruby-tpm/
-	fi
 
   cp -rf ${reldir} ${reldir_tools}/.runtime
   cp -rf ${reldir}/.man* ${reldir_tools}

@@ -24,30 +24,15 @@ package com.continuent.tungsten.replicator.filter;
 
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.event.ReplDBMSEvent;
-import com.continuent.tungsten.replicator.plugin.PluginContext;
 
 /**
  * Implements a simple harness to test filters that have minimal dependencies on
- * properties supplied the PluginContext class. Where such dependencies exist
- * users are responsible for supplying a plugin that has suitable properties.
+ * properties supplied the PluginContext class.
  */
 public class FilterVerificationHelper
 {
     // Filter to be tested.
-    private Filter        filter;
-
-    // Plugin context, which is usually a ReplicatorRuntime.
-    private PluginContext context;
-
-    /**
-     * Set the replication context, which will be used for life-cycle calls to
-     * filter. This is optional. For filters that do not use PluginContext it is
-     * fine for this to be null.
-     */
-    public void setContext(PluginContext context)
-    {
-        this.context = context;
-    }
+    private Filter filter;
 
     /**
      * Assign a filter to be tested. Caller must instantiate and assign
@@ -61,8 +46,8 @@ public class FilterVerificationHelper
             InterruptedException
     {
         this.filter = filter;
-        filter.configure(context);
-        filter.prepare(context);
+        filter.configure(null);
+        filter.prepare(null);
     }
 
     /**
@@ -85,6 +70,6 @@ public class FilterVerificationHelper
      */
     public void done() throws ReplicatorException, InterruptedException
     {
-        filter.release(context);
+        filter.release(null);
     }
 }

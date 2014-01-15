@@ -33,11 +33,10 @@ public class StopLogEvent extends LogEvent
 {
 
     public StopLogEvent(byte[] buffer, int eventLength,
-            FormatDescriptionLogEvent descriptionEvent, String currentPosition)
+            FormatDescriptionLogEvent descriptionEvent)
             throws ReplicatorException
     {
         super(buffer, descriptionEvent, MysqlBinlog.STOP_EVENT);
-        this.startPosition = currentPosition;
     }
 
 }

@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2012-2013 Continuent Inc.
+ * Copyright (C) 2012 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -29,7 +29,6 @@ import org.junit.Test;
 import com.continuent.tungsten.replicator.event.ReplControlEvent;
 import com.continuent.tungsten.replicator.event.ReplDBMSEvent;
 import com.continuent.tungsten.replicator.event.ReplEvent;
-import com.continuent.tungsten.replicator.util.AtomicIntervalGuard;
 import com.continuent.tungsten.replicator.util.SeqnoWatchPredicate;
 
 /**
@@ -52,7 +51,7 @@ public class THLParallelReadQueueTest
     {
         logger.info("##### testInit #####");
         THLParallelReadQueue prq = new THLParallelReadQueue(0, 10, 10, 0, 100,
-                null, new AtomicIntervalGuard<Object>(1));
+                null);
         Assert.assertEquals(0, prq.getAcceptCount());
         Assert.assertEquals(0, prq.getDiscardCount());
         prq.release();
@@ -67,7 +66,7 @@ public class THLParallelReadQueueTest
     {
         logger.info("##### testPost #####");
         THLParallelReadQueue prq = new THLParallelReadQueue(0, 100, 100, -1,
-                100, null, new AtomicIntervalGuard<Object>(1));
+                100, null);
 
         // Enqueue 50 events.
         this.genEvents(prq, 50, -1, -1);
@@ -85,7 +84,7 @@ public class THLParallelReadQueueTest
     {
         logger.info("##### testControlEvents #####");
         THLParallelReadQueue prq = new THLParallelReadQueue(0, 100, 100, -1,
-                100, null, new AtomicIntervalGuard<Object>(1));
+                100, null);
 
         // Enqueue 5 control events in advance.
         for (int i = 0; i < 5; i++)
@@ -115,7 +114,7 @@ public class THLParallelReadQueueTest
 
         // Initialize queue with synchronization set for every 10 events.
         THLParallelReadQueue prq = new THLParallelReadQueue(0, 100, 100, -1,
-                10, null, new AtomicIntervalGuard<Object>(1));
+                10, null);
 
         // Enqueue 50 events with no additional embedded control events. With
         // sync every 10 events, we should get 5 control events.
@@ -135,7 +134,7 @@ public class THLParallelReadQueueTest
     {
         logger.info("##### testPredicates #####");
         THLParallelReadQueue prq = new THLParallelReadQueue(0, 100, 100, -1,
-                100, null, new AtomicIntervalGuard<Object>(1));
+                100, null);
 
         // Declare a predicate to find seqno's at beginning, middle, and end
         // of events in queue.
@@ -160,7 +159,7 @@ public class THLParallelReadQueueTest
     {
         logger.info("##### testPredicates #####");
         THLParallelReadQueue prq = new THLParallelReadQueue(0, 100, 100, -1,
-                100, null, new AtomicIntervalGuard<Object>(1));
+                100, null);
 
         // Enqueue 5 events with no embedded control events.
         this.genEvents(prq, 5, -1, -1);
@@ -188,7 +187,7 @@ public class THLParallelReadQueueTest
     {
         logger.info("##### testOutOfOrderPredicate #####");
         THLParallelReadQueue prq = new THLParallelReadQueue(0, 100, 100, -1,
-                100, null, new AtomicIntervalGuard<Object>(1));
+                100, null);
 
         // Enqueue 5 events with no embedded control events.
         this.genEvents(prq, 5, -1, -1);
@@ -212,7 +211,7 @@ public class THLParallelReadQueueTest
     {
         logger.info("##### testPredicatesPlusCtrl #####");
         THLParallelReadQueue prq = new THLParallelReadQueue(0, 100, 100, -1,
-                100, null, new AtomicIntervalGuard<Object>(1));
+                100, null);
 
         // Declare a predicate to find seqnos 4 and 49. This will
         // generate 2 extra control events, one of which should overlap
@@ -236,7 +235,7 @@ public class THLParallelReadQueueTest
     {
         logger.info("##### testFragmentsAndControlEvents #####");
         THLParallelReadQueue prq = new THLParallelReadQueue(0, 100, 100, -1,
-                100, null, new AtomicIntervalGuard<Object>(1));
+                100, null);
 
         // Enqueue 5 fragmented transactions with a predicate and a control
         // event inserted after fragment.

@@ -96,9 +96,6 @@ public class Replicator
 
     /** URI that slaves should use when connecting to this master. */
     public static final String MASTER_LISTEN_URI           = "masterListenUri";
-    
-    /** Indicates if SSL connection is used. */
-    public static final String USE_SSL_CONNECTION         = "useSSLConnection";
 
     /** Name of the site to which this replicator belongs. */
     public static final String SITENAME                    = "siteName";
@@ -128,9 +125,6 @@ public class Replicator
 
     /** Current replicator state. */
     public static final String STATE                       = "state";
-
-    /** Pending replicator state following current state transition. */
-    public static final String TRANSITIONING_TO            = "transitioningTo";
 
     /** Source ID used to mark events for this replicator. */
     public static final String SOURCEID                    = "sourceId";
@@ -222,11 +216,6 @@ public class Replicator
      * Denotes the source of the head extractor.
      */
     public static final String PIPELINE_SOURCE             = "pipelineSource";
-
-    /**
-     * Denotes the source of the head extractor.
-     */
-    public static final String SSL_LOG_CONNECTION          = "sslLogConnection";
 
     /**
      * Denotes the number of channels for parallel apply.

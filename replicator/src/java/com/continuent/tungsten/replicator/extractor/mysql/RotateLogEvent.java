@@ -49,7 +49,7 @@ public class RotateLogEvent extends LogEvent
      * </ul>
      * Source : http://forge.mysql.com/wiki/MySQL_Internals_Binary_Log
      */
-    static Logger  logger = Logger.getLogger(RotateLogEvent.class);
+    static Logger  logger = Logger.getLogger(MySQLExtractor.class);
 
     private int    filenameLength;
     private String filename;
@@ -63,16 +63,14 @@ public class RotateLogEvent extends LogEvent
      * Creates a new <code>Rotate_log_event</code> object read normally from
      * log.
      * 
-     * @param currentPosition
      * @throws ReplicatorException
      */
     public RotateLogEvent(byte[] buffer, int eventLength,
-            FormatDescriptionLogEvent descriptionEvent, String currentPosition)
+            FormatDescriptionLogEvent descriptionEvent)
             throws ReplicatorException
     {
         super(buffer, descriptionEvent, MysqlBinlog.START_EVENT_V3);
 
-        this.startPosition = currentPosition;
         type = MysqlBinlog.ROTATE_EVENT;
 
         int headerSize = descriptionEvent.commonHeaderLength;

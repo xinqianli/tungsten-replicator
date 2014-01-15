@@ -149,10 +149,10 @@ public class Directory extends ResourceTree
     private static Directory                                 _instance            = null;
 
     private static CommandLineParser                         parser               = new CommandLineParser();
-
+    
     public Directory()
     {
-
+        
     }
 
     /**
@@ -899,11 +899,11 @@ public class Directory extends ResourceTree
                 if (foundNode == null)
                 {
                     throw new DirectoryNotFoundException(String.format(
-                            "element '%s' not found in path '%s' while searching for entry '%s'",
+                            "element '%s' not found in path '%s'",
                             element,
                             formatPath(
                                     getAbsolutePath(getRootNode(),
-                                            nodeToSearch, true), true), path));
+                                            nodeToSearch, true), true)));
                 }
 
                 nodeToSearch = foundNode;
@@ -925,23 +925,6 @@ public class Directory extends ResourceTree
             return node;
 
         return null;
-    }
-
-    /**
-     * @param map
-     * @return
-     * @throws DirectoryNotFoundException
-     */
-    private ResourceNode getLast(Map<String, ResourceNode> map)
-            throws DirectoryNotFoundException
-    {
-        ResourceNode lastNode = null;
-        for (ResourceNode node : map.values())
-        {
-            lastNode = node;
-        }
-        
-        return lastNode;
     }
 
     /**
@@ -1505,7 +1488,7 @@ public class Directory extends ResourceTree
         StringBuilder builder = new StringBuilder();
 
         int entryCount = 0;
-
+        
         Collections.sort(entries);
 
         for (ResourceNode entry : entries)
@@ -2072,7 +2055,6 @@ public class Directory extends ResourceTree
             ResourceNode processNode = create(sessionID, path, true);
             Process process = (Process) processNode.getResource();
             process.setMember(memberName);
-            process.setClusterName(clusterName);
             process.setPort(port);
             return processNode;
         }

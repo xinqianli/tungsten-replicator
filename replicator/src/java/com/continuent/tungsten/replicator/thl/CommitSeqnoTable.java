@@ -87,11 +87,6 @@ public class CommitSeqnoTable
 
     private String             tableType;
 
-    // Low water mark for committing to the trep_seqno_table. This prevents
-    // restart points from being set backwards in time by accident.
-    long                       lowSeqno                 = Long.MIN_VALUE;
-    boolean                    lowSeqnoWarning          = false;
-
     /**
      * Creates a new instance valid for life of the provided database
      * connection.
@@ -287,7 +282,6 @@ public class CommitSeqnoTable
             close(lastSeqnoQuery);
         if (commitSeqnoUpdate != null)
             close(commitSeqnoUpdate);
-        database.close();
     }
 
     /**
@@ -393,7 +387,7 @@ public class CommitSeqnoTable
      * operation allows the table to convert to a different number of apply
      * threads.
      */
-    public boolean reduceTasks(Database conn, int channels) throws SQLException
+    public boolean reduceTasks(int channels) throws SQLException
     {
         boolean reduced = false;
         boolean hasTask0 = false;
@@ -406,7 +400,7 @@ public class CommitSeqnoTable
         try
         {
             // Scan task positions.
-            allSeqnosQuery = conn
+            allSeqnosQuery = database
                     .prepareStatement("SELECT seqno, fragno, last_frag, source_id, epoch_number, eventid, shard_id, extract_timestamp, task_id, applied_latency from "
                             + schema + "." + TABLE_NAME);
             String lastEventId = null;
@@ -454,7 +448,7 @@ public class CommitSeqnoTable
             else
             {
                 // Reduce rows.
-                deleteQuery = conn.prepareStatement("DELETE FROM " + schema
+                deleteQuery = database.prepareStatement("DELETE FROM " + schema
                         + "." + TABLE_NAME + " WHERE task_id > 0");
                 int reducedRows = deleteQuery.executeUpdate();
                 logger.info("Reduced " + reducedRows + " task entries: "
@@ -493,60 +487,26 @@ public class CommitSeqnoTable
     public void updateLastCommitSeqno(int taskId, ReplDBMSHeader header,
             long appliedLatency) throws SQLException
     {
-        // Ensure we have a low-watermark for commits to prevent committing
-        // an older seqno value.
-        if (lowSeqno == Long.MIN_VALUE)
-        {
-            ReplDBMSHeader lowHeader = lastCommitSeqno(taskId);
-            if (lowHeader == null)
-                lowSeqno = -1;
-            else
-                lowSeqno = lowHeader.getSeqno();
-            if (logger.isDebugEnabled())
-                logger.debug("Fetching low seqno for task: " + lowSeqno);
-        }
+        if (logger.isDebugEnabled())
+            logger.debug("Updating last committed event header: "
+                    + header.getSeqno());
 
-        // Only commit if the offered value is greater than or equal to
-        // the low water mark.
-        if (header.getSeqno() >= lowSeqno)
-        {
-            if (logger.isDebugEnabled())
-                logger.debug("Updating last committed event header: "
-                        + header.getSeqno());
+        commitSeqnoUpdate.setLong(1, header.getSeqno());
+        commitSeqnoUpdate.setShort(2, header.getFragno());
+        commitSeqnoUpdate.setBoolean(3, header.getLastFrag());
+        commitSeqnoUpdate.setString(4, header.getSourceId());
+        commitSeqnoUpdate.setLong(5, header.getEpochNumber());
+        commitSeqnoUpdate.setString(6, header.getEventId());
+        // Latency can go negative due to clock differences. Round up to 0.
+        // TODO: Round up to 0 -> this is not what Math.abs does !
+        commitSeqnoUpdate.setLong(7, Math.abs(appliedLatency));
+        commitSeqnoUpdate.setTimestamp(8,
+                new Timestamp(System.currentTimeMillis()));
+        commitSeqnoUpdate.setString(9, header.getShardId());
+        commitSeqnoUpdate.setTimestamp(10, header.getExtractedTstamp());
+        commitSeqnoUpdate.setInt(11, taskId);
 
-            commitSeqnoUpdate.setLong(1, header.getSeqno());
-            commitSeqnoUpdate.setShort(2, header.getFragno());
-            commitSeqnoUpdate.setBoolean(3, header.getLastFrag());
-            commitSeqnoUpdate.setString(4, header.getSourceId());
-            commitSeqnoUpdate.setLong(5, header.getEpochNumber());
-            commitSeqnoUpdate.setString(6, header.getEventId());
-            // Latency can go negative due to clock differences. Round up to 0.
-            commitSeqnoUpdate.setLong(7, Math.max(appliedLatency, 0));
-            commitSeqnoUpdate.setTimestamp(8,
-                    new Timestamp(System.currentTimeMillis()));
-            commitSeqnoUpdate.setString(9, header.getShardId());
-            commitSeqnoUpdate.setTimestamp(10, header.getExtractedTstamp());
-            commitSeqnoUpdate.setInt(11, taskId);
-
-            commitSeqnoUpdate.executeUpdate();
-        }
-        else
-        {
-            // Since restart points are critical, we warn the first time
-            // we skip a commit update.
-            if (lowSeqnoWarning)
-            {
-                if (logger.isDebugEnabled())
-                    logger.debug("Skipping update of last committed event header: seqno="
-                            + header.getSeqno() + " lowSeqno=" + lowSeqno);
-            }
-            else
-            {
-                logger.warn("Skipping attempted update of last committed event header to avoid resetting restart point: seqno="
-                        + header.getSeqno() + " lowSeqno=" + lowSeqno);
-                lowSeqnoWarning = true;
-            }
-        }
+        commitSeqnoUpdate.executeUpdate();
     }
 
     /**

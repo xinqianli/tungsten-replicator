@@ -128,7 +128,7 @@ public class TestOpenReplicatorManager extends TestCase
                 OpenReplicatorManager.class, false);
         JmxManager.addNotificationListener(conn, OpenReplicatorManager.class,
                 stateListener);
-        rmgr.start(false);
+        rmgr.start();
 
     }
 
@@ -220,6 +220,7 @@ public class TestOpenReplicatorManager extends TestCase
             conf.setString(ReplicatorConf.THL_STORAGE, thlStoragePlugin);
             conf.setString(ReplicatorConf.THL_URI, "thl://localhost/");
             conf.setString(ReplicatorConf.MASTER_CONNECT_URI, "thl://localhost/");
+            conf.setString(ReplicatorConf.EVENT_CHECKSUM, "");
             conf.setString(ReplicatorConf.METADATA_SCHEMA, "test");
 
             // OFFLINE -> SYNCHRONIZING -> OFFLINE
@@ -271,6 +272,7 @@ public class TestOpenReplicatorManager extends TestCase
         node1Conf.setString(ReplicatorConf.THL_URI, "thl://localhost:2001/");
         node1Conf.setString(ReplicatorConf.MASTER_CONNECT_URI,
                 "thl://localhost:2001");
+        node1Conf.setString(ReplicatorConf.EVENT_CHECKSUM, "");
         node1Conf.setString(ReplicatorConf.METADATA_SCHEMA, "node1");
 
         node2Conf.setString(ReplicatorConf.APPLIER, applierPlugin);
@@ -280,6 +282,7 @@ public class TestOpenReplicatorManager extends TestCase
         node2Conf.setString(ReplicatorConf.MASTER_CONNECT_URI,
                 "thl://localhost:2001/");
         node2Conf.setString(ReplicatorConf.ROLE, ReplicatorConf.ROLE_SLAVE);
+        node2Conf.setString(ReplicatorConf.EVENT_CHECKSUM, "");
         node2Conf.setString(ReplicatorConf.METADATA_SCHEMA, "node2");
 
         node1Conf.setString(ReplicatorConf.RMI_PORT, "10002");
@@ -287,11 +290,11 @@ public class TestOpenReplicatorManager extends TestCase
         OpenReplicatorManager rmgr1 = new OpenReplicatorManager("default");
         StateNotificationListener sl1 = new StateNotificationListener();
         rmgr1.addNotificationListener(sl1, null, null);
-        rmgr1.start(false);
+        rmgr1.start();
         OpenReplicatorManager rmgr2 = new OpenReplicatorManager("default");
         StateNotificationListener sl2 = new StateNotificationListener();
         rmgr2.addNotificationListener(sl2, null, null);
-        rmgr2.start(false);
+        rmgr2.start();
 
         waitStatus(sl1, "OFFLINE");
         waitStatus(sl2, "OFFLINE");
@@ -331,6 +334,7 @@ public class TestOpenReplicatorManager extends TestCase
         node1Conf.setString(ReplicatorConf.MASTER_CONNECT_URI,
                 "thl://localhost:2001");
         node1Conf.setString(ReplicatorConf.RMI_PORT, "10001");
+        node1Conf.setString(ReplicatorConf.EVENT_CHECKSUM, "");
         node1Conf.setString(ReplicatorConf.METADATA_SCHEMA, "node1");
 
         // Slave
@@ -345,17 +349,18 @@ public class TestOpenReplicatorManager extends TestCase
         node2Conf.setString(ReplicatorConf.ROLE, ReplicatorConf.ROLE_SLAVE);
 
         node2Conf.setString(ReplicatorConf.RMI_PORT, "10002");
+        node2Conf.setString(ReplicatorConf.EVENT_CHECKSUM, "");
         node2Conf.setString(ReplicatorConf.METADATA_SCHEMA, "node2");
 
         OpenReplicatorManager rmgr1 = new OpenReplicatorManager("default");
         StateNotificationListener sl1 = new StateNotificationListener();
         rmgr1.addNotificationListener(sl1, null, null);
-        rmgr1.start(false);
+        rmgr1.start();
 
         OpenReplicatorManager rmgr2 = new OpenReplicatorManager("default");
         StateNotificationListener sl2 = new StateNotificationListener();
         rmgr2.addNotificationListener(sl2, null, null);
-        rmgr2.start(false);
+        rmgr2.start();
 
         waitStatus(sl1, "OFFLINE");
         waitStatus(sl2, "OFFLINE");
@@ -423,6 +428,7 @@ public class TestOpenReplicatorManager extends TestCase
             conf.setString(ReplicatorConf.THL_STORAGE, thlStoragePlugin);
             conf.setString(ReplicatorConf.THL_URI, thlURI);
             conf.setString(ReplicatorConf.MASTER_CONNECT_URI, thlURI);
+            conf.setString(ReplicatorConf.EVENT_CHECKSUM, "");
             conf.setString(ReplicatorConf.METADATA_SCHEMA, ms);
 
             rmgr = new OpenReplicatorManager("default");
@@ -437,7 +443,7 @@ public class TestOpenReplicatorManager extends TestCase
 
         public void start() throws Exception
         {
-            rmgr.start(false);
+            rmgr.start();
             currentState = waitStatus(snl, "OFFLINE");
             rmgr.configure(conf);
         }

@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2013 Continuent Inc.
+ * Copyright (C) 2010-11 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -24,7 +24,6 @@ package com.continuent.tungsten.replicator.thl.log;
 
 import java.io.File;
 import java.io.FileWriter;
-import java.io.RandomAccessFile;
 import java.sql.Timestamp;
 
 import junit.framework.TestCase;
@@ -180,109 +179,6 @@ public class DiskLogTest extends TestCase
     }
 
     /**
-     * Confirm that if a log record in the tail file has a bad checksum
-     * attempting to open the log results in a LogConsistencyException. Confirm
-     * that we can still open the log and find the record with the bad checksum
-     * by turning off checksums.
-     */
-    public void testOpenWithChecksumFailure() throws Exception
-    {
-        // Create the log.
-        File logDir = prepareLogDir("testOpenWithChecksumFailure");
-        DiskLog log = openLog(logDir, false);
-
-        // Add three records.
-        writeEventsToLog(log, 3);
-
-        // Get the last log file and corrupt the checksum on the last record.
-        // This is the last 8 bytes of the file--we set it to an
-        // incorrect value.
-        LogFile lf = log.getLogFile(2);
-        RandomAccessFile raf = new RandomAccessFile(lf.getFile(), "rw");
-        long len = raf.length();
-        raf.seek(len - 8);
-        raf.writeLong(99);
-        raf.close();
-        log.release();
-
-        // Try to open the log file and confirm that a log consistency
-        // exception results.
-        try
-        {
-            log = openLog(logDir, false);
-            throw new Exception("Able to open log with bad checksum!");
-        }
-        catch (LogConsistencyException e)
-        {
-            logger.info("Received expected exception" + e.toString());
-        }
-
-        // Confirm that if we disable CRCs we can open the log.
-        findSeqnoWithoutChecksums(logDir, 2);
-    }
-
-    /**
-     * Confirm that if a log record in the tail file has a bad CRC type
-     * attempting to open the log results in a LogConsistencyException. Confirm
-     * that we can still open the log and find the record with the bad type by
-     * turning off checksums.
-     */
-    public void testOpenWithBadChecksumType() throws Exception
-    {
-        // Create the log.
-        File logDir = prepareLogDir("testOpenWithBadChecksumType");
-        DiskLog log = openLog(logDir, false);
-
-        // Add three records.
-        writeEventsToLog(log, 4);
-
-        // Get the last log file and corrupt the checksum type on the last
-        // record.
-        // This is located in the 9th byte from the end of the file.
-        LogFile lf = log.getLogFile(3);
-        RandomAccessFile raf = new RandomAccessFile(lf.getFile(), "rw");
-        long len = raf.length();
-        raf.seek(len - 9);
-        raf.writeByte(101);
-        raf.close();
-        log.release();
-
-        // Try to open the log file and confirm that a log consistency
-        // exception results.
-        try
-        {
-            log = openLog(logDir, false);
-            throw new Exception("Able to open log with bad checksum!");
-        }
-        catch (LogConsistencyException e)
-        {
-            logger.info("Received expected exception" + e.toString());
-        }
-
-        // Confirm that if we disable CRCs we can open the log.
-        findSeqnoWithoutChecksums(logDir, 3);
-    }
-
-    // Find log sequence number in log opened without checksums.
-    private void findSeqnoWithoutChecksums(File logDir, long seqno)
-            throws ReplicatorException, InterruptedException
-    {
-        // Confirm that if we disable CRCs we can open the log.
-        DiskLog log2 = new DiskLog();
-        log2.setDoChecksum(false);
-        log2.setLogDir(logDir.getAbsolutePath());
-        log2.prepare();
-        // Connect and find the record with the bad seqno.
-        LogConnection conn2 = log2.connect(true);
-        assertTrue("Find first record", conn2.seek(seqno));
-        THLEvent e = conn2.next(false);
-        assertNotNull("Should find an event", e);
-        assertEquals("Expect seqno: " + seqno, seqno, e.getSeqno());
-        conn2.release();
-        log2.release();
-    }
-
-    /**
      * Confirm that only one writer is permitted per log.
      */
     public void testOneWriter() throws Exception
@@ -371,115 +267,6 @@ public class DiskLogTest extends TestCase
         catch (THLException e)
         {
         }
-        conn.release();
-        log.release();
-    }
-
-    /**
-     * Confirm that the log will not accept a write that causes the seqno to
-     * decrease, e.g., writing seqno 25 followed by seqno 24.
-     */
-    public void testSeqnoOrdering() throws Exception
-    {
-        // Create the log.
-        File logDir = prepareLogDir("testSeqnoOrdering");
-        DiskLog log = openLog(logDir, false);
-
-        // Write and commit a transaction to start.
-        LogConnection conn = log.connect(false);
-        THLEvent e25 = createTHLEvent(25);
-        conn.store(e25, true);
-
-        // Write a transaction that decreases the seqno and confirm
-        // we get an exception.
-        THLEvent e24 = createTHLEvent(24);
-        try
-        {
-            conn.store(e24, true);
-            throw new Exception(
-                    "Able to store a decreasing seqno on same connection");
-        }
-        catch (LogConsistencyException e)
-        {
-        }
-        conn.release();
-
-        // Reopen connection and confirm that the same thing happens if
-        // we do this on a new connection.
-        LogConnection conn2 = log.connect(false);
-        THLEvent e24b = createTHLEvent(24);
-        try
-        {
-            conn2.store(e24b, true);
-            throw new Exception(
-                    "Able to store a decreasing seqno on new connection");
-        }
-        catch (LogConsistencyException e)
-        {
-        }
-        conn2.release();
-        log.release();
-
-        // Reopen log and confirm that the same thing happens if
-        // we do this on a new connection on a reopened log.
-        DiskLog log2 = openLog(logDir, false);
-        LogConnection conn3 = log2.connect(false);
-        THLEvent e24c = createTHLEvent(24);
-        try
-        {
-            conn3.store(e24c, true);
-            throw new Exception(
-                    "Able to store a decreasing seqno on newly opened log");
-        }
-        catch (LogConsistencyException e)
-        {
-        }
-        conn3.release();
-        log2.release();
-    }
-
-    /**
-     * Confirm that the log will not accept a write in which the fragno is the
-     * same or decreases from the previously written log record.
-     */
-    public void testFragnoOrdering() throws Exception
-    {
-        // Create the log.
-        File logDir = prepareLogDir("testFragnoOrdering");
-        DiskLog log = openLog(logDir, false);
-
-        // Write two transaction fragments to start.
-        LogConnection conn = log.connect(false);
-        THLEvent e25_1 = createTHLEvent(25, (short) 0, false, "x");
-        conn.store(e25_1, false);
-        THLEvent e25_2 = createTHLEvent(25, (short) 1, false, "x");
-        conn.store(e25_2, false);
-
-        // Try to write a fragment that repeats the fragment number.
-        THLEvent e25_same = createTHLEvent(25, (short) 1, false, "x");
-        try
-        {
-            conn.store(e25_same, true);
-            throw new Exception("Able to store the same fragment number again");
-        }
-        catch (LogConsistencyException e)
-        {
-            logger.info("Caught expected exception: " + e.getMessage());
-        }
-
-        // Now write a fragment with a lesser fragment number.
-        THLEvent e25_less = createTHLEvent(25, (short) 0, false, "x");
-        try
-        {
-            conn.store(e25_less, true);
-            throw new Exception("Able to store a lower fragment number");
-        }
-        catch (LogConsistencyException e)
-        {
-            logger.info("Caught expected exception: " + e.getMessage());
-        }
-
-        // All done.
         conn.release();
         log.release();
     }
@@ -1583,62 +1370,14 @@ public class DiskLogTest extends TestCase
     }
 
     /**
-     * Confirm that the log correctly drops a partial fragment at the beginning
-     * of the log and sets the seqno to -1.
-     */
-    public void testSimpleFragmentCleanup() throws Exception
-    {
-        // Create log with short file size.
-        File logDir = prepareLogDir("testSimpleFragmentCleanup");
-        DiskLog log = openLog(logDir, false, 3000);
-
-        // Perform a test that writes a few properly terminated transactions
-        // into the log and then writes a partial transaction. Reopen the log
-        // and confirm that the log is cleaned up.
-        LogConnection conn = log.connect(false);
-        for (short i = 0; i < 3; i++)
-        {
-            // Write next fragment and confirm no rotation occurs.
-            // Terminate and commit the last fragment property.
-            THLEvent e = createTHLEvent(0, i, false, "test");
-            conn.store(e, false);
-        }
-        // Do not commit--let the data flush automatically when file closes.
-        // (Why? Maybe something unexpected will happen.)
-        log.release();
-        log = null;
-        conn = null;
-
-        // Close and reopen the log for writing. Confirm there are no
-        // transactions.
-        DiskLog log2 = openLog(logDir, false);
-        assertEquals("Max seqno in log should be -1", -1, log2.getMaxSeqno());
-        log2.validate();
-        LogConnection conn2 = log2.connect(false);
-
-        // Should be able to seek for first transaction but we don't expect
-        // to find anything.
-        assertTrue("Seek last full xact", conn2.seek(0, (short) 0));
-        THLEvent e = conn2.next(false);
-        if (e != null)
-        {
-            throw new Exception(
-                    "Found transaction that should have been cleaned up!  seqno="
-                            + e.getSeqno() + " fragno=" + e.getFragno());
-        }
-
-        log2.release();
-    }
-
-    /**
      * Confirm that the log drops partial transactions from the end of the log
      * on open. This cleans up the log after a transaction failure and prevents
      * restart failures.
      */
-    public void testComplexFragmentCleanup() throws Exception
+    public void testFragmentCleanup() throws Exception
     {
         // Create log with short file size.
-        File logDir = prepareLogDir("testComplexFragmentCleanup");
+        File logDir = prepareLogDir("testFragmentCleanup");
         DiskLog log = openLog(logDir, false, 3000);
 
         // Perform a test that writes a few properly terminated transactions
@@ -1674,7 +1413,6 @@ public class DiskLogTest extends TestCase
             // transaction but not the next partial transaction.
             log.release();
             log = openLog(logDir, false);
-            log.validate();
             conn = log.connect(true);
 
             assertTrue("Seek last full xact", conn.seek(seqno, (short) i));
@@ -1690,46 +1428,6 @@ public class DiskLogTest extends TestCase
         }
 
         log.release();
-    }
-
-    /**
-     * Confirm that if a tail log file is empty due to truncation of partial
-     * data that we can still open the log for reading and writing and that
-     * moreover the log correctly reports the number of transactions in the log.
-     */
-    public void testEmptyFileCleanup() throws Exception
-    {
-        File logDir = prepareLogDir("testEmptyFileCleanup");
-
-        // Cycle through writing partial transactions, then testing cleanup.
-        long lastSeqno = -1;
-        for (int i = 0; i < 100; i++)
-        {
-            // Open the log using very limited file size and connect. Validate
-            // every tenth transaction.
-            DiskLog log = openLog(logDir, false, 1000);
-            if (i % 10 == 0)
-                log.validate();
-            LogConnection conn = log.connect(false);
-
-            // Confirm the log maximum seqno matches the last properly committed
-            // transaction.
-            assertEquals("Checking log max seqno", lastSeqno, log.getMaxSeqno());
-
-            // Write a good event and commit.
-            THLEvent e_next = createTHLEvent(i, (short) 0, true, "good");
-            conn.store(e_next, true);
-            lastSeqno = e_next.getSeqno();
-            logger.info("Wrote good complete event: seqno=" + e_next.getSeqno());
-
-            // Write a partial event and attempt to commit.
-            THLEvent e_partial = createTHLEvent(i + 1, (short) 0, false, "bad");
-            conn.store(e_partial, true);
-            logger.info("Wrote incomplete event: seqno=" + e_partial.getSeqno());
-
-            // Close the log.
-            log.release();
-        }
     }
 
     /**

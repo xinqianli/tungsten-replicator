@@ -63,17 +63,6 @@ module ConfigureDeploymentStepServices
         warning("Unable to retrieve the list of services for the replicator.  Review the logs to see if there is an issue.")
       end
     end
-    
-    if svc_is_running?("#{get_deployment_basedir()}/tungsten-replicator/bin/replicator")
-      begin
-        error_lines = cmd_result("#{get_trepctl_cmd()} services | grep ERROR | wc -l")
-        if error_lines.to_i() > 0
-          error("At least one replication service has experienced an error")
-        end
-      rescue CommandError
-        error("Unable to check if the replication services are working properly")
-      end
-    end
   end
   
   def config_wrapper
@@ -94,7 +83,7 @@ module ConfigureDeploymentStepServices
     out.puts "# Start all services using local service scripts"
     out.puts "THOME=`dirname $0`/../.."
     out.puts "cd $THOME"
-    @services.sort.reverse.each { |svc| out.puts get_svc_command(svc + " start") }
+    @services.each { |svc| out.puts get_svc_command(svc + " start") }
     out.puts "# AUTO-CONFIGURED: #{DateTime.now}"
     out.chmod(0755)
     out.close
@@ -109,7 +98,7 @@ module ConfigureDeploymentStepServices
     out.puts "# Stop all services using local service scripts"
     out.puts "THOME=`dirname $0`/../.."
     out.puts "cd $THOME"
-    @services.sort.each { |svc| out.puts get_svc_command(svc + " stop") }
+    @services.reverse_each { |svc| out.puts get_svc_command(svc + " stop") }
     out.puts "# AUTO-CONFIGURED: #{DateTime.now}"
     out.chmod(0755)
     out.close

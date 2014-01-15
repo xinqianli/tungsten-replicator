@@ -48,9 +48,6 @@ public class RouterGatewayConstants
     public static final char   COMMAND_QUIT                = 'q';
     public static final char   COMMAND_MAINTENANCE_MODE    = 'a';
     public static final char   COMMAND_RESET_CLUSTER_VIEW  = 'e';
-    public static final char   COMMAND_RUN_GATEWAY         = 'U';
-    public static final char   COMMAND_STOP_GATEWAY        = 'S';
-    public static final char   COMMAND_GATEWAY_IS_RUNNING  = 'i';
 
     // Support for tracing
     public static final char   COMMAND_TRACE_GLOBAL_ENABLE = 'E';
@@ -72,7 +69,6 @@ public class RouterGatewayConstants
     public static final String NOTIFICATION_PREFIX         = "notification.";
     public static final String NOTIFICATION_ARGS_PREFIX    = "notificationArgs.";
     public static final String MAINTENANCE_MODE            = "maintenanceMode";
-    public static final String FAILSAFE                    = "failSafe";
 
     public static String commandToText(final char command)
     {
@@ -90,6 +86,8 @@ public class RouterGatewayConstants
                 return "STATISTICS";
             case COMMAND_CONFIGURE :
                 return "CONFIGURE";
+            case COMMAND_DIAG :
+                return "DIAG";
             case COMMAND_OFFLINE :
                 return "OFFLINE";
             case COMMAND_ONLINE :
@@ -100,7 +98,7 @@ public class RouterGatewayConstants
                 return "QUIT";
             case COMMAND_MAINTENANCE_MODE :
                 return "MAINTENANCE_MODE";
-            case COMMAND_RESET_CLUSTER_VIEW :
+            case COMMAND_RESET_CLUSTER_VIEW:
                 return "RESET_CLUSTER_VIEW";
             case COMMAND_TRACE_GLOBAL_ENABLE :
                 return "TRACE_GLOBAL_ENABLE";

@@ -17,12 +17,11 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Teemu Ollakka
- * Contributor(s): Robert Hodges, Edward Archibald, Gilles Rayrat, Ludovic Launer
+ * Contributor(s): Robert Hodges, Edward Archibald, Gilles Rayrat
  */
 
 package com.continuent.tungsten.common.config.cluster;
 
-import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -47,114 +46,102 @@ public class RouterConfiguration extends ClusterConfiguration
         implements
             Cloneable
 {
-    private static Logger     logger                                         = Logger.getLogger(RouterConfiguration.class);
+    private static Logger     logger                            = Logger.getLogger(RouterConfiguration.class);
     /**
      *
      */
-    private static final long serialVersionUID                               = 1L;
+    private static final long serialVersionUID                  = 1L;
 
     /**
      * RMI service name
      */
-    private String            serviceName                                    = ConfigurationConstants.TR_SERVICE_NAME;
+    private String            serviceName                       = ConfigurationConstants.TR_SERVICE_NAME;
     /**
      * RMI port
      */
-    private int               port                                           = new Integer(
-                                                                                     ConfigurationConstants.TR_RMI_PORT_DEFAULT)
-                                                                                     .intValue();
+    private int               port                              = new Integer(
+                                                                        ConfigurationConstants.TR_RMI_PORT_DEFAULT)
+                                                                        .intValue();
     /**
      * RMI host
      */
-    private String            host                                           = ConfigurationConstants.TR_RMI_DEFAULT_HOST;
+    private String            host                              = ConfigurationConstants.TR_RMI_DEFAULT_HOST;
 
     /**
      * Indicates whether or not to enable the router on startup or to startup in
      * the disabled state.
      */
-    private boolean           autoEnable                                     = true;
+    private boolean           autoEnable                        = true;
     /**
      * Indicates whether or not to wait for active connections to disconnect
      * before disabling.
      */
-    private boolean           waitForDisconnect                              = true;
+    private boolean           waitForDisconnect                 = true;
     /**
      * Indicates the amount of time to wait for all connections to finish before
      * going out and forcibly closing them.
      */
-    private int               waitForDisconnectTimeout                       = 0;
+    private int               waitForDisconnectTimeout          = 0;
 
     /**
      * Indicates whether or not we'll wait for a particular type of resource to
      * become available if it is not already.
      */
-    private boolean           waitIfUnavailable                              = true;
+    private boolean           waitIfUnavailable                 = true;
 
     /**
      * The amount of time to wait, if any, for a particular type of resource to
      * become available before throwing an exception.
      */
-    private int               waitIfUnavailableTimeout                       = 0;
+    private int               waitIfUnavailableTimeout          = 0;
 
-    private boolean           waitIfDisabled                                 = true;
+    private boolean           waitIfDisabled                    = true;
 
-    private int               waitIfDisabledTimeout                          = 0;
+    private int               waitIfDisabledTimeout             = 0;
+
+    /**
+     * If the property is non-null, this is a class that will be loaded to
+     * listen for driver notifications
+     */
+    private String            driverListenerClass               = "com.continuent.tungsten.common.patterns.notification.adaptor.ResourceNotificationListenerStub";
 
     /**
      * The cluster member where the router is running.
      */
     private String            clusterMemberName;
-//    /**
-//     * If the property is non-null, this is a class that will be loaded tonull;
-//     * listen for router notifications
-//     */
-//    private String            routerListenerClass                            = "com.continuent.tungsten.common.patterns.notification.adaptor.ResourceNotificationListenerStub";
-
-    private int               notifyPort                                     = 10121;
-    private String            notifierMonitorClass                           = "com.continuent.tungsten.common.patterns.notification.adaptor.ResourceNotifierStub";
-    private String            dataSourceLoadBalancer_RO_RELAXED              = "com.continuent.tungsten.router.resource.loadbalancer.RoundRobinSlaveLoadBalancer";
-
-    private boolean           rrIncludeMaster                                = false;
-
-    /** Router Gateway manager list */
-    private List<String>      managerList                                    = Arrays.asList("localhost");
-    /** Router gateway listen port */
-    private int               routerGatewayPort                              = Integer
-                                                                                     .parseInt(ConfigurationConstants.TR_GW_PORT_DEFAULT);
-    private String            c3p0JMXUrl                                     = "service:jmx:rmi:///jndi/rmi://localhost:3100/jmxrmi";
-    /** When disconnected from managers, time to wait before going offline */
-    private int               delayBeforeOfflineIfNoManager                  = ConfigurationConstants.DELAY_BEFORE_OFFLINE_IF_NO_MANAGER_DEFAULT;
     /**
-     * When disconnected from managers AND in maintenance mode, time to wait
-     * before going offline
+     * If the property is non-null, this is a class that will be loaded tonull;
+     * listen for router notifications
      */
-    private int               delayBeforeOfflineInMaintenanceModeIfNoManager = ConfigurationConstants.DELAY_BEFORE_OFFLINE_IN_MAINTENANCE_MODE_IF_NO_MANAGER_DEFAULT;
+    private String            routerListenerClass               = "com.continuent.tungsten.common.patterns.notification.adaptor.ResourceNotificationListenerStub";
+
+    private int               notifyPort                        = 10121;
+    private String            notifierMonitorClass              = "com.continuent.tungsten.common.patterns.notification.adaptor.ResourceNotifierStub";
+    private String            dataSourceLoadBalancer_RO_RELAXED = "com.continuent.tungsten.router.resource.loadbalancer.RoundRobinSlaveLoadBalancer";
+
+    private boolean           rrIncludeMaster                   = false;
+
+    /** Router Gateway flag */
+    private boolean           useNewProtocol                    = false;
+    /** Router Gateway manager list */
+    private List<String>      managerList                       = Arrays.asList("localhost");
+    /** Router gateway listen port */
+    private int               routerGatewayPort                 = Integer
+                                                                        .parseInt(ConfigurationConstants.TR_GW_PORT_DEFAULT);
+    private String            c3p0JMXUrl                        = "service:jmx:rmi:///jndi/rmi://localhost:3100/jmxrmi";
+    /** When disconnected from managers, time to wait before going offline */
+    private int               delayBeforeOfflineIfNoManager     = 30;
     /**
      * Delay after which a manager connection is considered broken if no
-     * keep-alive command was received. Make sure manager has
-     * "manager.notifications.send" set to true and frequency is higher than
-     * this value
+     * keep-alive command was received 0 (zero) value disables the feature. Must
+     * be enabled only if the manager has "manager.notifications.send" set to
+     * true
      */
-    private int               keepAliveTimeout                               = ConfigurationConstants.KEEP_ALIVE_TIMEOUT_DEFAULT;
+    private int               keepAliveTimeout                  = 0;
 
-    /**
-     * When connecting to a manager, how long to wait for the connection to
-     * succeed before trying the next manager in line. Default 5s, must be
-     * positive and max 30s
-     */
-    private int               gatewayConnectTimeoutMs                        = ConfigurationConstants.GATEWAY_CONNECT_TIMEOUT_MS_DEFAULT;
+    private boolean           showRelativeLatency               = false;
 
-    private boolean           showRelativeLatency                            = false;
-
-    private int               routerClientThreadsPerService                  = 1;
-
-    private int               gatewayLocalBindStartingPort                   = 45847;
-
-    /**
-     * When reading manager commands in maintenance mode, the router will retry
-     * a few times upon failure. This controls when to give up
-     */
-    private long              readCommandRetryTimeoutMs                      = ConfigurationConstants.READ_COMMAND_RETRY_TIMEOUT_MS_DEFAULT;
+    private int               routerClientThreadsPerService     = 1;
 
     public RouterConfiguration(String clusterName)
             throws ConfigurationException
@@ -176,15 +163,6 @@ public class RouterConfiguration extends ClusterConfiguration
     public RouterConfiguration load() throws ConfigurationException
     {
         load(ConfigurationConstants.TR_PROPERTIES);
-        
-        // TUC-1750 : managerList router properties is no longer in router.properties
-        // Get the value from dataservices.properties
-        DataServicesConfiguration d = DataServicesConfiguration.getInstance();
-        String managerList = d.getProps().get(props.get(ConfigurationConstants.CLUSTER_CLUSTERNAME));
-        props.put(ConfigurationConstants.CLUSTER_MANAGER_LIST, managerList);
-        if (managerList==null)
-            logger.warn((MessageFormat.format("Could not retrieve a value for {0} by reading {1}", ConfigurationConstants.CLUSTER_MANAGER_LIST, ConfigurationConstants.TR_PROPERTIES)));
-        
         props.applyProperties(this, true);
         loadClusterDataSourceMap();
         return this;
@@ -432,25 +410,45 @@ public class RouterConfiguration extends ClusterConfiguration
         this.props.setInt("waitIfUnavailableTimeout", waitIfUnavailableTimeout);
     }
 
-//    /**
-//     * Returns the routerListenerClass value.
-//     * 
-//     * @return Returns the routerListenerClass.
-//     */
-//    public String getRouterListenerClass()
-//    {
-//        return routerListenerClass;
-//    }
+    /**
+     * Returns the driverListenerClass value.
+     * 
+     * @return Returns the driverListenerClass.
+     */
+    public String getDriverListenerClass()
+    {
+        return driverListenerClass;
+    }
 
-//    /**
-//     * Sets the routerListenerClass value.
-//     * 
-//     * @param routerListenerClass The routerListenerClass to set.
-//     */
-//    public void setRouterListenerClass(String routerListenerClass)
-//    {
-//        this.routerListenerClass = routerListenerClass;
-//    }
+    /**
+     * Sets the driverListenerClass value.
+     * 
+     * @param driverListenerClass The driverListenerClass to set.
+     */
+    public void setDriverListenerClass(String driverListenerClass)
+    {
+        this.driverListenerClass = driverListenerClass;
+    }
+
+    /**
+     * Returns the routerListenerClass value.
+     * 
+     * @return Returns the routerListenerClass.
+     */
+    public String getRouterListenerClass()
+    {
+        return routerListenerClass;
+    }
+
+    /**
+     * Sets the routerListenerClass value.
+     * 
+     * @param routerListenerClass The routerListenerClass to set.
+     */
+    public void setRouterListenerClass(String routerListenerClass)
+    {
+        this.routerListenerClass = routerListenerClass;
+    }
 
     public boolean isWaitIfDisabled()
     {
@@ -561,6 +559,16 @@ public class RouterConfiguration extends ClusterConfiguration
         this.rrIncludeMaster = rrIncludeMaster;
     }
 
+    public void setUseNewProtocol(boolean useIt)
+    {
+        useNewProtocol = useIt;
+    }
+
+    public boolean getUseNewProtocol()
+    {
+        return useNewProtocol;
+    }
+
     public void setManagerList(List<String> list)
     {
         this.managerList = list;
@@ -602,16 +610,6 @@ public class RouterConfiguration extends ClusterConfiguration
         this.delayBeforeOfflineIfNoManager = delayBeforeOfflineIfNoManager;
     }
 
-    public int getDelayBeforeOfflineInMaintenanceModeIfNoManager()
-    {
-        return delayBeforeOfflineInMaintenanceModeIfNoManager;
-    }
-
-    public void setDelayBeforeOfflineInMaintenanceModeIfNoManager(int delayInS)
-    {
-        delayBeforeOfflineInMaintenanceModeIfNoManager = delayInS;
-    }
-
     public int getKeepAliveTimeout()
     {
         return keepAliveTimeout;
@@ -620,30 +618,6 @@ public class RouterConfiguration extends ClusterConfiguration
     public void setKeepAliveTimeout(int timeoutInMs)
     {
         keepAliveTimeout = timeoutInMs;
-    }
-
-    public void setGatewayConnectTimeoutMs(int timeoutMs)
-    {
-        gatewayConnectTimeoutMs = timeoutMs;
-    }
-
-    public int getGatewayConnectTimeoutMs()
-    {
-        return gatewayConnectTimeoutMs;
-    }
-
-    public void setGatewayLocalBindStartingPort(int port)
-    {
-        if (port < 1024)
-        {
-            port = 1024;
-        }
-        gatewayLocalBindStartingPort = port;
-    }
-
-    public int getGatewayLocalBindStartingPort()
-    {
-        return gatewayLocalBindStartingPort;
     }
 
     @Override
@@ -675,68 +649,10 @@ public class RouterConfiguration extends ClusterConfiguration
     /**
      * Sets the routerClientThreadsPerService value.
      * 
-     * @param routerClientThreadsPerService The routerClientThreadsPerService to
-     *            set.
+     * @param routerClientThreadsPerService The routerClientThreadsPerService to set.
      */
-    public void setRouterClientThreadsPerService(
-            int routerClientThreadsPerService)
+    public void setRouterClientThreadsPerService(int routerClientThreadsPerService)
     {
         this.routerClientThreadsPerService = routerClientThreadsPerService;
-    }
-
-    /**
-     * Checks critical configuration values and throws and exception if invalid
-     * settings are found. TUC-1738.
-     * 
-     * @throws ConfigurationException upon first invalid configuration value
-     */
-    public void validateConfigurationValues() throws ConfigurationException
-    {
-        if (getKeepAliveTimeout() <= 0
-                || getKeepAliveTimeout() > ConfigurationConstants.KEEP_ALIVE_TIMEOUT_MAX)
-        {
-            throw new ConfigurationException(
-                    "Detected invalid keepAliveTimeout of "
-                            + getKeepAliveTimeout()
-                            + "ms in router.properties. keepAliveTimeout must be positive and lower than "
-                            + ConfigurationConstants.KEEP_ALIVE_TIMEOUT_MAX
-                            + " ("
-                            + ConfigurationConstants.KEEP_ALIVE_TIMEOUT_MAX
-                            / 60000 + "min).");
-
-        }
-        if (getDelayBeforeOfflineIfNoManager() <= 0
-                || getDelayBeforeOfflineIfNoManager() > ConfigurationConstants.DELAY_BEFORE_OFFLINE_IF_NO_MANAGER_MAX)
-        {
-            throw new ConfigurationException(
-                    "Detected invalid delayBeforeOfflineIfNoManager of "
-                            + getDelayBeforeOfflineIfNoManager()
-                            + "ms in router.properties. It must be positive and lower than "
-                            + ConfigurationConstants.DELAY_BEFORE_OFFLINE_IF_NO_MANAGER_MAX
-                            + " ("
-                            + ConfigurationConstants.DELAY_BEFORE_OFFLINE_IF_NO_MANAGER_MAX
-                            / 60 + "min).");
-        }
-        if (getGatewayConnectTimeoutMs() <= 0
-                || getGatewayConnectTimeoutMs() >= ConfigurationConstants.GATEWAY_CONNECT_TIMEOUT_MS_MAX)
-        {
-            throw new ConfigurationException(
-                    "Detected invalid gatewayConnectTimeout of "
-                            + getGatewayConnectTimeoutMs()
-                            + "ms in router.properties. It must be positive and lower than "
-                            + ConfigurationConstants.GATEWAY_CONNECT_TIMEOUT_MS_MAX
-                            + "ms.");
-        }
-
-    }
-
-    public void setReadCommandRetryTimeoutMs(long timeout)
-    {
-        readCommandRetryTimeoutMs = timeout;
-    }
-
-    public long getReadCommandRetryTimeoutMs()
-    {
-        return readCommandRetryTimeoutMs;
     }
 }

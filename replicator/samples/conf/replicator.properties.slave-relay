@@ -37,7 +37,12 @@ replicator.master.connect.uri=@{REPL_MASTER_URI}
 
 # URI for our listener when we are acting as a master.  Slaves 
 # use this as their connect URI.
-replicator.master.listen.uri=@{REPL_THL_PROTOCOL}://@{HOST.HOST}:@{REPL_SVC_THL_PORT}/
+replicator.master.listen.uri=thl://@{HOST.HOST}:@{REPL_SVC_THL_PORT}/
+
+# Force replicator to check if THL is in sync with database. 
+# This check is enabled by default. Set the following property 
+# to false in order to disable the check.
+# replicator.master.thl_check=true
 
 # Replicator auto-enable.  If true, replicator automatically goes online 
 # at start-up time. 
@@ -64,11 +69,6 @@ replicator.service.type=@{REPL_SVC_SERVICE_TYPE}
 
 # Name of this replication service.  
 service.name=@{SERVICE.DEPLOYMENT_SERVICE}
-
-# Whether to allow comments in SQL statements to show the service name.
-# This must be set to avoid multi-master replication loops if updates
-# from one master go into the binlog of another master.
-replicator.service.comments=@{SERVICE.REPL_SVC_ENABLE_MASTER_SERVICE_COMMENTS}
 
 # Name of the local replication service.  This parameter must be set when 
 # performing bi-directional replication using a remote slave.  Events 
@@ -138,18 +138,6 @@ replicator.plugin=tungsten
 # REPLICATOR PIPELINES          #
 #################################
 
-# Pipeline stages use block commit to commit multiple source transactions
-# simultaneously.  Block commit is controlled by the following settings on
-# stages: 
-#   blockCommitRowCount -- Commit when this number of transactions is
-#   reached or stage runs out of in-coming transactions
-#   blockCommitInterval -- Commit when time interval elapses *or* number of
-#   transactions for blockCommitRowCount is reached.
-# If neither setting is in effect, replicators commit each transaciton
-# individually.  Interval settings are milliseconds by default.  You can also
-# apply settings in seconds, minutes, hours, and days, as in 10s, 30m, 2h, 
-# or 1d respectively.
-
 # Generic pipelines.
 replicator.pipelines=slave-relay
 
@@ -180,27 +168,12 @@ replicator.store.thl.url=@{APPLIER.REPL_DBTHLURL}
 replicator.store.thl.user=${replicator.global.db.user}
 replicator.store.thl.password=${replicator.global.db.password}
 
-# Force replicator to check if THL is in sync with database.
-# This check is enabled by default. Set the following property
-# to false in order to disable the check.
-replicator.store.thl.logConsistencyCheck=true
-
 # Uncomment the following properties to control disk log storage location
 # and size of files.  These are default values.  NOTE:  naming the logs by 
 # service name is critical to prevent replication services from overwriting
 # other service logs. 
 replicator.store.thl.log_dir=@{SERVICE.REPL_LOG_DIR}
 replicator.store.thl.log_file_size=@{REPL_THL_LOG_FILE_SIZE}
-
-# The following property tells the THL server how long, as a maximum,
-# in milliseconds, to block during an accept() call.  This interval, in turn
-# will be directly factored into the amount of time a replicator will
-# take to transition to the offline state on systems whose
-# kernels or Java runtime won't allow for the interruption of a blocking
-# accept() call.  If this interval is too short, it may result in problems 
-# with new client connections, and if too long, will result in excessively
-# slow transitions to offline etc.
-replicator.thl.server.accept.timeout=5000
 
 # Change the following property to control the buffer size used for THL
 # I/O operations.  The default of 128k seems to work well. 
@@ -232,19 +205,19 @@ replicator.store.thl.event_serializer=com.continuent.tungsten.replicator.thl.ser
 
 # The disk log can compute checksums automatically on log records.  This
 # is enabled by default but can cut performance by 50% or more.  Set false
-# for faster log performance or to suppress reading *and* writing of checksums.
+# for faster log performance.
 replicator.store.thl.doChecksum=@{REPL_THL_DO_CHECKSUM}
 
 # Maximum number of events to transfer at once.  Higher values are better
 # but as with queue store sizes require more memory.
 replicator.thl.protocol.buffer_size=10
 
-# THL listener address for remote access.  To listen on all interfaces,
-# use a host value of 0.0.0.0, as in thl://0.0.0.0:2112/.  The port
-# defaults to 2112 if you do not specify a value.  To enable SSL use
-# 'thls' instead of 'thl'.  Note that clients must exactly match the
-# scheme (thl vs. thls), host, and port to connect. 
-replicator.store.thl.storageListenerUri=@{REPL_THL_PROTOCOL}://0.0.0.0:@{REPL_SVC_THL_PORT}
+# THL listener address for remote access.  To listen on all ports, 
+# use a value like thl://0.0.0.0:2112/.  (2112 is default
+# port for Tungsten configurations.)  Note that this URI must provide
+# a listener that corresponds to the URL in replicator.master.listen.uri, or 
+# slaves may connect to the wrong port. 
+replicator.store.thl.storageListenerUri=thl://0.0.0.0:@{REPL_SVC_THL_PORT}
 
 # The transfer rate between the master and the slave can be improved
 # by setting the following setting to a value greater than 1, which
@@ -262,29 +235,13 @@ replicator.store.thl.readOnly=@{REPL_SVC_THL_READ_ONLY}
 # Remote THL extractor. 
 replicator.extractor.thl-remote=com.continuent.tungsten.replicator.thl.RemoteTHLExtractor
 replicator.extractor.thl-remote.connectUri=${replicator.master.connect.uri}
-
-# If true, check to ensure logs are consistent on connection to master by 
-# comparing epoch numbers of last committed transaction.  This can be 
-# temporarily overridden when going online using 'trepctl online -force'.
+# If true, check to ensure logs are consistent.  
 replicator.extractor.thl-remote.checkSerialization=true
-
 # Set requested interval in milliseconds for heartbeat events from remote THL.
-# This may need to be adjusted higher if masters are very slow to respond or
-# to scan the THL for slave start positions. 
 replicator.extractor.thl-remote.heartbeatInterval=3000
-
-# Set the number of seconds between retrying to master(s) after a lost
-# connection.
-replicator.extractor.thl-remote.retryInterval=1
-
-# Set preferred THL server role.  Common values are master, slave, or empty
-# (i.e., no value).  When replicating from a Tungsten cluster 'slave' avoids
-# problems with failover when transactions are trapped on an old master. 
+# Set preferred THL server role.  Common values are master, slave, or empty 
+# (i.e., no value).
 replicator.extractor.thl-remote.preferredRole=@{REPL_MASTER_PREFERRED_ROLE}
-
-# Set the number of seconds to find the preferred role when reconnecting.  
-# After this expires the replicator will choose any available master. 
-replicator.extractor.thl-remote.preferredRoleTimeout=30
 
 ############
 # APPLIERS #
@@ -321,6 +278,9 @@ replicator.extractor.failure_policy=stop
 
 # How to react on applier failure. Possible values are 'stop' or 'warn'. 
 replicator.applier.failure_policy=stop
+
+# Event checksum algorithm.  Possible values are 'crc' or 'none'.
+replicator.event.checksum=none
 
 # How to react on consistency check failure.  Possible values are 'stop' or 
 # 'warn'. 

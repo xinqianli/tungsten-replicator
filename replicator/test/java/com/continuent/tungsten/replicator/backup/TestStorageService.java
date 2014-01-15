@@ -41,7 +41,8 @@ import org.junit.Before;
  */
 public class TestStorageService extends TestCase
 {
-    private static Logger logger           = Logger.getLogger(TestStorageService.class);
+    private static Logger logger           = Logger
+                                                   .getLogger(TestStorageService.class);
     private static String STORAGE_DIR_NAME = "store-test/";
 
     /**
@@ -97,12 +98,9 @@ public class TestStorageService extends TestCase
         assertEquals("Final backups should be 1", 1, agent.list().length);
         for (int i = 0; i < backupSpecStore.getBackupLocators().size(); i++)
         {
-            long retrieveLength = backupSpecRetrieve.getBackupLocators().get(i)
-                    .getContents().length();
-            compareFileLengths(
-                    backupSpecStore.getBackupLocators().get(i).getContents(),
-                    backupSpecRetrieve.getBackupLocators().get(i).getContents(),
-                    10000, retrieveLength);
+            compareFile(backupSpecStore.getBackupLocators().get(i)
+                    .getContents(), backupSpecRetrieve.getBackupLocators().get(
+                    i).getContents());
         }
         agent.release();
     }
@@ -130,16 +128,17 @@ public class TestStorageService extends TestCase
 
             // List all available files and ensure the number of files matches
             // the number we have so far.
-            StorageSpecification[] availableSpecs = agent.list();
+            URI[] availableUris = agent.list();
             assertEquals("URI list size must match number of backups", i + 1,
-                    availableSpecs.length);
+                    availableUris.length);
 
             // Ensure the order of files matches.
             int size2 = 1;
             for (int j = 0; j <= i; j++)
             {
                 size2 = size2 * 10;
-                StorageSpecification spec = availableSpecs[j];
+                StorageSpecification spec = agent
+                        .getSpecification(availableUris[j]);
                 assertEquals("URI file size must match order i=" + i + " j="
                         + j, size2, spec.getFileLength(0));
             }
@@ -193,26 +192,25 @@ public class TestStorageService extends TestCase
 
             // List all available files and ensure the number is at most the
             // retention size.
-            StorageSpecification[] availableSpecs = agent.list();
+            URI[] availableUris = agent.list();
             if (i < retain)
             {
                 assertEquals("URI list size must match number of backups",
-                        i + 1, availableSpecs.length);
+                        i + 1, availableUris.length);
             }
             else
             {
                 assertEquals(
                         "URI list size must match retained number of backups",
-                        retain, availableSpecs.length);
+                        retain, availableUris.length);
             }
 
             // Ensure the order of files matches.
             int offset = (i < retain) ? 0 : i - retain + 1;
             for (int j = 0; j <= i && j < 3; j++)
             {
-                // StorageSpecification spec = agent
-                // .getSpecification(availableUris[j]);
-                StorageSpecification spec = availableSpecs[j];
+                StorageSpecification spec = agent
+                        .getSpecification(availableUris[j]);
                 assertEquals("URI file size must match order i=" + i + " j="
                         + j + " offset=" + offset, backupSizes[j + offset],
                         spec.getFileLength(0));
@@ -244,24 +242,23 @@ public class TestStorageService extends TestCase
         for (int i = 0; i < 5; i++)
         {
             // Ensure the list is correct.
-            StorageSpecification[] currentSpecs = agent.list();
+            URI[] currentUris = agent.list();
             assertEquals("URI list must account for deletions", 5 - i,
-                    currentSpecs.length);
+                    currentUris.length);
 
             // Assert the size of the first backup.
-            StorageSpecification spec = currentSpecs[0];
+            StorageSpecification spec = agent.getSpecification(currentUris[0]);
             assertEquals("Next backup must be correct size in order...",
                     1000 + i * 10, spec.getFileLength(0));
 
             // Delete the backup from the list.
-            boolean success = agent
-                    .delete(URI.create(currentSpecs[0].getUri()));
+            boolean success = agent.delete(currentUris[0]);
             assertTrue("Backup deleted successfully", success);
         }
 
         // Should not be any remaining backups.
-        assertEquals("After deletion no remaining backups expected", 0,
-                agent.list().length);
+        assertEquals("After deletion no remaining backups expected", 0, agent
+                .list().length);
 
         agent.release();
     }
@@ -353,18 +350,6 @@ public class TestStorageService extends TestCase
             throw new Exception("Files have different length: in="
                     + in.getAbsolutePath() + " length=" + in.length() + " out="
                     + out.getAbsolutePath() + " length=" + out.length());
-        }
-    }
-
-    // Compare two files and throw exception if they are not equal.
-    protected void compareFileLengths(File in, File out, long inLength,
-            long outLength) throws Exception
-    {
-        if (inLength != outLength)
-        {
-            throw new Exception("Files have different length: in="
-                    + in.getAbsolutePath() + " length=" + inLength + " out="
-                    + out.getAbsolutePath() + " length=" + outLength);
         }
     }
 }

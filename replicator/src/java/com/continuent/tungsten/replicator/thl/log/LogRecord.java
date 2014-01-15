@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2013 Continuent Inc.
+ * Copyright (C) 2010 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -25,7 +25,6 @@ package com.continuent.tungsten.replicator.thl.log;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -58,7 +57,6 @@ public class LogRecord
     /** Record uses conventional CRC-32 computed by Java CRC32 class. */
     public static final byte      CRC_TYPE_32    = 0x01;
 
-    private File                  file;
     private byte[]                data;
     private long                  offset;
     private byte                  crcType;
@@ -74,14 +72,12 @@ public class LogRecord
     /**
      * Creates an empty record, which is optionally truncated.
      * 
-     * @param file File to which this record belongs
-     * @param offset Offset of this record in the file
+     * @param offset File offset at which this record was read
      * @param truncated If true this record is truncated rather than merely
      *            empty
      */
-    public LogRecord(File file, long offset, boolean truncated)
+    public LogRecord(long offset, boolean truncated)
     {
-        this.file = file;
         this.offset = offset;
         this.data = null;
         this.crc = 0;
@@ -97,10 +93,8 @@ public class LogRecord
      * @param crcType Type of CRC check to use
      * @param crc CRC value
      */
-    public LogRecord(File file, long offset, byte[] bytes, byte crcType,
-            long crc)
+    public LogRecord(long offset, byte[] bytes, byte crcType, long crc)
     {
-        this.file = file;
         this.offset = offset;
         this.data = bytes;
         this.crcType = crcType;
@@ -217,44 +211,6 @@ public class LogRecord
         if (computedCrc == -1)
             computeCrc();
         return computedCrc == crc;
-    }
-
-    /**
-     * Verifies the CRC value. This generates an exception if the exception is
-     * bad.
-     * 
-     * @throws LogConsistencyException Thrown if checksum verification fails
-     */
-    public void verifyChecksum() throws LogConsistencyException
-    {
-        try
-        {
-            if (!checkCrc())
-            {
-                String fileName;
-                if (file == null)
-                    fileName = "unknown";
-                else
-                    fileName = file.getName();
-                String message = "Log record CRC failure: file=" + fileName
-                        + " offset=" + getOffset() + " crc type="
-                        + getCrcType() + " stored crc=" + crc
-                        + " computed crc=" + computedCrc;
-                throw new LogConsistencyException(message);
-            }
-        }
-        catch (IOException e)
-        {
-            String fileName;
-            if (file == null)
-                fileName = "unknown";
-            else
-                fileName = file.getName();
-            String message = "CRC computation failure: file=" + fileName
-                    + " offset=" + getOffset() + " crc type=" + getCrcType()
-                    + " stored crc=" + getCrc();
-            throw new LogConsistencyException(message, e);
-        }
     }
 
     /**

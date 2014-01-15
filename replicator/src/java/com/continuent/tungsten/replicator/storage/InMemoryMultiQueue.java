@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2013 Continuent Inc.
+ * Copyright (C) 2010-2012 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -26,7 +26,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.log4j.Logger;
 
@@ -57,10 +56,6 @@ public class InMemoryMultiQueue implements Store
     private List<BlockingQueue<ReplDBMSEvent>> queues;
     private ReplDBMSHeader[]                   lastHeader;
     private long                               transactionCount = 0;
-
-    // Metadata tag used to recognize it's time to fail. If this is set in the 
-    // event metadata we will fail.  
-    private static final String                FAILURE_TAG      = "fail";
 
     /**
      * {@inheritDoc}
@@ -135,19 +130,11 @@ public class InMemoryMultiQueue implements Store
     }
 
     /**
-     * Puts an event in the queue, blocking if it is full. This call fails if
-     * failAll is true, which can be used to test error handling.
+     * Puts an event in the queue, blocking if it is full.
      */
     public void put(int taskId, ReplDBMSEvent event)
-            throws InterruptedException, ReplicatorException
+            throws InterruptedException
     {
-        // See if we want to fail now.
-        String failTag = event.getDBMSEvent().getMetadataOptionValue(
-                FAILURE_TAG);
-        if (failTag != null)
-            throw new ReplicatorException("Failure triggered by " + FAILURE_TAG
-                    + "=" + failTag);
-
         // Insert into the queue.
         queues.get(taskId).put(event);
         transactionCount++;
@@ -174,16 +161,6 @@ public class InMemoryMultiQueue implements Store
     public ReplDBMSEvent get(int taskId) throws InterruptedException
     {
         return queues.get(taskId).take();
-    }
-
-    /**
-     * Removes and returns next event from the queue, waiting up to specified
-     * number of milliseconds. Returns null if nothing is read in this time.
-     */
-    public ReplDBMSEvent get(int taskId, long waitMillis)
-            throws InterruptedException
-    {
-        return queues.get(taskId).poll(waitMillis, TimeUnit.MILLISECONDS);
     }
 
     /**

@@ -36,10 +36,8 @@ import java.util.Map;
 
 import org.apache.log4j.Logger;
 
-import com.continuent.tungsten.common.cluster.resource.DataSource;
 import com.continuent.tungsten.common.cluster.resource.ResourceType;
 import com.continuent.tungsten.common.config.TungstenProperties;
-import com.continuent.tungsten.common.utils.CLUtils;
 import com.continuent.tungsten.manager.router.gateway.RouterGatewayConstants;
 
 public class ClusterConfiguration
@@ -91,7 +89,7 @@ public class ClusterConfiguration
      * @param resourceType
      * @throws ConfigurationException
      */
-    public static synchronized Map<String, Map<String, TungstenProperties>> loadClusterConfiguration(
+    public synchronized Map<String, Map<String, TungstenProperties>> loadClusterConfiguration(
             ResourceType resourceType) throws ConfigurationException
     {
         if (getClusterHome() == null)
@@ -126,7 +124,7 @@ public class ClusterConfiguration
      * @param resourceType
      * @throws ConfigurationException
      */
-    public static synchronized Map<String, TungstenProperties> loadConfiguration(
+    public synchronized Map<String, TungstenProperties> loadConfiguration(
             String clusterName, ResourceType resourceType)
             throws ConfigurationException
     {
@@ -306,7 +304,7 @@ public class ClusterConfiguration
      * @param clusterName
      * @param resourceType
      */
-    public static String getResourceConfigDirName(String clusterHome,
+    public String getResourceConfigDirName(String clusterHome,
             String clusterName, ResourceType resourceType)
     {
 
@@ -344,7 +342,6 @@ public class ClusterConfiguration
      * 
      * @param moduleProps the module properties file name
      * @param clusterHome location of cluster home
-     * @return
      */
     public static String getModulePropertiesFileName(String moduleProps,
             String clusterHome)
@@ -489,14 +486,16 @@ public class ClusterConfiguration
         }
 
         RouterConfiguration config = new RouterConfiguration(null);
+        config.setUseNewProtocol(true);
         config.setClusterHome(getClusterHome());
         config.setHost(ConfigurationConstants.TR_RMI_DEFAULT_HOST);
         // TODO:
-        // TUC-1749 : Always use new router gateway protocol
-        ArrayList<String> al = new ArrayList<String>();
-        al.add("localhost:9998");
-        config.setManagerList(al);
-
+        if (config.getUseNewProtocol())
+        {
+            ArrayList<String> al = new ArrayList<String>();
+            al.add("localhost:9998");
+            config.setManagerList(al);
+        }
         TungstenProperties configProps = new TungstenProperties();
         configProps.extractProperties(config, true);
 
@@ -851,7 +850,7 @@ public class ClusterConfiguration
      * @param dirName
      * @throws ConfigurationException
      */
-    public static File getDir(String dirName) throws ConfigurationException
+    public File getDir(String dirName) throws ConfigurationException
     {
         File dir = new File(dirName);
         if (!dir.isDirectory())

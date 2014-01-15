@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2009-2013 Continuent Inc.
+ * Copyright (C) 2009 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -39,18 +39,14 @@ public class FormatDescriptionLogEvent extends StartLogEvent
     public short   commonHeaderLength;
     public short[] postHeaderLength;
     private int    eventTypesCount;
-    private int    checksumAlgo;
+    public int     checksumAlgo;
 
     public FormatDescriptionLogEvent(byte[] buffer, int eventLength,
-            FormatDescriptionLogEvent descriptionEvent, String currentPosition)
+            FormatDescriptionLogEvent descriptionEvent)
             throws ReplicatorException
     {
         super(buffer, descriptionEvent);
-
-        this.startPosition = currentPosition;
-        if (logger.isDebugEnabled())
-            logger.debug("Extracting event at position  : " + startPosition
-                    + " -> " + getNextEventPosition());
+        logger.warn(hexdump(buffer));
 
         int noCrcEventLength = eventLength - 4;
 
@@ -101,43 +97,53 @@ public class FormatDescriptionLogEvent extends StartLogEvent
         // found in the binlog
         long calculatedChecksum = MysqlBinlog.getCrc32(buffer, 0,
                 noCrcEventLength);
-        if (logger.isDebugEnabled())
-            logger.debug("Calculated checksum = " + calculatedChecksum);
+        logger.warn("Calculated checksum = " + calculatedChecksum);
         boolean isChecksummed = evChecksum == calculatedChecksum;
         if (isChecksummed)
         {
-            if (logger.isDebugEnabled())
-            {
-                logger.debug("This FD event is checksummed");
-                // Check whether checksum algorithm is set
-                logger.debug("@Pos : "
-                        + (MysqlBinlog.LOG_EVENT_MINIMAL_HEADER_LEN
-                                + MysqlBinlog.FORMAT_DESCRIPTION_HEADER_LEN_5_6 + 1)
-                        + " Algo is :"
-                        + hexdump(
-                                buffer,
-                                MysqlBinlog.LOG_EVENT_MINIMAL_HEADER_LEN
-                                        + MysqlBinlog.FORMAT_DESCRIPTION_HEADER_LEN_5_6
-                                        + 1, 1));
-            }
+            logger.warn("This FD event is checksummed");
+            // Check whether checksum algorithm is set
+            logger.warn("@Pos : "
+                    + (MysqlBinlog.LOG_EVENT_MINIMAL_HEADER_LEN
+                            + MysqlBinlog.FORMAT_DESCRIPTION_HEADER_LEN_5_6 + 1)
+                    + " Algo is :"
+                    + hexdump(
+                            buffer,
+                            MysqlBinlog.LOG_EVENT_MINIMAL_HEADER_LEN
+                                    + MysqlBinlog.FORMAT_DESCRIPTION_HEADER_LEN_5_6
+                                    + 1, 1));
 
             int chksumAlg = GeneralConversion
                     .unsignedByteToInt(buffer[MysqlBinlog.LOG_EVENT_MINIMAL_HEADER_LEN
                             + MysqlBinlog.FORMAT_DESCRIPTION_HEADER_LEN_5_6 + 1]);
-            if (logger.isDebugEnabled())
-                logger.debug("Found algo =" + chksumAlg);
+            logger.warn("Found algo =" + chksumAlg);
             if (chksumAlg > 0 && chksumAlg < 0xFF)
             {
                 this.checksumAlgo = chksumAlg;
-                logger.info("This binlog is checksummed.");
             }
         }
         else
         {
             this.checksumAlgo = 0; // NONE
-            if (logger.isDebugEnabled())
-                logger.debug("This FD event is not checksummed -> this master is not checksum enabled !");
+            logger.warn("This FD event is not checksummed -> this master is not checksum enabled !");
         }
+
+        // crc32.reset();
+        // crc32.update(buffer, 0, 110);
+        // logger.debug("Calculated checksum 2 is : " +
+        // Long.toHexString(crc32.getValue()));
+
+        // try
+        // {
+        // logger.debug("Found checksum is : "
+        // + LittleEndianConversion.convertNBytesToLong_2(buffer, 112, 4));
+        // }
+        // catch (IOException e)
+        // {
+        // // TODO Auto-generated catch block
+        // e.printStackTrace();
+        // }
+
     }
 
     public FormatDescriptionLogEvent(int binlogVersion, int checksumAlgo)

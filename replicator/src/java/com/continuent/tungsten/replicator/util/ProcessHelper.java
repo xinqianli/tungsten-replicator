@@ -133,17 +133,8 @@ public class ProcessHelper
         {
             logger.error("Operating system command failed");
             logger.info(this.processInfo(pe));
-            
-            if (stderr != null)
-            {
-                throw new BackupException(
-                    "Operating system command failed; check " + stderr.getPath() + " for details");
-            }
-            else
-            {
-                throw new BackupException(
+            throw new BackupException(
                     "Operating system command failed; check log for details");
-            }
         }
     }
 

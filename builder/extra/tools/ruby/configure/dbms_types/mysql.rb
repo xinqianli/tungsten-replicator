@@ -3,7 +3,6 @@ require 'tempfile'
 DBMS_MYSQL = "mysql"
 
 # MySQL-specific parameters
-MYSQL_DRIVER = "mysql_driver"
 REPL_MYSQL_DATADIR = "repl_datasource_mysql_data_directory"
 REPL_MYSQL_IBDATADIR = "repl_datasource_mysql_ibdata_directory"
 REPL_MYSQL_IBLOGDIR = "repl_datasource_mysql_iblog_directory"
@@ -17,10 +16,8 @@ REPL_MYSQL_XTRABACKUP_DIR = "repl_mysql_xtrabackup_dir"
 REPL_MYSQL_XTRABACKUP_FILE = "repl_mysql_xtrabackup_file"
 REPL_MYSQL_XTRABACKUP_TMP_DIR = "repl_mysql_xtrabackup_tmp_dir"
 REPL_MYSQL_XTRABACKUP_TMP_FILE = "repl_mysql_xtrabackup_tmp_file"
-REPL_MYSQL_XTRABACKUP_RESTORE_TO_DATADIR = "repl_xtrabackup_restore_to_datadir"
 REPL_MYSQL_USE_BYTES_FOR_STRING = "repl_mysql_use_bytes_for_string"
 REPL_MYSQL_CONF = "repl_datasource_mysql_conf"
-REPL_MYSQL_SERVICE_CONF = "repl_datasource_mysql_service_conf"
 
 class MySQLDatabasePlatform < ConfigureDatabasePlatform
   def get_uri_scheme
@@ -28,13 +25,7 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
   end
   
   def get_default_backup_method
-    path_to_xtrabackup = cmd_result("which innobackupex-1.5.1", true)
-	  
-	  if path_to_xtrabackup.to_s() != "" && @config.getProperty(ROOT_PREFIX) != "false"
-	    "xtrabackup-full"
-	  else
-	    "mysqldump"
-	  end
+    "mysqldump"
   end
   
   def get_valid_backup_methods
@@ -160,65 +151,11 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
    end
 	 filters + ["mysqlsessions"] + super()
 	end
-	
-	def get_backup_agents()
-	  agent = @config.getProperty(REPL_BACKUP_METHOD)
-	  path_to_xtrabackup = cmd_result("which innobackupex-1.5.1", true)
-	  
-	  if agent == "script"
-	    agents = ["script"]
-	  else
-	    agents = []
-	  end
-	  
-	  if path_to_xtrabackup.to_s() != ""
-	    agents << "xtrabackup-full"
-	    agents << "xtrabackup-incremental"
-	    agents << "xtrabackup"
-  	  agents << "mysqldump"
-  	else  
-  	  agents << "mysqldump"
-  	  agents << "xtrabackup-full"
-	    agents << "xtrabackup-incremental"
-	    agents << "xtrabackup"
-	  end
-	  
-	  return agents
-	end
-	
-	def get_default_backup_agent()
-    path_to_xtrabackup = cmd_result("which innobackupex-1.5.1", true)
-	  
-	  if path_to_xtrabackup.to_s() != ""
-	    "xtrabackup-full"
-	  else
-	    "mysqldump"
-	  end
-	end
 end
 
 #
 # Prompts
 #
-
-class MySQLDriver < ConfigurePrompt
-  include ClusterHostPrompt
-  
-  def initialize
-    pv = PropertyValidator.new("^mysql|drizzle|mariadb$", 
-      "Value must be mysql, drizzle or mariadb")
-      
-    super(MYSQL_DRIVER, "MySQL Driver Vendor", pv, "mysql")
-  end
-  
-  def get_template_value(transform_values_method)
-    if get_value() == "drizzle"
-      "mysql:thin"
-    else
-      "mysql"
-    end
-  end
-end
 
 class MySQLConfigurePrompt < ConfigurePrompt
   def get_default_value
@@ -348,19 +285,6 @@ class MySQLConfFile < ConfigurePrompt
   
   def enabled_for_config?
     super() && (get_datasource().is_a?(MySQLDatabasePlatform))
-  end
-end
-
-class MySQLServiceConfigFile < ConfigurePrompt
-  include DatasourcePrompt
-  include ConstantValueModule
-  
-  def initialize
-    super(REPL_MYSQL_SERVICE_CONF, "Path to my.cnf file customized for this datasource", PV_FILENAME)
-  end
-  
-  def get_template_value(transform_values_method)
-    @config.getProperty(HOME_DIRECTORY) + "/share/.my.#{get_member()}.cnf"
   end
 end
 
@@ -536,14 +460,6 @@ class MySQLXtrabackupTempFile < ConfigurePrompt
     else
       return nil
     end
-  end
-end
-
-class MySQLXtrabackupRestoreToDataDir < ConfigurePrompt
-  include ReplicationServicePrompt
-  
-  def initialize
-    super(REPL_MYSQL_XTRABACKUP_RESTORE_TO_DATADIR, "Restore directly to the MySQL data directory by default", PV_BOOLEAN, "false")
   end
 end
 
@@ -860,9 +776,9 @@ class MySQLSettingsCheck < ConfigureValidationCheck
     
     info("Checking innodb_flush_log_at_trx_commit")
     innodb_flush_log_at_trx_commit = get_applier_datasource.get_value("show variables like 'innodb_flush_log_at_trx_commit'", "Value")
-    if innodb_flush_log_at_trx_commit == nil || innodb_flush_log_at_trx_commit != "1"
+    if innodb_flush_log_at_trx_commit == nil || innodb_flush_log_at_trx_commit != "2"
       warning("The value of innodb_flush_log_at_trx_commit is wrong for #{get_applier_datasource.get_connection_summary()}")
-      help("Add \"innodb_flush_log_at_trx_commit=1\" to the MySQL configuration file for #{get_applier_datasource.get_connection_summary()}")
+      help("Add \"innodb_flush_log_at_trx_commit=2\" to the MySQL configuration file for #{get_applier_datasource.get_connection_summary()}")
     end
     
     info("Checking max_allowed_packet")
@@ -1004,43 +920,24 @@ module ConfigureDeploymentStepMySQL
       mkdir_if_absent(@config.getProperty(REPL_MYSQL_XTRABACKUP_DIR))
     end
     
-    ads = get_applier_datasource()
-    if ads.is_a?(MySQLDatabasePlatform)
-      File.open(@config.getTemplateValue(get_applier_key(REPL_MYSQL_SERVICE_CONF)), "w") {
-        |file|
-        file.puts("[client]")
-        file.puts("user=#{ads.username}")
-        file.puts("password=#{ads.password}")
-        file.puts("")
-        
-        if @config.getPropertyOr(get_applier_key(REPL_MYSQL_CONF), "") != ""
-          file.puts("!include #{@config.getProperty(get_applier_key(REPL_MYSQL_CONF))}")
-        end
-      }
-    end
-    
     super()
   end
 end
 
-#
-# Removed check that prevents installation using MySQL 5.6 servers
-# Starting with Tungsten-Replicator 2.1.1-101, MySQL 5.6 is fully supported
-#
-#class MySQLCheckSumCheck < ConfigureValidationCheck
-#  include ReplicationServiceValidationCheck
-#  include MySQLApplierCheck
-#  include NotPrefetchCheck
-#  
-#  def set_vars
-#    @title = "MySQL 5.6 binlog Checksum Check"
-#  end
-#  
-#  def validate
-#    info("Checking that MySQL Binlog Checksum is not enabled")
-#    checkSum = get_applier_datasource.get_value("show variables like 'binlog_checksum'", "Value")
-#    if (checkSum == 'CRC32') 
-#      error("This instance is running with BinLog checksum enabled which is not yet supported")
-#    end
-#  end
-#end
+class MySQLCheckSumCheck < ConfigureValidationCheck
+  include ReplicationServiceValidationCheck
+  include MySQLApplierCheck
+  include NotPrefetchCheck
+  
+  def set_vars
+    @title = "MySQL 5.6 binlog Checksum Check"
+  end
+  
+  def validate
+    info("Checking that MySQL Binlog Checksum is not enabled")
+    checkSum = get_applier_datasource.get_value("show variables like 'binlog_checksum'", "Value")
+    if (checkSum == 'CRC32') 
+      error("This instance is running with BinLog checksum enabled which is not yet supported")
+    end
+  end
+end

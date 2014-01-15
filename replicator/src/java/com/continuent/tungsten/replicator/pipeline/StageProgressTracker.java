@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2013 Continuent Inc.
+ * Copyright (C) 2010-2012 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -330,8 +330,7 @@ public class StageProgressTracker
             timeInMs = extractedTstamp.getTime();
 
         long latencyInMs = 1000 * replEvent.getAppliedLatency();
-        committedSeqno.report(taskId, replEvent.getSeqno(), timeInMs, timeInMs
-                + latencyInMs, replEvent);
+        committedSeqno.report(taskId, replEvent.getSeqno(),timeInMs, timeInMs + latencyInMs, replEvent);
         taskInfo[taskId].setLastCommittedEvent(replEvent);
     }
 
@@ -359,7 +358,7 @@ public class StageProgressTracker
         }
         else
         {
-            logger.warn("Attempt to commit task before marking processed event: stage="
+            logger.warn("Attemp to commit task before marking processed event: stage="
                     + this.name + " taskId=" + taskId);
         }
     }

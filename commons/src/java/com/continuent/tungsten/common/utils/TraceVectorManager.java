@@ -12,36 +12,36 @@ import org.apache.log4j.Logger;
 
 public class TraceVectorManager
 {
-    static private Logger                                   logger                     = Logger.getLogger(TraceVectorManager.class);
+    static private Logger                                          logger                     = Logger.getLogger(TraceVectorManager.class);
 
-    private AtomicBoolean                                   enabled                    = new AtomicBoolean(
-                                                                                               false);
-    private AtomicBoolean                                   autoDisable                = new AtomicBoolean(
-                                                                                               true);
+    static private AtomicBoolean                                   enabled                    = new AtomicBoolean(
+                                                                                                      false);
+    static private AtomicBoolean                                   autoDisable                = new AtomicBoolean(
+                                                                                                      true);
 
-    private Map<TraceVectorComponent, TraceVectorInstances> vectorsByComponent         = new TreeMap<TraceVectorComponent, TraceVectorInstances>();
+    static private Map<TraceVectorComponent, TraceVectorInstances> vectorsByComponent         = new TreeMap<TraceVectorComponent, TraceVectorInstances>();
 
     /**
      * Trace commands
      */
-    public static final String                              TRACE_METHOD_TRACE         = "trace";
-    public static final String                              TRACE_METHOD_GLOBAL_ENABLE = "traceEnable";
-    public static final String                              TRACE_METHOD_LIST          = "traceList";
-    public static final String                              TRACE_METHOD_RESET         = "traceReset";
-    public static final String                              TRACE_METHOD_AUTO_DISABLE  = "traceAUtoDisable";
+    public static final String                                     TRACE_METHOD_TRACE         = "trace";
+    public static final String                                     TRACE_METHOD_GLOBAL_ENABLE = "traceEnable";
+    public static final String                                     TRACE_METHOD_LIST          = "traceList";
+    public static final String                                     TRACE_METHOD_RESET         = "traceReset";
+    public static final String                                     TRACE_METHOD_AUTO_DISABLE  = "traceAUtoDisable";
 
     /**
      * Trace command args
      */
-    public static final String                              TRACE_ARG_VECTOR_PATH      = "vectorPath";
-    public static final String                              TRACE_ARG_ENABLE_FLAG      = "enableFlag";
+    public static final String                                     TRACE_ARG_VECTOR_PATH      = "vectorPath";
+    public static final String                                     TRACE_ARG_ENABLE_FLAG      = "enableFlag";
 
-    public void clear()
+    public static void clear()
     {
         vectorsByComponent.clear();
     }
 
-    public String reset()
+    public static String reset()
     {
         traceEnable(false);
         autoDisable.set(true);
@@ -53,7 +53,7 @@ public class TraceVectorManager
         return list();
     }
 
-    private void register(TraceVectorComponent component)
+    private static void register(TraceVectorComponent component)
     {
         TraceVectorInstances instances = vectorsByComponent.get(component);
         if (instances == null)
@@ -63,7 +63,7 @@ public class TraceVectorManager
         }
     }
 
-    public void add(TraceVectorComponent component, String category,
+    public static void add(TraceVectorComponent component, String category,
             int target, String description) throws Exception
     {
         TraceVectorInstances instances = vectorsByComponent.get(component);
@@ -80,34 +80,34 @@ public class TraceVectorManager
 
     }
 
-    public void add(TraceVectorComponent component, Class<?> clazz, int target,
-            String description) throws Exception
+    public static void add(TraceVectorComponent component, Class<?> clazz,
+            int target, String description) throws Exception
     {
         add(component, clazz.getSimpleName(), target, description);
     }
 
-    public void traceEnable(boolean enableFlag)
+    public static void traceEnable(boolean enableFlag)
     {
         enabled.set(enableFlag);
         logger.info("Global tracing is now "
                 + (enableFlag ? "enabled" : "disabled"));
     }
 
-    public void traceAutoDisable(boolean enableFlag)
+    public static void traceAutoDisable(boolean enableFlag)
     {
         autoDisable.set(enableFlag);
         logger.info("Automatic disable of trace vectors is now "
                 + (enableFlag ? "enabled" : "disabled"));
     }
 
-    public boolean isEnabled(TraceVectorComponent component, Class<?> clazz,
-            int target)
+    public static boolean isEnabled(TraceVectorComponent component,
+            Class<?> clazz, int target)
     {
         return isEnabled(component, clazz.getSimpleName(), target);
     }
 
-    public boolean isEnabled(TraceVectorComponent component, String category,
-            int target)
+    public static boolean isEnabled(TraceVectorComponent component,
+            String category, int target)
     {
         if (enabled.get() == false)
             return false;
@@ -126,29 +126,30 @@ public class TraceVectorManager
                     autoDisable.get() ? "ONCE" : "ALWAYS",
                     instances.getTrace(category, target)));
 
+            /*
             if (autoDisable.get() == true)
             {
                 instances.enable(category, target, false);
             }
-
+            */
         }
 
         return isEnabled;
     }
 
-    public boolean isEnabled(String vectorPath) throws Exception
+    public static boolean isEnabled(String vectorPath) throws Exception
     {
         return isEnabled(TraceVectorArgs.getArgs(vectorPath));
     }
 
-    private boolean isEnabled(TraceVectorArgs args) throws Exception
+    private static boolean isEnabled(TraceVectorArgs args) throws Exception
     {
         return isEnabled(args.getComponent(), args.getCategory(),
                 args.getTarget());
     }
 
-    public TraceVector enable(TraceVectorComponent component, String category,
-            int target, boolean enableFlag)
+    public static TraceVector enable(TraceVectorComponent component,
+            String category, int target, boolean enableFlag)
     {
         TraceVectorInstances instances = vectorsByComponent.get(component);
         if (instances == null)
@@ -162,7 +163,7 @@ public class TraceVectorManager
         return vector;
     }
 
-    public String enable(String vectorPath, boolean enableFlag)
+    public static String enable(String vectorPath, boolean enableFlag)
             throws Exception
     {
         TraceVector vector = enable(TraceVectorArgs.getArgs(vectorPath),
@@ -171,36 +172,36 @@ public class TraceVectorManager
         return String.format("%s\n%s", describe(), vector.toString());
     }
 
-    private TraceVector enable(TraceVectorArgs args, boolean enableFlag)
+    private static TraceVector enable(TraceVectorArgs args, boolean enableFlag)
             throws Exception
     {
         return enable(args.getComponent(), args.getCategory(),
                 args.getTarget(), enableFlag);
     }
 
-    public void set(TraceVectorComponent component, String category, int target)
-            throws Exception
+    public static void set(TraceVectorComponent component, String category,
+            int target) throws Exception
     {
         enable(component, category, target, true);
     }
 
-    public void set(String vectorPath) throws Exception
+    public static void set(String vectorPath) throws Exception
     {
         enable(vectorPath, true);
     }
 
-    public void clear(String vectorPath) throws Exception
+    public static void clear(String vectorPath) throws Exception
     {
         enable(vectorPath, false);
     }
 
-    public void clear(TraceVectorComponent component, String category,
+    public static void clear(TraceVectorComponent component, String category,
             int target) throws Exception
     {
         enable(component, category, target, false);
     }
 
-    public TraceVector getTrace(TraceVectorComponent component,
+    public static TraceVector getTrace(TraceVectorComponent component,
             String category, int target)
     {
         TraceVectorInstances instances = vectorsByComponent.get(component);
@@ -213,18 +214,18 @@ public class TraceVectorManager
 
     }
 
-    public String describe()
+    public static String describe()
     {
         return (String.format("VECTOR MANAGER(%s)\nAUTO DISABLE(%s)",
                 enabled.get() ? "ON" : "OFF", autoDisable.get() ? "ON" : "OFF"));
     }
 
-    public String list()
+    public static String list()
     {
         return list(true, true);
     }
 
-    public String list(boolean listEnabled, boolean listDisabled)
+    public static String list(boolean listEnabled, boolean listDisabled)
     {
         StringBuilder builder = new StringBuilder();
 
@@ -243,12 +244,12 @@ public class TraceVectorManager
         return builder.toString();
     }
 
-    public void setLogLevel(Level level)
+    public static void setLogLevel(Level level)
     {
         logger.setLevel(level);
     }
 
-    public boolean parseBoolean(String boolVal)
+    public static boolean parseBoolean(String boolVal)
     {
         if (boolVal.equalsIgnoreCase("on") || boolVal.equalsIgnoreCase("true"))
             return true;
@@ -262,7 +263,7 @@ public class TraceVectorManager
      * 
      * @param clazz annotated class
      */
-    public void importVectors(Class<?> clazz)
+    public static void importVectors(Class<?> clazz)
     {
         Field fields[] = clazz.getDeclaredFields();
 
@@ -281,8 +282,8 @@ public class TraceVectorManager
             try
             {
                 int target = field.getInt(field);
-                add(argDesc.component(), argDesc.category(), target,
-                        argDesc.description());
+                TraceVectorManager.add(argDesc.component(), argDesc.category(),
+                        target, argDesc.description());
             }
             catch (Exception e)
             {
@@ -293,7 +294,7 @@ public class TraceVectorManager
         }
     }
 
-    public String getVectorDescription(Class<?> clazz,
+    public static String getVectorDescription(Class<?> clazz,
             TraceVectorComponent component, String category, int target)
     {
         Field fields[] = clazz.getDeclaredFields();

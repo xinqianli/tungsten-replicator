@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2013 Continuent Inc.
+ * Copyright (C) 2007-2012 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -28,10 +28,9 @@ import java.util.ArrayList;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import junit.framework.TestCase;
+
 import org.apache.log4j.Logger;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Test;
 
 import com.continuent.tungsten.common.config.TungstenProperties;
 import com.continuent.tungsten.replicator.applier.ApplierWrapper;
@@ -43,7 +42,6 @@ import com.continuent.tungsten.replicator.dbms.DBMSData;
 import com.continuent.tungsten.replicator.dbms.StatementData;
 import com.continuent.tungsten.replicator.event.DBMSEvent;
 import com.continuent.tungsten.replicator.event.ReplDBMSEvent;
-import com.continuent.tungsten.replicator.event.ReplDBMSFilteredEvent;
 import com.continuent.tungsten.replicator.event.ReplDBMSHeader;
 import com.continuent.tungsten.replicator.event.ReplOptionParams;
 import com.continuent.tungsten.replicator.extractor.DummyExtractor;
@@ -64,36 +62,13 @@ import com.continuent.tungsten.replicator.storage.Store;
  *         Kurikka</a>
  * @version 1.0
  */
-public class TestTHL2
+public class TestTHL2 extends TestCase
 {
-    private static Logger     logger = Logger.getLogger(TestTHL2.class);
-
-    // Many tests use this pipeline and runtime, which shut down automatically.
-    private Pipeline          pipeline;
-    private ReplicatorRuntime runtime;
-
-    /**
-     * Shut down default pipeline and runtime at end of test.
-     */
-    @After
-    public void teardown()
-    {
-        if (pipeline != null)
-        {
-            logger.info("Shutting down pipeline...");
-            pipeline.shutdown(false);
-        }
-        if (runtime != null)
-        {
-            logger.info("Releasing runtime...");
-            runtime.release();
-        }
-    }
+    private static Logger logger = Logger.getLogger(TestTHL2.class);
 
     /*
      * Verify that we can start a THL as a store in a pipeline.
      */
-    @Test
     public void testBasicService() throws Exception
     {
         logger.info("##### testBasicService #####");
@@ -101,124 +76,33 @@ public class TestTHL2
         // Set up and start pipelines.
         TungstenProperties conf = this.generateTwoStageProps(
                 "testBasicServices", 1);
-        runtime = new ReplicatorRuntime(conf, new MockOpenReplicatorContext(),
+        ReplicatorRuntime runtime = new ReplicatorRuntime(conf,
+                new MockOpenReplicatorContext(),
                 ReplicatorMonitor.getInstance());
         runtime.configure();
         runtime.prepare();
-        pipeline = runtime.getPipeline();
+        Pipeline pipeline = runtime.getPipeline();
         pipeline.start(new MockEventDispatcher());
 
         // Wait for and verify events.
         Future<ReplDBMSHeader> wait = pipeline
                 .watchForProcessedSequenceNumber(9);
         ReplDBMSHeader lastEvent = wait.get(5, TimeUnit.SECONDS);
-        Assert.assertEquals("Expected 10 server events", 9,
-                lastEvent.getSeqno());
+        assertEquals("Expected 10 server events", 9, lastEvent.getSeqno());
 
         Store thl = pipeline.getStore("thl");
-        Assert.assertEquals("Expected 0 as first event", 0,
-                thl.getMinStoredSeqno());
-        Assert.assertEquals("Expected 9 as last event", 9,
-                thl.getMaxStoredSeqno());
-    }
+        assertEquals("Expected 0 as first event", 0, thl.getMinStoredSeqno());
+        assertEquals("Expected 9 as last event", 9, thl.getMaxStoredSeqno());
 
-    /**
-     * Verify that filtered events are correctly replicated and stored. This
-     * includes checking that the latency is correctly reported when the
-     * filtered event commits and that the epoch number is visible after
-     * storage.
-     */
-    @Test
-    public void testFilteredEvents() throws Exception
-    {
-        String schema = "testFilteredEvents";
-        logger.info("##### " + schema + " #####");
-
-        // Prepare log directory and pipeline configuration.
-        this.prepareLogDir(schema);
-        TungstenProperties conf = this.generateQueueTHLQueuePipeline(schema);
-        runtime = new ReplicatorRuntime(conf, new MockOpenReplicatorContext(),
-                ReplicatorMonitor.getInstance());
-
-        // Configure and start pipeline
-        runtime.configure();
-        runtime.prepare();
-        pipeline = runtime.getPipeline();
-        pipeline.start(new MockEventDispatcher());
-
-        // Find the input and output queues.
-        InMemoryQueueStore input = (InMemoryQueueStore) pipeline
-                .getStore("queue");
-        InMemoryQueueStore output = (InMemoryQueueStore) pipeline
-                .getStore("queue2");
-
-        // Put 2 initial events into the log so that it starts nicely.
-        THLParallelQueueHelper helper = new THLParallelQueueHelper();
-        long commitMillis = System.currentTimeMillis() - 60000;
-        Timestamp commitTime = new Timestamp(commitMillis);
-        logger.info("Commit time for all events: " + commitTime);
-        ReplDBMSEvent e0 = helper.createEvent(0, (short) 0, true, "NONE",
-                commitTime, 0);
-        input.put(e0);
-        ReplDBMSEvent e1 = helper.createEvent(1, (short) 0, true, "NONE",
-                commitTime, 1);
-        input.put(e1);
-
-        // Wait for these to clear.
-        Future<ReplDBMSHeader> wait1 = pipeline
-                .watchForCommittedSequenceNumber(1, false);
-        ReplDBMSHeader lastEvent = wait1.get(5, TimeUnit.SECONDS);
-        Assert.assertEquals("Expected to reach 1", 1, lastEvent.getSeqno());
-
-        // Generate a filtered event and confirm that it commits. Pick commit
-        // time in past to ensure that the latency is correctly reported as this
-        // was a problem in earlier code versions.
-        ReplDBMSEvent e2 = helper.createEvent(2, (short) 0, true, "NONE",
-                commitTime, 1);
-        ReplDBMSEvent e4 = helper.createEvent(4, (short) 0, true, "NONE",
-                commitTime, 1);
-        ReplDBMSFilteredEvent fe24 = new ReplDBMSFilteredEvent(e2, e4);
-        logger.info("Pipeline latency before filtered event: "
-                + pipeline.getApplyLatency());
-        logger.info("Filtered event commit time on input: "
-                + fe24.getExtractedTstamp());
-        input.put(fe24);
-
-        // Wait for and verify events.
-        Future<ReplDBMSHeader> wait2 = pipeline
-                .watchForCommittedSequenceNumber(2, false);
-        ReplDBMSHeader lastEvent2 = wait2.get(5, TimeUnit.SECONDS);
-        Assert.assertEquals("Expected to reach 2", 2, lastEvent2.getSeqno());
-
-        // Fetch events 0 and 1 to clear the output queue.
-        ReplDBMSEvent e0out = output.get();
-        Assert.assertEquals("e0 event seqno", 0, e0out.getSeqno());
-        ReplDBMSEvent e1out = output.get();
-        Assert.assertEquals("e1 event seqno", 1, e1out.getSeqno());
-
-        // Confirm that the filtered event has reached the output queue.
-        long currentMillis = System.currentTimeMillis();
-        ReplDBMSFilteredEvent fe24out = (ReplDBMSFilteredEvent) output.get();
-        Assert.assertEquals("First filtered seqno", 2, fe24out.getSeqno());
-        Assert.assertEquals("Last filtered seqno", 4, fe24out.getSeqnoEnd());
-        Assert.assertEquals("Epoch number", 1, fe24out.getEpochNumber());
-
-        // Test the latency and ensure it is at least the interval between
-        // now and the commit time less a buffer of 10 seconds *or* 0.
-        double pipelineLatency = pipeline.getApplyLatency();
-        logger.info("Current pipeline latency: " + pipelineLatency);
-        logger.info("Filtered event commit time on output: "
-                + fe24out.getExtractedTstamp());
-        double expectedLatency = ((currentMillis - commitMillis) / 1000.0) - 10.0;
-        Assert.assertTrue("Testing pipeline latency: expect " + pipelineLatency
-                + " >= " + expectedLatency, pipelineLatency >= expectedLatency);
+        // Close down pipeline.
+        pipeline.shutdown(false);
+        runtime.release();
     }
 
     /**
      * Verify that two THLs may be chained together using separate pipelines and
      * that following replication they contain the same number of events.
      */
-    @Test
     public void testTHL2Chaining() throws Exception
     {
         logger.info("##### testTHL2Chaining #####");
@@ -303,25 +187,23 @@ public class TestTHL2
 
         logger.info("Waiting for server pipeline to clear");
         ReplDBMSHeader lastMasterEvent = waitServer.get(5, TimeUnit.SECONDS);
-        Assert.assertEquals("Expected 10 server events", 9,
-                lastMasterEvent.getSeqno());
+        assertEquals("Expected 10 server events", 9, lastMasterEvent.getSeqno());
 
         logger.info("Waiting for client pipeline to clear");
         ReplDBMSHeader lastClientEvent = waitClient.get(5, TimeUnit.SECONDS);
-        Assert.assertEquals("Expected 10 client events", 9,
-                lastClientEvent.getSeqno());
+        assertEquals("Expected 10 client events", 9, lastClientEvent.getSeqno());
 
         // Ensure each THL contains expected number of events.
         Store serverThl = serverPipeline.getStore("thl");
-        Assert.assertEquals("Expected 0 as first event", 0,
+        assertEquals("Expected 0 as first event", 0,
                 serverThl.getMinStoredSeqno());
-        Assert.assertEquals("Expected 9 as last event", 9,
+        assertEquals("Expected 9 as last event", 9,
                 serverThl.getMaxStoredSeqno());
 
         Store thlClient = clientPipeline.getStore("thl");
-        Assert.assertEquals("Expected 0 as first event", 0,
+        assertEquals("Expected 0 as first event", 0,
                 thlClient.getMinStoredSeqno());
-        Assert.assertEquals("Expected 9 as last event", 9,
+        assertEquals("Expected 9 as last event", 9,
                 thlClient.getMaxStoredSeqno());
 
         // Shut down both pipelines.
@@ -335,7 +217,6 @@ public class TestTHL2
      * Verify that multiple pipelines work slave pipeline extracts from the
      * master pipeline.
      */
-    @Test
     public void testInstanceConnections() throws Exception
     {
         logger.info("##### testInstanceConnections #####");
@@ -394,20 +275,16 @@ public class TestTHL2
 
         logger.info("Waiting for server pipeline to clear");
         ReplDBMSHeader lastMasterEvent = waitServer.get(5, TimeUnit.SECONDS);
-        Assert.assertEquals("Expected 10 server events", 9,
-                lastMasterEvent.getSeqno());
+        assertEquals("Expected 10 server events", 9, lastMasterEvent.getSeqno());
 
         logger.info("Waiting for client pipeline to clear");
         ReplDBMSHeader lastClientEvent = waitClient.get(5, TimeUnit.SECONDS);
-        Assert.assertEquals("Expected 10 client events", 9,
-                lastClientEvent.getSeqno());
+        assertEquals("Expected 10 client events", 9, lastClientEvent.getSeqno());
 
         // Ensure THL contains expected number of events.
         Store thl = serverPipeline.getStore("thl");
-        Assert.assertEquals("Expected 0 as first event", 0,
-                thl.getMinStoredSeqno());
-        Assert.assertEquals("Expected 9 as last event", 9,
-                thl.getMaxStoredSeqno());
+        assertEquals("Expected 0 as first event", 0, thl.getMinStoredSeqno());
+        assertEquals("Expected 9 as last event", 9, thl.getMaxStoredSeqno());
 
         // Shut down both pipelines.
         clientPipeline.shutdown(true);
@@ -421,7 +298,6 @@ public class TestTHL2
      * master, or either one. This test works by defining master/slave
      * pipelines, then constructs a slave that connects to each in turn.
      */
-    @Test
     public void testMultiThlServerConnect() throws Exception
     {
         logger.info("##### testMultiThlServerConnect #####");
@@ -448,7 +324,7 @@ public class TestTHL2
         masterQueue.put(createEvent(0));
         Future<ReplDBMSHeader> wait = slave1.watchForProcessedSequenceNumber(0);
         ReplDBMSHeader lastEvent = wait.get(5, TimeUnit.SECONDS);
-        Assert.assertEquals("Expected event we put in", 0, lastEvent.getSeqno());
+        assertEquals("Expected event we put in", 0, lastEvent.getSeqno());
 
         // Create a slave that prefers to read from a slave rather than a
         // master.
@@ -457,15 +333,14 @@ public class TestTHL2
 
         // Confirm that we can connect and receive preferentially
         // from the slave. Shut down the slave once this is accomplished.
-        logger.info("Testing read from slave #2 with seqno 1");
+        logger.info("Testing read from slave #1 with seqno 1");
         masterQueue.put(createEvent(1));
         Future<ReplDBMSHeader> wait2 = slave2
                 .watchForProcessedSequenceNumber(1);
         ReplDBMSHeader lastEvent2 = wait2.get(5, TimeUnit.SECONDS);
-        Assert.assertEquals("Expected event we put in", 1,
-                lastEvent2.getSeqno());
-        Assert.assertEquals("Slave should read from slave",
-                "thl://localhost:2113", slave2.getPipelineSource());
+        assertEquals("Expected event we put in", 1, lastEvent2.getSeqno());
+        assertEquals("Slave should read from slave", "thl://localhost:2113",
+                slave2.getPipelineSource());
 
         // Shut down the slave #1 and ensure slave2 reads switch to the
         // master.
@@ -478,10 +353,9 @@ public class TestTHL2
         Future<ReplDBMSHeader> wait3 = slave2
                 .watchForProcessedSequenceNumber(2);
         ReplDBMSHeader lastEvent3 = wait3.get(5, TimeUnit.SECONDS);
-        Assert.assertEquals("Expected event we put in", 2,
-                lastEvent3.getSeqno());
-        Assert.assertEquals("Slave should read from master",
-                "thl://localhost:2112", slave2.getPipelineSource());
+        assertEquals("Expected event we put in", 2, lastEvent3.getSeqno());
+        assertEquals("Slave should read from master", "thl://localhost:2112",
+                slave2.getPipelineSource());
 
         // Shut down the test slave.
         slave2.shutdown(true);
@@ -516,7 +390,6 @@ public class TestTHL2
      * number is correctly propagated back to the extractor so that new events
      * begin at the next sequence number.
      */
-    @Test
     public void testSeqnoPropagation() throws Exception
     {
         logger.info("##### testSeqnoPropagation #####");
@@ -555,7 +428,7 @@ public class TestTHL2
                 .watchForProcessedSequenceNumber(9);
         logger.info("Waiting for pipeline #1 to clear");
         ReplDBMSHeader lastEvent1 = wait1.get(5, TimeUnit.SECONDS);
-        Assert.assertEquals("Expected 10 events", 9, lastEvent1.getSeqno());
+        assertEquals("Expected 10 events", 9, lastEvent1.getSeqno());
 
         // Shut down first pipeline.
         pipeline1.shutdown(true);
@@ -575,16 +448,14 @@ public class TestTHL2
                 .watchForProcessedSequenceNumber(19);
         logger.info("Waiting for pipeline #2 to clear");
         ReplDBMSHeader lastEvent2 = wait2.get(5, TimeUnit.SECONDS);
-        Assert.assertEquals("Expected 20 events", 19, lastEvent2.getSeqno());
+        assertEquals("Expected 20 events", 19, lastEvent2.getSeqno());
 
         // Ensure THL contains expected number of events. We must sleep
         // very briefly to allow the THL to commit.
         Thread.sleep(50);
         Store thl = pipeline2.getStore("thl");
-        Assert.assertEquals("Expected 0 as first event", 0,
-                thl.getMinStoredSeqno());
-        Assert.assertEquals("Expected 19 as last event", 19,
-                thl.getMaxStoredSeqno());
+        assertEquals("Expected 0 as first event", 0, thl.getMinStoredSeqno());
+        assertEquals("Expected 19 as last event", 19, thl.getMaxStoredSeqno());
 
         // Shut down second pipeline.
         pipeline2.shutdown(true);
@@ -594,7 +465,6 @@ public class TestTHL2
     /**
      * Verify that fragmented events are correctly replicated and stored.
      */
-    @Test
     public void testFragmentedEvents() throws Exception
     {
         logger.info("##### testFragmentedEvents #####");
@@ -630,34 +500,36 @@ public class TestTHL2
         builder.addProperty("applier", "dummy", "storeAppliedEvents", "true");
 
         TungstenProperties conf = builder.getConfig();
-        runtime = new ReplicatorRuntime(conf, new MockOpenReplicatorContext(),
+        ReplicatorRuntime runtime = new ReplicatorRuntime(conf,
+                new MockOpenReplicatorContext(),
                 ReplicatorMonitor.getInstance());
 
         // Configure and start pipeline
         runtime.configure();
         runtime.prepare();
-        pipeline = runtime.getPipeline();
+        Pipeline pipeline = runtime.getPipeline();
         pipeline.start(new MockEventDispatcher());
 
         // Wait for and verify events.
-        Future<ReplDBMSHeader> wait = pipeline.watchForCommittedSequenceNumber(
-                9, false);
+        Future<ReplDBMSHeader> wait = pipeline
+                .watchForProcessedSequenceNumber(9);
         ReplDBMSHeader lastEvent = wait.get(5, TimeUnit.SECONDS);
-        Assert.assertEquals("Expected 10 server events", 9,
-                lastEvent.getSeqno());
+        assertEquals("Expected 10 server events", 9, lastEvent.getSeqno());
 
         Store thl = pipeline.getStore("thl");
-        Assert.assertEquals("Expected 0 as first event", 0,
-                thl.getMinStoredSeqno());
-        Assert.assertEquals("Expected 9 as last event", 9,
-                thl.getMaxStoredSeqno());
+        assertEquals("Expected 0 as first event", 0, thl.getMinStoredSeqno());
+        assertEquals("Expected 9 as last event", 9, thl.getMaxStoredSeqno());
 
         // Confirm we have 10x2 statements.
         ApplierWrapper wrapper = (ApplierWrapper) pipeline.getStage("apply")
                 .getApplier0();
         DummyApplier applier = (DummyApplier) wrapper.getApplier();
         ArrayList<StatementData> sql = ((DummyApplier) applier).getTrx();
-        Assert.assertEquals("Expected 10x2 statements", 60, sql.size());
+        assertEquals("Expected 10x2 statements", 60, sql.size());
+
+        // Close down pipeline.
+        pipeline.shutdown(false);
+        runtime.release();
     }
 
     /*
@@ -666,7 +538,6 @@ public class TestTHL2
      * case where an applier stage has applied everything from the stage and is
      * now waiting for new events to arrive.
      */
-    @Test
     public void testTHLExtractWaiting() throws Exception
     {
         logger.info("##### testTHLExtractWaiting #####");
@@ -674,11 +545,12 @@ public class TestTHL2
         // Set up a pipeline with a queue at the beginning. We will feed
         // transactions into the queue.
         TungstenProperties conf = generateQueueFedMasterProps("testTHLExtractWaiting");
-        runtime = new ReplicatorRuntime(conf, new MockOpenReplicatorContext(),
+        ReplicatorRuntime runtime = new ReplicatorRuntime(conf,
+                new MockOpenReplicatorContext(),
                 ReplicatorMonitor.getInstance());
         runtime.configure();
         runtime.prepare();
-        pipeline = runtime.getPipeline();
+        Pipeline pipeline = runtime.getPipeline();
         pipeline.start(new MockEventDispatcher());
 
         // Fetch out the queue store so we can write events thereunto.
@@ -688,7 +560,7 @@ public class TestTHL2
         // Feed events into the pipeline and confirm they reach the other side.
         for (int i = 0; i < 10; i++)
         {
-            Assert.assertFalse("Pipeline must be OK", pipeline.isShutdown());
+            assertFalse("Pipeline must be OK", pipeline.isShutdown());
 
             // Create and insert an event.
             ReplDBMSEvent e = createEvent(i);
@@ -698,8 +570,7 @@ public class TestTHL2
             Future<ReplDBMSHeader> wait = pipeline
                     .watchForProcessedSequenceNumber(i);
             ReplDBMSHeader lastEvent = wait.get(5, TimeUnit.SECONDS);
-            Assert.assertEquals("Expected event we put in", i,
-                    lastEvent.getSeqno());
+            assertEquals("Expected event we put in", i, lastEvent.getSeqno());
         }
 
         // Close down pipeline.
@@ -722,7 +593,7 @@ public class TestTHL2
         queue = (InMemoryQueueStore) pipeline.getStore("queue");
         for (int i = 10; i < 20; i++)
         {
-            Assert.assertFalse("Pipeline must be OK", pipeline.isShutdown());
+            assertFalse("Pipeline must be OK", pipeline.isShutdown());
 
             // Create and insert an event.
             ReplDBMSEvent e = createEvent(i);
@@ -732,9 +603,12 @@ public class TestTHL2
             Future<ReplDBMSHeader> wait = pipeline
                     .watchForProcessedSequenceNumber(i);
             ReplDBMSHeader lastEvent = wait.get(5, TimeUnit.SECONDS);
-            Assert.assertEquals("Expected event we put in", i,
-                    lastEvent.getSeqno());
+            assertEquals("Expected event we put in", i, lastEvent.getSeqno());
         }
+
+        // Close down pipeline.
+        pipeline.shutdown(false);
+        runtime.release();
     }
 
     // Generate configuration properties for a double stage-pipeline
@@ -811,48 +685,6 @@ public class TestTHL2
         return builder.getConfig();
     }
 
-    // Generate a pipeline with a queue to feed and a queue to receive
-    // transactions and a THL in the middle. This will be marked as a
-    // slave.
-    public TungstenProperties generateQueueTHLQueuePipeline(String schemaName)
-            throws Exception
-    {
-        // Clear the THL log directory.
-        prepareLogDir(schemaName);
-
-        // Create pipeline.
-        PipelineConfigBuilder builder = new PipelineConfigBuilder();
-        builder.setProperty(ReplicatorConf.SERVICE_NAME, "test");
-        builder.setRole("slave");
-        builder.setProperty(ReplicatorConf.METADATA_SCHEMA, schemaName);
-        builder.addPipeline("slave", "extract, apply", "queue,thl,queue2");
-        builder.addStage("extract", "queue", "thl-apply", null);
-        builder.addStage("apply", "thl-extract", "queue2", null);
-
-        // Define stores.
-        builder.addComponent("store", "thl", THL.class);
-        builder.addProperty("store", "thl", "logDir", schemaName);
-        builder.addComponent("store", "queue", InMemoryQueueStore.class);
-        builder.addProperty("store", "queue", "maxSize", "5");
-        builder.addComponent("store", "queue2", InMemoryQueueStore.class);
-        builder.addProperty("store", "queue2", "maxSize", "5");
-
-        // Extract stage components.
-        builder.addComponent("extractor", "queue", InMemoryQueueAdapter.class);
-        builder.addProperty("extractor", "queue", "storeName", "queue");
-        builder.addComponent("applier", "thl-apply", THLStoreApplier.class);
-        builder.addProperty("applier", "thl-apply", "storeName", "thl");
-
-        // Apply stage components.
-        builder.addComponent("extractor", "thl-extract",
-                THLStoreExtractor.class);
-        builder.addProperty("extractor", "thl-extract", "storeName", "thl");
-        builder.addComponent("applier", "queue2", InMemoryQueueAdapter.class);
-        builder.addProperty("applier", "queue2", "storeName", "queue2");
-
-        return builder.getConfig();
-    }
-
     // Generate pipeline properties for a slave with ability to listen
     // optionally on multiple THL URIs.
     public TungstenProperties generateSlaveProps(String svc,
@@ -880,8 +712,6 @@ public class TestTHL2
         {
             builder2.addProperty("extractor", "thl-remote-extractor",
                     "preferredRole", preferredRole);
-            builder2.addProperty("extractor", "thl-remote-extractor",
-                    "preferredRoleTimeout", "3");
         }
         builder2.addComponent("applier", "thl-apply", THLStoreApplier.class);
         builder2.addProperty("applier", "thl-apply", "storeName", "thl");

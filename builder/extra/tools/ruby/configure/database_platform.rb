@@ -1,13 +1,12 @@
 class ConfigureDatabasePlatform
-  attr_reader :username, :password, :host, :port, :ds_alias
+  attr_reader :username, :password, :host, :port
   
-  def initialize(host, port, username, password, config, ds_alias)
+  def initialize(host, port, username, password, config)
     @host = host
     @port = port
     @username = username
     @password = password
     @config = config
-    @ds_alias = ds_alias
   end
   
   def get_uri_scheme
@@ -138,10 +137,6 @@ class ConfigureDatabasePlatform
     raise "Undefined function: #{self.class.name}.getJdbcDriver"
   end
   
-  def getJdbcScheme()
-    getVendor()
-  end
-  
   def getVendor()
     raise "Undefined function: #{self.class.name}.getVendor"
   end
@@ -222,9 +217,9 @@ class ConfigureDatabasePlatform
     ["innodb"]
   end
   
-  def self.build(scheme, host, port, username, password, config, ds_alias)
+  def self.build(scheme, host, port, username, password, config)
     klass = self.get_class(scheme)
-    return klass.new(host, port, username, password, config, ds_alias)
+    return klass.new(host, port, username, password, config)
   end
   
   def self.get_class(scheme)
@@ -245,7 +240,7 @@ class ConfigureDatabasePlatform
 
       self.subclasses.each{
         |klass|
-        o = klass.new(nil, nil, nil, nil, nil, nil)
+        o = klass.new(nil, nil, nil, nil, nil)
         @database_classes[o.get_uri_scheme()] = klass
       }
     end

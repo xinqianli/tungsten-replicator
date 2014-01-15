@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2011-13 Continuent Inc.
+ * Copyright (C) 2011-12 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -38,16 +38,12 @@ import com.continuent.tungsten.replicator.plugin.PluginContext;
 import com.continuent.tungsten.replicator.service.PipelineService;
 
 /**
- * Provides a service interface to the shard-to-channel assignment table. This
- * service only works for relational databases and deactivates automatically if
- * the URL is not set.  This is necessary to permit proper operation when 
- * applying against NoSQL DBMS like MongoDB. 
+ * Provides a service interface to the shard-to-channel assignment table.
  * 
  * @author <a href="mailto:robert.hodges@continuent.com">Robert Hodges</a>
  */
 public class ChannelAssignmentService implements PipelineService
 {
-    // Parameters.
     private static Logger        logger      = Logger.getLogger(ChannelAssignmentService.class);
     private String               name;
     private String               user;
@@ -55,8 +51,6 @@ public class ChannelAssignmentService implements PipelineService
     private String               password;
     private int                  channels;
 
-    // Internal values.
-    private boolean              active      = false;
     private Database             conn;
     private ShardChannelTable    channelTable;
     private Map<String, Integer> assignments = new HashMap<String, Integer>();
@@ -94,26 +88,6 @@ public class ChannelAssignmentService implements PipelineService
         this.channels = channels;
     }
 
-    /** Returns true if the channel assignment service is active. */
-    public boolean isActive()
-    {
-        return active;
-    }
-
-    /**
-     * Ensures that the service is active.
-     * 
-     * @throws ReplicatorException Thrown if service is inactive
-     */
-    private void assertActive() throws ReplicatorException
-    {
-        if (!active)
-        {
-            throw new ReplicatorException(
-                    "Channel assignment service is not enabled");
-        }
-    }
-
     /**
      * {@inheritDoc}
      * 
@@ -132,19 +106,12 @@ public class ChannelAssignmentService implements PipelineService
     public void prepare(PluginContext context) throws ReplicatorException,
             InterruptedException
     {
-        // If the URL is missing, the service is not active. This is expected if
-        // the target is non-relational.
-        if (url == null || url.trim().length() == 0)
+        // Assign connection parameters. The URL may be necessary to ensure that
+        // replicator schema is created.
+        if (url == null)
         {
-            logger.info("Channel-assignment service URL is null; service is disabled");
-            return;
+            url = context.getJdbcUrl(context.getReplicatorSchemaName());
         }
-        else
-        {
-            active = true;
-        }
-
-        // Use default user/password if not supplied.
         if (user == null)
             user = context.getJdbcUser();
         if (password == null)
@@ -154,7 +121,7 @@ public class ChannelAssignmentService implements PipelineService
         try
         {
             conn = DatabaseFactory.createDatabase(url, user, password);
-            conn.connect(false);
+            conn.connect();
         }
         catch (SQLException e)
         {
@@ -209,9 +176,7 @@ public class ChannelAssignmentService implements PipelineService
      * Return a list of current channel assignments.
      */
     public synchronized List<Map<String, String>> listChannelAssignments()
-            throws ReplicatorException
     {
-        assertActive();
         List<Map<String, String>> channels = null;
         try
         {
@@ -238,7 +203,6 @@ public class ChannelAssignmentService implements PipelineService
     public synchronized void insertChannelAssignment(String shardId, int channel)
             throws ReplicatorException
     {
-        assertActive();
         try
         {
             channelTable.insert(conn, shardId, channel);
@@ -267,7 +231,6 @@ public class ChannelAssignmentService implements PipelineService
             throws ReplicatorException
     {
         // See if we have a channel.
-        assertActive();
         Integer channel = assignments.get(shardId);
 
         // If not we need to create a brand new assignment.
@@ -329,7 +292,6 @@ public class ChannelAssignmentService implements PipelineService
         props.setLong("totalAssignments", assignments.size());
         props.setLong("maxChannel", maxChannel);
         props.setLong("accessFailures", accessFailures);
-        props.setBoolean("active", active);
         return props;
     }
 }

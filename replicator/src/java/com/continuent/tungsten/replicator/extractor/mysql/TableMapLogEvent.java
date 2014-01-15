@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2009-2013 Continuent Inc.
+ * Copyright (C) 2009 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -196,11 +196,11 @@ public class TableMapLogEvent extends LogEvent
     }
 
     public TableMapLogEvent(byte[] buffer, int eventLength,
-            FormatDescriptionLogEvent descriptionEvent, String currentPosition)
+            FormatDescriptionLogEvent descriptionEvent)
             throws ReplicatorException
     {
         super(buffer, descriptionEvent, MysqlBinlog.TABLE_MAP_EVENT);
-        this.startPosition = currentPosition;
+
         int commonHeaderLength, postHeaderLength;
 
         int postHeaderIndex;

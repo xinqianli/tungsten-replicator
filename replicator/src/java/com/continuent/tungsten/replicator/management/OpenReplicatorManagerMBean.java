@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2013 Continuent Inc.
+ * Copyright (C) 2007-2008 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,7 +22,6 @@
 
 package com.continuent.tungsten.replicator.management;
 
-import java.net.URISyntaxException;
 import java.util.List;
 import java.util.Map;
 
@@ -106,19 +105,9 @@ public interface OpenReplicatorManagerMBean
     public String getMasterListenUri();
 
     /**
-     * Returns true if the Replicator uses SSL connections.
-     */
-    public Boolean getUseSSLConnection() throws URISyntaxException;
-
-    /**
      * Returns the port on which the replicator will listen when it's a master.
      */
     public int getMasterListenPort();
-
-    /**
-     * Returns clients (slaves) of this server.
-     */
-    public List<Map<String, String>> getClients() throws Exception;
 
     /**
      * Returns the current replicator state.
@@ -222,36 +211,15 @@ public interface OpenReplicatorManagerMBean
      * <tr>
      * <td>Name</td>
      * <td>Description</td>
-     * <td>Parameter</td>
      * <td>Default</td>
      * </tr>
      * </theader> <tbody></tr>
      * <td>atEventId</td>
      * <td>Go offline at the requested event</td>
-     * <td>An event ID in native format</td>
      * <td>None</td> </tr> </tr>
-     * <td>atHeartbeat</td>
-     * <td>Go offline at the next heartbeat event.</td>
-     * <td>A heartbeat name or * to select any heartbeat</td>
-     * <td>*</td> </tr> </tbody>
      * <td>atSeqno</td>
      * <td>Go offline at the indicated sequence number</td>
-     * <td>A valid sequence number</td>
      * <td>None</td> </tr> </tbody>
-     * <td>atTransaction</td>
-     * <td>Go offline cleanly at the next transaction. This is the best way to
-     * take a replicator offline as it ensures the replicator can reload backups
-     * when parallel apply is in effect or make change to parallel apply
-     * parameters</td>
-     * <td>Insert any value</td>
-     * <td>None</td> </tr> </tbody>
-     * <td>atTimestamp</td>
-     * <td>Go offline cleanly at the next transaction. This is the best way to
-     * take a replicator offline as it ensures the replicator can reload backups
-     * when parallel apply is in effect or make change to parallel apply
-     * parameters</td>
-     * <td>A timestamp String in yyyy-MM-dd HH:mm:ss format</td>
-     * <td>None</td></tr> </tbody>
      * </table>
      * 
      * @param controlParams 0 or more control parameters expressed as name-value
@@ -262,16 +230,9 @@ public interface OpenReplicatorManagerMBean
             throws Exception;
 
     /**
-     * Puts the replicator into the offline state immediately without clean-up,
-     * returning once the replicator is offline. The replicator must be in the
-     * ONLINE or GOING-ONLINE state for this call to be processed.
-     * <p/>
-     * <strong>This call is hazardous on slaves using parallel apply.</strong>
-     * It does not do a clean offline operation, which means that it is unsafe
-     * for doing failover operations, creating a backup that can restore when
-     * using different numbers of parallel apply channels or for changing any
-     * parameters associated with parallel apply. You should use offlineDeferred
-     * for clean shutdown.
+     * Puts the replicator into the offline state immediately, returning once
+     * the replicator is offline. The replicator must be in the ONLINE or
+     * GOING-ONLINE state for this call to be processed.
      * 
      * @throws Exception
      */
@@ -401,10 +362,9 @@ public interface OpenReplicatorManagerMBean
      *            with 0). If negative - whole table is checked.
      * @param rowLimit limit consistency check to that many rows. If rowOffset
      *            is negative this is ignored.
-     * @return Executed consistency check's ID.
      * @throws Exception
      */
-    public int consistencyCheck(String method, String schemaName,
+    public void consistencyCheck(String method, String schemaName,
             String tableName, int rowOffset, int rowLimit) throws Exception;
 
     /**
@@ -431,12 +391,11 @@ public interface OpenReplicatorManagerMBean
      * @param uri URI of the backup to load
      * @param timeout Number of seconds to wait. 0 is indefinite, negative means
      *            no wait.
-     * @return the URI of the restored backup if the restore is known to have
-     *         completed successfully, otherwise null, which means restore is
-     *         still pending
+     * @return true if the restore is known to have completed successfully,
+     *         otherwise false, which means restore is still pending
      * @throws Exception if there is a restore failure
      */
-    public String restore(String uri, long timeout) throws Exception;
+    public boolean restore(String uri, long timeout) throws Exception;
 
     /**
      * Provisions a database from another copy and optionally waits for
@@ -456,15 +415,12 @@ public interface OpenReplicatorManagerMBean
      * Starts the replicator service, which spawns all threads and underlying
      * components necessary to perform replication. It is the first call to a
      * new replication service. It also issues a call to put the replicator
-     * services online if auto_enable is set in configuration file, except if
-     * forceOffline is true.
+     * online if auto_enable is set.
      * 
-     * @param forceOffline true to prevent the replicator from putting its
-     *            replication services online (if auto-enable is set to true)
      * @throws Exception Thrown if start-up fails. This includes failure to go
      *             online if the replicator is auto-enabled.
      */
-    public void start(boolean forceOffline) throws Exception;
+    public void start() throws Exception;
 
     /**
      * Returns a map instance containing currently set properties, if any. This

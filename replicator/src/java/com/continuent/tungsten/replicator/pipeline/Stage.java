@@ -29,7 +29,6 @@ import java.util.concurrent.Future;
 
 import org.apache.log4j.Logger;
 
-import com.continuent.tungsten.common.config.Interval;
 import com.continuent.tungsten.fsm.event.EventDispatcher;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.applier.Applier;
@@ -58,7 +57,6 @@ public class Stage implements ReplicatorPlugin
     private PluginSpecification       applierSpec;
     private PluginContext             pluginContext;
     private int                       blockCommitRowCount = 1;
-    private Interval                  blockCommitInterval = new Interval(0);
     private boolean                   autoSync            = false;
 
     // Read-only parameters.
@@ -73,7 +71,7 @@ public class Stage implements ReplicatorPlugin
     long                              applySkipCount      = 0;
     private SortedSet<Long>           seqnosToBeSkipped;
 
-    private final Pipeline            pipeline;
+    private Pipeline                  pipeline            = null;
 
     /**
      * Creates a new stage instance.
@@ -125,19 +123,9 @@ public class Stage implements ReplicatorPlugin
         return pluginContext;
     }
 
-    /** Returns the maximum number of transactions to apply before committing. */
     public int getBlockCommitRowCount()
     {
         return blockCommitRowCount;
-    }
-
-    /**
-     * Return the minimum time interval to wait before committing when using
-     * block commit.  If set to zero has no effect.  
-     */
-    public Interval getBlockCommitInterval()
-    {
-        return blockCommitInterval;
     }
 
     public void setName(String name)
@@ -168,11 +156,6 @@ public class Stage implements ReplicatorPlugin
     public void setBlockCommitRowCount(int blockCommitRowCount)
     {
         this.blockCommitRowCount = blockCommitRowCount;
-    }
-
-    public void setBlockCommitInterval(Interval blockCommitInterval)
-    {
-        this.blockCommitInterval = blockCommitInterval;
     }
 
     public void setLoggingInterval(long loggingInterval)

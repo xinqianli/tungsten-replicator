@@ -1,0 +1,385 @@
+<!--
+    Tungsten Scale-Out Stack.
+    Copyright (C) 2007-2008 Continuent Inc.
+    Contact: tungsten@continuent.org
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of version 2 of the GNU General Public License as
+    published by the Free Software Foundation.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
+
+    Initial developer(s): Marc Herbert, Jeff Mesnil
+    Contributor(s): Csaba Simon, Robert Hodges
+-->
+
+<project name="tungsten_replicator" default="all">
+    <description>
+        tungsten (continuent.org)
+        Application Server for uni/cluster
+        Replicator package
+    </description>
+
+    <property file="local.build.properties"/>
+    <property file="version.properties"/>
+    <property file="build.properties"/>
+
+    <property name="build.dir" value="build"/>
+    <property name="bin.dir" value="bin"/>
+    <property name="conf.dir" value="conf"/>
+    <property name="java.src.dir" value="src/java"/>
+    <property name="test.src.dir" value="test/java"/>
+    <property name="lib-ext.dir" value="lib-ext"/>
+    <property name="samples.dir" value="samples"/>
+    <property name="classes.dir" value="${build.dir}/java/classes"/>
+    <property name="test.classes.dir" value="${build.dir}/test/classes"/>
+    <property name="test.reports" value="${build.dir}/reports"/>
+    <property name="test.work" value="${build.dir}/work"/>
+    <property name="jars.dir" value="${build.dir}/jars"/>
+    <property name="dist.dir" value="${build.dir}/${build.name}"/>
+    <property name="build.jar" value="${jars.dir}/${build.name}.jar"/>
+    <property name="commons.build.dir" value="${project.commons}/build"/>
+    <property name="commons.classes.dir" value="${commons.build.dir}/java/classes"/>
+
+    <property name="deploy.host" value="localhost"/>
+    <property name="deploy.dir" value="${user.home}/tungsten"/>
+
+    <path id="compile.classpath">
+        <path location="${commons.classes.dir}"/>
+    <fileset dir="lib/">
+        <include name="*.jar"/>
+    </fileset>
+        <fileset dir="${project.commons}/lib/">
+            <include name="*.jar"/>
+        </fileset>
+        <fileset dir="${project.commons}/lib.tools/">
+            <include name="*.jar"/>
+        </fileset>
+    </path>
+
+    <path id="test.classpath">
+        <path refid="compile.classpath"/>
+        <path location="${classes.dir}"/>
+        <fileset dir="${project.commons}/lib-test/">
+            <include name="*.jar"/>
+        </fileset>
+        <fileset dir="${lib-ext.dir}">
+            <include name="*.jar"/>
+        </fileset>
+    </path>
+
+    <target name="all" depends="clean, build-dependencies,test, releases"
+        description="--> test tungsten and create releases"/>
+
+    <target name="allExceptJunit" depends="clean, build-dependencies, releases"
+        description="--> creates the release without running JUnit tests"/>
+    <target name="clean">
+        <delete dir="${build.dir}"/>
+        <delete dir="testdb"/>
+    </target>
+
+    <target name="build-dependencies">
+        <ant antfile="${project.commons}/build.xml" inheritall="false" target="allExceptJunit"/>
+    </target>
+
+    <target name="compile">
+        <mkdir dir="${classes.dir}"/>
+        <javac srcdir="${java.src.dir}"
+               destdir="${classes.dir}"
+               classpathref="compile.classpath"
+               source="${javac.source}"
+               target="${javac.target}"
+               encoding="${javac.encoding}"
+               debug="${javac.debug}"
+               deprecation="${javac.deprecation}"
+               verbose="${javac.verbose}"
+               nowarn="${javac.nowarn}"
+               includeantruntime="false">
+            <compilerarg value="-Xlint:all"/>
+        </javac>
+    </target>
+
+    <target name="compile-test" depends="compile">
+        <mkdir dir="${test.classes.dir}"/>
+        <javac srcdir="${test.src.dir}" destdir="${test.classes.dir}" classpathref="test.classpath" debug="${javac.debug}" includeantruntime="false"/>
+    </target>
+
+    <target name="jar" depends="compile">
+        <mkdir dir="${jars.dir}"/>
+        <jar destfile="${build.jar}">
+            <manifest>
+                <attribute name="Specification-Title"
+                           value="${specification.title}"/>
+                <attribute name="Specification-Vendor"
+                           value="${specification.vendor}"/>
+                <attribute name="Specification-Version"
+                           value="${version}"/>
+                <attribute name="Implementation-Title"
+                           value="${specification.title}"/>
+                <attribute name="Implementation-Vendor"
+                           value="${specification.vendor}"/>
+                <attribute name="Implementation-Version"
+                           value="${version}"/>
+            </manifest>
+            <fileset dir="${classes.dir}">
+                <include name="**/*.properties"/>
+            </fileset>
+            <fileset dir="${classes.dir}">
+                <include name="**/*.class"/>
+            </fileset>
+        </jar>
+    </target>
+
+    <target name="setup-test">
+        <delete dir="${test.reports}"/>
+        <mkdir dir="${test.reports}"/>
+        <delete dir="${test.work}"/>
+        <mkdir dir="${test.work}"/>
+        <copy todir="${test.work}">
+               <fileset dir="test/data">
+           <include name="*bin*"/>
+        </fileset>
+        </copy>
+        <copy file="samples/conf/replicator.properties.mysql"
+              toFile="${test.work}/replicator.properties"/>
+    </target>
+
+    <target name="test" depends="compile-test,setup-test" description="--> run all unit tests">
+        <junit printsummary="yes" haltonfailure="no" fork="yes"
+          dir="${test.work}" failureproperty="tests.failed" maxmemory="512m">
+            <jvmarg value="-Dreplicator.log.dir=." />
+            <classpath>
+                <pathelement location="${test.classes.dir}"/>
+                <path refid="test.classpath"/>
+            </classpath>
+            <formatter type="xml"/>
+            <batchtest fork="yes" todir="${test.reports}">
+                <fileset dir="${test.src.dir}">
+                    <include name="**/*Test*.java"/>
+                    <exclude name="**/*TestOpenReplicatorManager.java"/>
+                </fileset>
+            </batchtest>
+        </junit>
+        <antcall target="junit-report"/>
+        <fail if="tests.failed" message="Not all unit tests were completed. Process aborted!"/>
+    </target>
+
+    <target name="test-log" depends="compile-test,setup-test" description="--> run log tests">
+        <junit printsummary="yes" haltonfailure="no" fork="yes"
+          dir="${test.work}" failureproperty="tests.failed" maxmemory="512m">
+            <jvmarg value="-Dreplicator.log.dir=." />
+            <classpath>
+                <pathelement location="${test.classes.dir}"/>
+                <path refid="test.classpath"/>
+            </classpath>
+            <formatter type="xml"/>
+            <batchtest fork="yes" todir="${test.reports}">
+                <fileset dir="${test.src.dir}">
+                    <include name="com/continuent/tungsten/replicator/thl/log/*Test*.java"/>
+                </fileset>
+            </batchtest>
+        </junit>
+        <antcall target="junit-report"/>
+        <fail if="tests.failed" message="Not all unit tests were completed. Process aborted!"/>
+    </target>
+
+    <target name="test-one" depends="compile-test"
+        description="--> run one unit test (-Dtest.class=name)">
+        <mkdir dir="${test.reports}"/>
+        <mkdir dir="${test.work}"/>
+        <copy todir="${test.work}">
+            <fileset dir="test/data">
+                <include name="*bin*"/>
+            </fileset>
+        </copy>
+        <copy file="samples/conf/replicator.properties.mysql"
+              toFile="${test.work}/replicator.properties"/>
+        <junit printsummary="yes" haltonfailure="no" fork="yes"
+            dir="${test.work}" failureproperty="tests.failed" maxmemory="512m">
+            <jvmarg value="-Dreplicator.log.dir=." />
+            <classpath>
+                <pathelement location="${test.classes.dir}"/>
+                <path refid="test.classpath"/>
+            </classpath>
+            <formatter type="xml" />
+            <test name="${test.class}" />
+        </junit>
+        <antcall target="junit-report" />
+        <fail if="test-has-failed" message="Test did not pass successfully" />
+    </target>
+
+    <target name="junit-report" description="--> generate JUnit HTML report">
+        <junitreport tofile="${test.reports}/TESTS-TestSuites.xml">
+            <fileset dir="${test.reports}">
+                <include name="TEST-*.xml"/>
+            </fileset>
+            <report format="frames" todir="${test.reports}/html"/>
+        </junitreport>
+    </target>
+
+    <target name="test-report" description="--> generate junit reports">
+        <junitreport tofile="${test.reports}/TESTS-TestSuites.xml">
+            <fileset dir="${test.reports}">
+                <include name="TEST-*.xml"/>
+            </fileset>
+            <report format="frames" todir="${test.reports}/html"/>
+        </junitreport>
+    </target>
+
+    <target name="dist" depends="jar" description="--> create a ready-to-use tungsten">
+        <mkdir dir="${dist.dir}"/>
+        <copy file="LICENSE" tofile="${dist.dir}/LICENSE"/>
+
+        <!-- Copy bin scripts inserting version number. -->
+    <mkdir dir="${dist.dir}/bin"/>
+    <copy todir="${dist.dir}/bin">
+        <fileset dir="${bin.dir}">
+            <include name="*"/>
+            <exclude name="wrapper*"/>
+        </fileset>
+            <filterset>
+                <filter token="VERSION" value="${version}"/>
+            </filterset>
+    </copy>
+    <copy todir="${dist.dir}/bin">
+        <fileset dir="${bin.dir}">
+            <include name="wrapper*"/>
+        </fileset>
+    </copy>
+    <chmod dir="${dist.dir}/bin" perm="ug+rx" includes="*" excludes="*.bat"/>
+        <copy filtering="true" todir="${dist.dir}/conf">
+            <fileset dir="conf" excludes="replicator.properties"/>
+            <filterset>
+                <filter token="VERSION" value="${version}"/>
+            </filterset>
+        </copy>
+        <copy todir="${dist.dir}/samples/conf" file="${project.commons}/conf/sample.jmx.properties" />
+        <mkdir dir="${dist.dir}/doc/licenses"/>
+        <copy todir="${dist.dir}/doc/licenses">
+            <fileset dir="doc/licenses"/>
+        </copy>
+        <copy todir="${dist.dir}/lib">
+            <fileset dir="${jars.dir}"/>
+        </copy>
+        <copy todir="${dist.dir}/lib">
+            <fileset dir="${project.commons}/lib">
+                <include name="*.jar"/>
+            </fileset>
+        </copy>
+        <copy todir="${dist.dir}/lib">
+            <fileset dir="${commons.build.dir}/jars"/>
+        </copy>
+        <copy todir="${dist.dir}/lib">
+             <fileset dir="lib/">
+                 <include name="*.jar" unless="library.compile.files"/>
+                 <include name="${library.compile.files}" if="library.compile.files"/>
+             </fileset>
+         </copy>
+        <copy todir="${dist.dir}/lib/wrapper">
+             <fileset dir="lib/wrapper/">
+                 <include name="*.jar"/>
+                 <include name="lib*"/>
+             </fileset>
+         </copy>
+        <mkdir dir="${dist.dir}/lib-ext"/>
+        <copy todir="${dist.dir}/lib-ext">
+            <fileset dir="${lib-ext.dir}">
+                <include name="*.jar"/>
+            </fileset>
+        </copy>
+        <mkdir dir="${dist.dir}/samples"/>
+        <copy todir="${dist.dir}/samples">
+            <fileset dir="${samples.dir}">
+                <include name="*/**"/>
+            </fileset>
+        </copy>
+    <chmod dir="${dist.dir}/samples" perm="ugoa+rx" includes="**/*.sh"/>
+        <mkdir dir="${dist.dir}/log"/>
+        <mkdir dir="${dist.dir}/var"/>
+    </target>
+
+    <!-- This is obsolete. Services are in commons now. --> 
+    <target name="refresh-services" description="--> refresh JWS scripts and libraries (obsolete)">
+        <property name="services.build.xml"
+            value="${project.commons.services}/build.xml"/>
+        <available file="${services.build.xml}" type="file"
+            property="services.build.xml.exists"/>
+        <fail message="commons-services/build.xml not found"
+            unless="services.build.xml.exists"/>
+        <ant antfile="${project.commons.services}/build.xml" inheritall="false" target="deploy">
+            <property name="build.dir" value="${basedir}"/>
+            <property name="remote.build.properties" value="${basedir}/build.properties"/>
+        </ant>
+    </target>
+
+    <target name="javadoc">
+        <javadoc packagenames="com.continuent.*"
+            sourcepath="${java.src.dir}"
+            classpathref="compile.classpath"
+            defaultexcludes="yes"
+            destdir="${dist.dir}/doc/javadoc"
+            author="true"
+            version="true"
+            use="true"
+            windowtitle="Tungsten API">
+        </javadoc>
+    </target>
+
+    <target name="zipdoc">
+            <zip destfile="${build.dir}/tungsten-replicator_javadoc.zip">
+                <fileset dir="${dist.dir}/doc/javadoc"/>
+            </zip>
+            <tar compression="gzip" longfile="gnu" destfile="${build.dir}/tungsten-replicator_javadoc.tar.gz">
+                <fileset dir="${dist.dir}/doc/javadoc"/>
+            </tar>
+        </target>
+
+    <target name="releases" depends="dist, javadoc"
+        description="--> create drops of tungsten (.zip &amp; .tgz files)">
+        <tar destfile="${dist.dir}-${version}.tgz" compression="gzip" basedir="${dist.dir}" includes="tungsten/**" longfile="gnu">
+            <tarfileset dir="${dist.dir}" mode="755" prefix="${build.name}-${version}">
+                <include name="bin/*"/>
+                <include name="samples/**/*.sh"/>
+                <exclude name="bin/*.bat"/>
+            </tarfileset>
+            <tarfileset dir="${dist.dir}" prefix="${build.name}-${version}">
+                <include name="bin/*.bat"/>
+            </tarfileset>
+            <tarfileset dir="${dist.dir}" prefix="${build.name}-${version}">
+                <exclude name="bin/**"/>
+                <exclude name="samples/**/*.sh"/>
+            </tarfileset>
+        </tar>
+        <zip destfile="${dist.dir}-${version}.zip" basedir="${dist.dir}" includes="tungsten/**">
+            <zipfileset dir="${dist.dir}" filemode="755" prefix="${build.name}-${version}">
+                <include name="samples/**/*.sh"/>
+                <include name="bin/*"/>
+            </zipfileset>
+            <zipfileset dir="${dist.dir}" prefix="${build.name}-${version}">
+                <include name="bin/*.bat"/>
+            </zipfileset>
+            <zipfileset dir="${dist.dir}" prefix="${build.name}-${version}">
+                <exclude name="bin/** "/>
+            </zipfileset>
+        </zip>
+        <antcall target="zipdoc"/>
+    </target>
+
+    <target name="protos" description="--> [re-]generate protobuf classes for events">
+        <echo message="protoc 2.3.0 must be in path"/>
+        <exec executable="protoc">
+          <arg value="--version"/>
+        </exec>
+        <exec executable="protoc">
+          <arg value="--java_out=${java.src.dir}"/>
+          <arg value="protobuf/TungstenProtobufMessage"/>
+        </exec>
+    </target>
+</project>

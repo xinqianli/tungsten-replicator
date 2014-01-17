@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2009-2013 Continuent Inc.
+ * Copyright (C) 2009-2010 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -36,16 +36,10 @@ public class UpdateRowsLogEvent extends RowsLogEvent
 
     public UpdateRowsLogEvent(byte[] buffer, int eventLength,
             FormatDescriptionLogEvent descriptionEvent,
-            boolean useBytesForString, String currentPosition)
-            throws ReplicatorException
+            boolean useBytesForString) throws ReplicatorException
     {
         super(buffer, eventLength, descriptionEvent,
-                buffer[MysqlBinlog.EVENT_TYPE_OFFSET], useBytesForString);
-
-        this.startPosition = currentPosition;
-        if (logger.isDebugEnabled())
-            logger.debug("Extracting event at position  : " + startPosition
-                    + " -> " + getNextEventPosition());
+                MysqlBinlog.UPDATE_ROWS_EVENT, useBytesForString);
     }
 
     /**
@@ -76,45 +70,28 @@ public class UpdateRowsLogEvent extends RowsLogEvent
         int rowIndex = 0; /* index of the row in value arrays */
 
         int bufferIndex = 0;
-
-        int size = bufferSize;
-        if (descriptionEvent.useChecksum())
-        {
-            // Remove 4 bytes for CRC
-            size -= 4;
-        }
-
-        while (bufferIndex < size)
+        while (bufferIndex < bufferSize)
         {
             int length = 0;
 
             try
             {
                 /*
-                 * Before Image
+                 * Removed row
                  */
-                if (logger.isDebugEnabled())
-                    logger.debug("Processing Before Image");
                 length = processExtractedEventRow(oneRowChange, rowIndex,
                         usedColumns, bufferIndex, packedRowsBuffer, map, true);
-
-                if (logger.isDebugEnabled())
-                    logger.debug("Extracted " + length + " bytes keys");
 
                 if (length == 0)
                     break;
 
                 bufferIndex += length;
                 /*
-                 * After Image
+                 * Inserted row
                  */
-                if (logger.isDebugEnabled())
-                    logger.debug("Processing After Image");
                 length = processExtractedEventRow(oneRowChange, rowIndex,
                         usedColumnsForUpdate, bufferIndex, packedRowsBuffer,
                         map, false);
-                if (logger.isDebugEnabled())
-                    logger.debug("Extracted " + length + " bytes values");
             }
             catch (ReplicatorException e)
             {
@@ -127,9 +104,6 @@ public class UpdateRowsLogEvent extends RowsLogEvent
             bufferIndex += length;
         }
         rowChanges.appendOneRowChange(oneRowChange);
-
-        // Store options, if any
-        rowChanges.addOption("foreign_key_checks", getForeignKeyChecksFlag());
-        rowChanges.addOption("unique_checks", getUniqueChecksFlag());
     }
+
 }

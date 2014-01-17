@@ -1,17 +1,13 @@
 class TungstenUtil
   include Singleton
-  attr_accessor :remaining_arguments, :extra_arguments
+  attr_accessor :remaining_arguments
   
   def initialize()
-    super()
-    
     @logger_threshold = Logger::NOTICE
     @previous_option_arguments = {}
     @ssh_options = {}
     @display_help = false
     @num_errors = 0
-    @json_interface = false
-    @json_message_cache = []
     
     # Create a temporary file to hold log contents
     @log = Tempfile.new("tlog")
@@ -21,12 +17,9 @@ class TungstenUtil
     arguments = ARGV.dup
                   
     if arguments.size() > 0
-      @extra_arguments = []
-      
       # This fixes an error that was coming up reading certain characters wrong
       # The root cause is unknown but this allowed Ruby to parse the 
       # arguments properly
-      send_to_extra_arguments = false
       arguments = arguments.map{|arg|
         newarg = ''
         arg.split("").each{|b| 
@@ -34,16 +27,7 @@ class TungstenUtil
             newarg.concat(b) 
           end
         }
-        
-        if newarg == "--"
-          send_to_extra_arguments = true
-          nil
-        elsif send_to_extra_arguments == true
-          @extra_arguments << newarg
-          nil
-        else
-          newarg
-        end
+        newarg
       }
 
       opts=OptionParser.new
@@ -51,7 +35,6 @@ class TungstenUtil
       opts.on("-n", "--notice")               {@logger_threshold = Logger::NOTICE}
       opts.on("-q", "--quiet")          {@logger_threshold = Logger::WARN}
       opts.on("-v", "--verbose")        {@logger_threshold = Logger::DEBUG}
-      opts.on("--json")                 { @json_interface = true }
       opts.on("-h", "--help")           { @display_help = true }
       opts.on("--net-ssh-option String")  {|val|
                                           val_parts = val.split("=")
@@ -70,19 +53,7 @@ class TungstenUtil
       @remaining_arguments = run_option_parser(opts, arguments)
     else
       @remaining_arguments = []
-      @extra_arguments = []
     end
-  end
-  
-  def exit(code = 0)
-    if @json_interface == true
-      puts JSON.pretty_generate({
-        "rc" => code,
-        "messages" => @json_message_cache
-      })
-    end
-    
-    Kernel.exit(code)
   end
     
   def display_help?
@@ -97,21 +68,7 @@ class TungstenUtil
     output_usage_line("--notice, -n")
     output_usage_line("--verbose, -v")
     output_usage_line("--help, -h", "Display this message")
-    output_usage_line("--json", "Provide return code and logging messages as a JSON object after the script finishes")
     output_usage_line("--net-ssh-option=key=value", "Set the Net::SSH option for remote system calls", nil, nil, "Valid options can be found at http://net-ssh.github.com/ssh/v2/api/classes/Net/SSH.html#M000002")
-  end
-  
-  def get_autocomplete_arguments
-    [
-      '--directory',
-      '--quiet', '-q',
-      '--info', '-i',
-      '--notice', '-n',
-      '--verbose', '-v',
-      '--help', '-h',
-      '--json',
-      '--net-ssh-option='
-    ]
   end
   
   def get_base_path
@@ -128,7 +85,6 @@ class TungstenUtil
   
   def force_output(content)
     log(content)
-    
     puts(content)
     $stdout.flush()
   end
@@ -163,32 +119,12 @@ class TungstenUtil
       content = "#{get_log_level_prefix(level, hostname)}#{content}"
     end
     
-    # Attempt to determine the level for this message based on it's content
-    # If it is forwarded from another Tungsten script it will have a prefix
-    # so we know to use stdout or stderr
-    if level == nil
-      level = parse_log_level(content)
-    end
-    
-    if level == Logger::ERROR
-      @num_errors = @num_errors + 1
-    end
-    
     log(content)
     
     if enable_log_level?(level)
-      if @json_interface == true
-        @json_message_cache << content
-      else
-        if enable_output?()
-          if level != nil && level > Logger::NOTICE
-            $stdout.puts(content)
-            $stdout.flush()
-          else
-            $stdout.puts(content)
-            $stdout.flush()
-          end
-        end
+      if enable_output?()
+        puts content
+        $stdout.flush()
       end
     end
   end
@@ -213,6 +149,7 @@ class TungstenUtil
   end
   
   def error(message, hostname = nil)
+    @num_errors = @num_errors + 1
     write(message, Logger::ERROR, hostname)
   end
   
@@ -233,7 +170,7 @@ class TungstenUtil
     when Logger::ERROR then prefix = "ERROR"
     when Logger::WARN then prefix = "WARN "
     when Logger::DEBUG then prefix = "DEBUG"
-    when Logger::NOTICE then prefix = "NOTE "
+    when Logger::NOTICE then prefix = "NOTE"
     else
       prefix = "INFO "
     end
@@ -245,32 +182,6 @@ class TungstenUtil
     end
   end
   
-  def parse_log_level(line)
-    prefix = line[0,5]
-    
-    case prefix.strip
-    when "ERROR" then Logger::ERROR
-    when "WARN" then Logger::WARN
-    when "DEBUG" then Logger::DEBUG
-    when "NOTE" then Logger::NOTICE
-    when "INFO" then Logger::INFO
-    else
-      nil
-    end
-  end
-  
-  # Split a log line into the log level and actual message
-  # This is used when forwarding log messages from a remote commmand
-  def split_log_content(content)
-    level = parse_log_level(content)
-    if level != nil
-      prefix = get_log_level_prefix(level)
-      content = content[prefix.length, content.length]
-    end
-    
-    return [level, content]
-  end
-  
   def enable_log_level?(level=Logger::INFO)
     if level == nil
       true
@@ -279,10 +190,6 @@ class TungstenUtil
     else
       true
     end
-  end
-  
-  def get_log_level
-    @logger_threshold
   end
   
   def set_log_level(level=Logger::INFO)
@@ -499,16 +406,6 @@ class TungstenUtil
     else
       debug("Creating missing directory: #{dirname}")
       cmd_result("mkdir -p #{dirname}")
-    end
-  end
-  
-  def pluralize(array, singular, plural = nil)
-    if plural == nil
-      singular
-    elsif array.size() > 1
-      plural
-    else
-      singular
     end
   end
 end

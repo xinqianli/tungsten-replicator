@@ -1,8 +1,6 @@
 require "#{File.dirname(__FILE__)}/backup"
 
 class TungstenMySQLdumpScript < TungstenBackupScript
-  include MySQLServiceScript
-  
   def backup
     begin
       id = build_timestamp_id()
@@ -13,13 +11,7 @@ class TungstenMySQLdumpScript < TungstenBackupScript
         TU.output("Create mysqldump in #{mysqldump_file}")
         TU.cmd_result("echo \"-- Tungsten database dump - should not be logged on restore\n\" | gzip -c > #{mysqldump_file}");
         TU.cmd_result("echo \"SET SESSION SQL_LOG_BIN=0;\n\" | gzip -c >> #{mysqldump_file}");
-        TU.cmd_result("echo \"/*!50112 SET @OLD_SLOW_QUERY_LOG=@@SLOW_QUERY_LOG */;\n\" | gzip -c >> #{mysqldump_file}");
-        TU.cmd_result("echo \"/*!50112 SET GLOBAL SLOW_QUERY_LOG=0 */;\n\" | gzip -c >> #{mysqldump_file}");
         TU.cmd_result("#{get_mysqldump_command()} | gzip -c >> #{mysqldump_file}")
-        TU.cmd_result("echo \"/*!50112 SET GLOBAL SLOW_QUERY_LOG=@OLD_SLOW_QUERY_LOG */;\n\" | gzip -c >> #{mysqldump_file}");
-        
-        # Find the CHANGE MASTER line so we can read the current binlog position
-        # unzip the file before sending it through the head command
         change_master_line = TU.cmd_result("gzip -cd #{mysqldump_file} | head -n50 | grep \"CHANGE MASTER\"")
       else
         mysqldump_file = @options[:tungsten_backups] + "/" + id + ".sql"
@@ -27,16 +19,10 @@ class TungstenMySQLdumpScript < TungstenBackupScript
         TU.output("Create mysqldump in #{mysqldump_file}")
         TU.cmd_result("echo \"-- Tungsten database dump - should not be logged on restore\n\" > #{mysqldump_file}");
         TU.cmd_result("echo \"SET SESSION SQL_LOG_BIN=0;\n\" >> #{mysqldump_file}");
-        TU.cmd_result("echo \"/*!50112 SET @OLD_SLOW_QUERY_LOG=@@SLOW_QUERY_LOG */;\n\" >> #{mysqldump_file}");
-        TU.cmd_result("echo \"/*!50112 SET GLOBAL SLOW_QUERY_LOG=0 */;\n\" >> #{mysqldump_file}");
         TU.cmd_result("#{get_mysqldump_command()} >> #{mysqldump_file}")
-        TU.cmd_result("echo \"/*!50112 SET GLOBAL SLOW_QUERY_LOG=@OLD_SLOW_QUERY_LOG */;\n\" >> #{mysqldump_file}");
-        
-        # Find the CHANGE MASTER line so we can read the current binlog position
         change_master_line = TU.cmd_result("head -n50 #{mysqldump_file} | grep \"CHANGE MASTER\"")
       end
       
-      # Parse the CHANGE MASTER information for the file number and position
       if change_master_line != nil
         m = change_master_line.match(/MASTER_LOG_FILE='([a-zA-Z0-9\.\-\_]*)', MASTER_LOG_POS=([0-9]*)/)
         if m
@@ -50,7 +36,8 @@ class TungstenMySQLdumpScript < TungstenBackupScript
         TU.cmd_result("chown -R #{ENV['SUDO_USER']}: #{mysqldump_file}")
       end
 
-      return mysqldump_file
+      # Write the directory name to the final storage file
+      TU.cmd_result("echo \"file=#{mysqldump_file}\" > #{@options[:properties]}")
     rescue => e
       TU.error(e.message)
 
@@ -62,33 +49,12 @@ class TungstenMySQLdumpScript < TungstenBackupScript
       raise e
     end
   end
-  
-  def store_master_position_sql(sql, storage_file)
-    # Append the UPDATE trep_commit_seqno statement to the end of the file
-    if @options[:gz] == "true"
-      # The contents must be zipped while added
-      sql.each{
-        |line|
-        TU.cmd_result("echo \"#{line}\" | gzip -c >> #{storage_file}");
-      }
-    else
-      sql.each{
-        |line|
-        TU.cmd_result("echo \"#{line}\" >> #{storage_file}");
-      }
-    end
-  end
 
   def restore
     begin
       storage_file = TU.cmd_result(". #{@options[:properties]}; echo $file")
       TU.output("Restore from #{storage_file}")
 
-      begin
-        TU.cmd_result("echo \"SET @OLD_SLOW_QUERY_LOG=@@SLOW_QUERY_LOG;SET GLOBAL SLOW_QUERY_LOG=0;SET GLOBAL SLOW_QUERY_LOG=@OLD_SLOW_QUERY_LOG;\" | #{get_mysql_command()}")
-        rescue => ignored
-        TU.debug("Ignoring error caused by workaround: #{ignored}")
-      end
       if File.extname(storage_file) == ".gz"
         TU.cmd_result("gunzip -c #{storage_file} | #{get_mysql_command()}")
       else
@@ -119,8 +85,26 @@ class TungstenMySQLdumpScript < TungstenBackupScript
   def build_timestamp_id()
     return "mysqldump_" + Time.now.strftime("%Y-%m-%d_%H-%M") + "_" + rand(100).to_s
   end
+
+  def get_mysql_command
+    "mysql --defaults-file=#{@options[:my_cnf]} -h#{@options[:host]} --port=#{@options[:port]}"
+  end
+
+  def get_mysqldump_command
+    "mysqldump --defaults-file=#{@options[:my_cnf]} --host=#{@options[:host]} --port=#{@options[:port]} --opt --single-transaction --all-databases --add-drop-database --master-data=2"
+  end
   
-  def script_name
-    "mysqldump.sh"
+  def get_mysql_option(opt)
+    begin
+      val = TU.cmd_result("my_print_defaults --config-file=#{@options[:my_cnf]} mysqld | grep -e'^--#{opt.gsub(/[\-\_]/, "[-_]")}'")
+    rescue CommandError => ce
+      if ce.rc == 256
+        return nil
+      else
+        raise ce
+      end
+    end
+
+    return val.split("=")[1]
   end
 end

@@ -91,7 +91,7 @@ module ValidationCheckInterface
   end
   
   def get_message_hostname
-    @config.getProperty(DEPLOYMENT_HOST)
+    @config.getProperty(HOST)
   end
   
   def get_message_host_key

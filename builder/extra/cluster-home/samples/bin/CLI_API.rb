@@ -214,10 +214,6 @@ class TungstenEnvironment
       end
 
   end
-  
-  def script_name
-    "CLI_API.rb"
-  end
 
   self.new().run()
 end

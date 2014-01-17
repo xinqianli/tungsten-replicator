@@ -1,14 +1,14 @@
 class ClusterSlaveTopology
   include Topology
   
-  def get_master_thl_uri(h_alias)
+  def get_master_thl_uri(hostname)
     values = []
     
-    unless @config.getProperty([DATASERVICES, @ds_alias, DATASERVICE_MASTER_MEMBER]).to_s().include_alias?(h_alias)
-      rs_alias = @ds_alias + "_" + h_alias
+    unless @config.getProperty([DATASERVICES, @ds_alias, DATASERVICE_MASTER_MEMBER]).to_s().split(",").include?(hostname)
+      rs_alias = @ds_alias + "_" + to_identifier(hostname)
       hosts = @config.getTemplateValue([REPL_SERVICES, rs_alias, REPL_MASTERHOST]).to_s().split(",")
       port = @config.getTemplateValue([REPL_SERVICES, rs_alias, REPL_MASTERPORT])
-      values << _splice_hosts_port(hosts, port, @config.getProperty([REPL_SERVICES, rs_alias, REPL_THL_PROTOCOL]))
+      values << _splice_hosts_port(hosts, port)
     end
     
     relay_source = @config.getProperty([DATASERVICES, @ds_alias, DATASERVICE_RELAY_SOURCE])
@@ -17,7 +17,7 @@ class ClusterSlaveTopology
       
       hosts = @config.getTemplateValue([DATASERVICES, relay_alias, DATASERVICE_MEMBERS]).to_s().split(",")
       port = @config.getTemplateValue([DATASERVICES, relay_alias, DATASERVICE_THL_PORT])
-      values << _splice_hosts_port(hosts, port, @config.getProperty([REPL_SERVICES, relay_alias, REPL_THL_PROTOCOL]))
+      values << _splice_hosts_port(hosts, port)
     }
     
     return values.join(",")

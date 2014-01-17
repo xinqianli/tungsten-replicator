@@ -37,7 +37,7 @@ import com.continuent.tungsten.replicator.ErrorNotification;
  * @author <a href="mailto:robert.hodges@continuent.com">Robert Hodges</a>
  * @version 1.0
  */
-public class RestoreTask implements Callable<String>
+public class RestoreTask implements Callable<Boolean>
 {
     private static final Logger   logger = Logger.getLogger(RestoreTask.class);
     private final URI             uri;
@@ -57,9 +57,9 @@ public class RestoreTask implements Callable<String>
     /**
      * Execute the backup task.
      */
-    public String call() throws BackupException
+    public Boolean call() throws BackupException
     {
-        logger.info("Restore task starting...");
+        logger.info("Backup task starting...");
         boolean completed = false;
         try
         {
@@ -102,18 +102,19 @@ public class RestoreTask implements Callable<String>
             logger.info("Restore task completed normally: uri=" + uri);
             try
             {
-                eventDispatcher.put(new RestoreCompletionNotification(uri));
+                eventDispatcher.put(new RestoreCompletionNotification(
+                        uri));
             }
             catch (InterruptedException ie)
             {
-                logger.warn("Restore task interrupted while posting completion event");
+                logger
+                        .warn("Restore task interrupted while posting completion event");
             }
-            return uri.toString();
         }
         else
         {
             logger.warn("Restore task did not complete");
-            return null;
         }
+        return completed;
     }
 }

@@ -116,22 +116,10 @@ module ConfigureDeploymentStepDeployment
     mkdir_if_absent("#{prepare_dir}/cluster-home/conf/cluster/" + @config.getProperty(DATASERVICENAME) + "/datasource")
     mkdir_if_absent("#{prepare_dir}/cluster-home/conf/cluster/" + @config.getProperty(DATASERVICENAME) + "/service")
     mkdir_if_absent("#{prepare_dir}/cluster-home/conf/cluster/" + @config.getProperty(DATASERVICENAME) + "/extension")
-    if is_replicator?()
-      FileUtils.cp("#{get_deployment_basedir()}/tungsten-replicator/conf/replicator.service.properties", 
-        "#{get_deployment_basedir()}/cluster-home/conf/cluster/#{@config.getProperty(DATASERVICENAME)}/service/replicator.properties")
-    end
     
     Configurator.instance.write_header("Building the Tungsten home directory")
     mkdir_if_absent("#{@config.getProperty(HOME_DIRECTORY)}/share")
-    
-    DeploymentFiles.prompts.each{
-      |p|
-      if @config.getProperty(p[:local]) != nil && File.exist?(@config.getProperty(p[:local]))
-        target = @config.getTemplateValue(p[:local])
-        mkdir_if_absent(File.dirname(target))
-    		FileUtils.cp(@config.getProperty(p[:local]), target)
-    	end
-    }
+    mkdir_if_absent(@config.getProperty(CONFIG_DIRECTORY))
     
     # Create share/env.sh script.
     script = "#{@config.getProperty(HOME_DIRECTORY)}/#{CONTINUENT_ENVIRONMENT_SCRIPT}"
@@ -139,29 +127,13 @@ module ConfigureDeploymentStepDeployment
     transformer = Transformer.new(
 		  "#{get_deployment_basedir()}/cluster-home/samples/conf/env.sh.tpl",
 			script, "#")
+
     transformer.set_fixed_properties(@config.getTemplateValue(get_host_key(FIXED_PROPERTY_STRINGS)))
 	  transformer.transform_values(method(:transform_values))
+
     transformer.output
     watch_file(transformer.get_filename())
     FileUtils.chmod(0755, script)
-    
-    # Write the cluster-home/conf/security.properties file
-    transformer = Transformer.new(
-		  "#{get_deployment_basedir()}/cluster-home/samples/conf/security.properties.tpl",
-			"#{get_deployment_basedir()}/cluster-home/conf/security.properties", "#")
-    transformer.set_fixed_properties(@config.getTemplateValue(get_host_key(FIXED_PROPERTY_STRINGS)))
-	  transformer.transform_values(method(:transform_values))
-    transformer.output
-    watch_file(transformer.get_filename())
-    
-    # Write the cluster-home/conf/connector.security.properties file
-    transformer = Transformer.new(
-		  "#{get_deployment_basedir()}/cluster-home/samples/conf/connector.security.properties.tpl",
-			"#{get_deployment_basedir()}/cluster-home/conf/connector.security.properties", "#")
-    transformer.set_fixed_properties(@config.getTemplateValue(get_host_key(FIXED_PROPERTY_STRINGS)))
-	  transformer.transform_values(method(:transform_values))
-    transformer.output
-    watch_file(transformer.get_filename())
     
     if Configurator.instance.is_enterprise?()
       debug("Write INSTALLED cookbook scripts")
@@ -171,9 +143,6 @@ module ConfigureDeploymentStepDeployment
       transformer.set_fixed_properties(@config.getTemplateValue(get_host_key(FIXED_PROPERTY_STRINGS)))
   	  transformer.transform_values(method(:transform_values))
 	  
-      nodeid=1
-      listed_nodes = []
-      
   	  dsid=1
   	  dsids={}
       @config.getPropertyOr(DATASERVICES, []).each_key{
@@ -184,36 +153,12 @@ module ConfigureDeploymentStepDeployment
           dsids[ds_name] = "configure $COMPOSITE_DS"
         else
           ds_name=@config.getProperty([DATASERVICES, ds_alias, DATASERVICENAME])
-          master=@config.getProperty([DATASERVICES, ds_alias, DATASERVICE_MASTER_MEMBER])
-          slaves=@config.getProperty([DATASERVICES, ds_alias, DATASERVICE_REPLICATION_MEMBERS]).split(",")-[master]
-          connectors=@config.getProperty([DATASERVICES, ds_alias, DATASERVICE_CONNECTORS])
-          
           transformer << "export DS_NAME#{dsid}=#{ds_name}"
-          transformer << "export MASTER#{dsid}=#{master}"
-          transformer << "export SLAVES#{dsid}=#{slaves.join(",")}"
-          transformer << "export CONNECTORS#{dsid}=#{connectors}"
+          transformer << "export MASTER#{dsid}=#{@config.getProperty([DATASERVICES, ds_alias, DATASERVICE_MASTER_MEMBER])}"
+          transformer << "export CONNECTORS#{dsid}=#{@config.getProperty([DATASERVICES, ds_alias, DATASERVICE_CONNECTORS])}"
           
           dsids[ds_name] = "configure $DS_NAME#{dsid}"
           dsid = dsid+1
-          
-          [
-            DATASERVICE_MASTER_MEMBER,
-            DATASERVICE_REPLICATION_MEMBERS,
-            DATASERVICE_CONNECTORS,
-            DATASERVICE_WITNESSES
-          ].each{
-            |key|
-            @config.getProperty([DATASERVICES, ds_alias, key]).to_s().split(",").each{
-              |node|
-              if listed_nodes.include?(node)
-                next
-              end
-
-              transformer << "export NODE#{nodeid}=#{node}"
-              nodeid = nodeid+1
-              listed_nodes << node
-            }
-          }
         end
       }
 	  
@@ -224,11 +169,11 @@ module ConfigureDeploymentStepDeployment
       File.open("#{get_deployment_basedir()}/cookbook/INSTALLED.tmpl", "w") {
         |f|
         f.puts <<EOF
-##################################
-# DO NOT MODIFY THIS FILE
-##################################
-# Loads environment variables to fill in the cookbook
-# . cookbook/INSTALLED_USER_VALUES.sh
+  ##################################
+  # DO NOT MODIFY THIS FILE
+  ##################################
+  # Loads environment variables to fill in the cookbook
+  # . cookbook/USER_VALUES.sh
 
 EOF
         rec = ReverseEngineerCommand.new(@config)
@@ -347,63 +292,11 @@ EOF
             FileUtils.cp(connector_user_map, prepare_dir + '/tungsten-connector/conf')
           end
           
+          if File.exists?(@config.getProperty(CONFIG_DIRECTORY))
+            FileUtils.mv(Dir.glob(@config.getProperty(CONFIG_DIRECTORY) + '/*.cfg'), current_release_target_dir)
+          end
           FileUtils.touch(current_release_target_dir)
         end
-      end
-      
-      if is_manager?()
-        @config.getPropertyOr(DATASERVICES, {}).keys().each{
-          |comp_ds_alias|
-
-          if comp_ds_alias == DEFAULTS
-            next
-          end
-
-          if @config.getProperty([DATASERVICES, comp_ds_alias, DATASERVICE_IS_COMPOSITE]) == "false"
-            next
-          end
-
-          unless include_dataservice?(comp_ds_alias)
-            next
-          end
-
-          mkdir_if_absent("#{prepare_dir}/cluster-home/conf/cluster/#{comp_ds_alias}/service")
-          mkdir_if_absent("#{prepare_dir}/cluster-home/conf/cluster/#{comp_ds_alias}/datasource")
-          mkdir_if_absent("#{prepare_dir}/cluster-home/conf/cluster/#{comp_ds_alias}/extension")
-
-          @config.getProperty([DATASERVICES, comp_ds_alias, DATASERVICE_COMPOSITE_DATASOURCES]).to_s().split(",").each{
-            |ds_alias|
-            
-            path = "#{prepare_dir}/cluster-home/conf/cluster/#{comp_ds_alias}/datasource/#{ds_alias}.properties"
-            unless File.exist?(path)
-              if @config.getProperty([DATASERVICES, ds_alias, DATASERVICE_RELAY_SOURCE]).to_s() != ""
-                ds_role = "slave"
-              else
-                ds_role = "master"
-              end
-              
-              File.open(path, "w") {
-                |f|
-                f.puts "
-appliedLatency=-1.0
-precedence=1
-name=#{ds_alias}
-state=OFFLINE
-url=jdbc\:t-router\://#{ds_alias}/${DBNAME}
-alertMessage=
-isAvailable=true
-role=#{ds_role}
-isComposite=true
-alertStatus=OK
-alertTime=#{Time.now().strftime("%s000")}
-dataServiceName=#{comp_ds_alias}
-vendor=continuent
-driver=com.continuent.tungsten.router.jdbc.TSRDriver
-host=#{ds_alias}"
-              }
-            end
-          }
-        }
       end
       
       unless target_dir == prepare_dir
@@ -416,45 +309,15 @@ host=#{ds_alias}"
       FileUtils.ln_s(target_dir, current_release_directory)
     end
     
-    if File.exists?(@config.getProperty(CONFIG_DIRECTORY))
-      FileUtils.rmtree(@config.getProperty(CONFIG_DIRECTORY))
-    end
-    if File.exists?(@config.getProperty(HOME_DIRECTORY) + "/configs")
-      FileUtils.rmtree(@config.getProperty(HOME_DIRECTORY) + "/configs")
-    end
-    if File.exists?(@config.getProperty(HOME_DIRECTORY) + "/service-logs")
-      FileUtils.rmtree(@config.getProperty(HOME_DIRECTORY) + "/service-logs")
-    end
+    FileUtils.cp(Dir.glob(target_dir + '/*.cfg'), @config.getProperty(CONFIG_DIRECTORY))
     FileUtils.touch(target_dir)
     
     FileUtils.cp(current_release_directory + '/' + Configurator::HOST_CONFIG, current_release_directory + '/.' + Configurator::HOST_CONFIG + '.orig')
-    cmd_result("chmod o-rwx #{current_release_directory + '/' + Configurator::HOST_CONFIG}")
-    cmd_result("chmod o-rwx #{current_release_directory + '/.' + Configurator::HOST_CONFIG + '.orig'}")
     
     if is_manager?() || is_connector?()
       write_dataservices_properties()
       write_router_properties()
       write_policymgr_properties()
-    end
-    
-    if is_replicator?()
-      @config.getPropertyOr(REPL_SERVICES, {}).keys().each{
-        |rs_alias|
-
-        if rs_alias == DEFAULTS
-          next
-        end
-        
-        # Update the THL URI in dynamic properties so it uses the correct protocol
-        dynamic_properties = @config.getProperty([REPL_SERVICES, rs_alias,REPL_SVC_DYNAMIC_CONFIG])
-        if File.exists?(dynamic_properties)
-          if @config.getProperty([REPL_SERVICES, rs_alias, REPL_ENABLE_THL_SSL]) == "true"
-            cmd_result("sed -i 's/uri=thl\\\\/uri=thls\\\\/' #{dynamic_properties}")
-          else
-            cmd_result("sed -i 's/uri=thls\\\\/uri=thl\\\\/' #{dynamic_properties}")
-          end
-        end
-      }
     end
   end
   
@@ -492,8 +355,8 @@ host=#{ds_alias}"
         next
       end
       unless (
-          @config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_MEMBERS]).include_alias?(get_host_alias()) ||
-          @config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_CONNECTORS]).include_alias?(get_host_alias())
+          @config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_MEMBERS], "").split(',').include?(@config.getProperty(get_host_key(HOST))) ||
+          @config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_CONNECTORS], "").split(',').include?(@config.getProperty(get_host_key(HOST)))
         )
         next
       end

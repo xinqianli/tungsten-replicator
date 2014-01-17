@@ -45,10 +45,10 @@ public interface StorageAgent extends BackupPlugin
     public void setRetention(int numberOfBackups);
 
     /**
-     * Returns the storage specifications of all backups in storage ordered from
-     * oldest to most recent.
+     * Returns the URIs of all backups in storage ordered from oldest to most
+     * recent.
      */
-    public StorageSpecification[] list() throws BackupException;
+    public URI[] list() throws BackupException;
 
     /**
      * Returns the URI of the most recent backup in storage or null if no

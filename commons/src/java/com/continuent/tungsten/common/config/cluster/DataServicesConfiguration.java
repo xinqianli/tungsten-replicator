@@ -27,6 +27,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.log4j.Logger;
+
 import com.continuent.tungsten.common.config.TungstenProperties;
 
 /**
@@ -41,16 +43,24 @@ public class DataServicesConfiguration extends ClusterConfiguration
     /** Composite Data Source name <> list of managers */
     private static Map<String, List<String>> physicalDataServiceManagers = new HashMap<String, List<String>>();
     private static DataServicesConfiguration instance                    = null;
+    private static long                      lastDataServicesUpdate      = -1;
+    private static File                      dataServicesFile            = null;
 
     private DataServicesConfiguration() throws ConfigurationException
     {
         // no cluster name here
         super(null);
-        load(ConfigurationConstants.TR_SERVICES_PROPS);
-        for (String cds : props.keyNames())
+
+        // Ensure cluster home name is properly set.
+        clusterHomeName = System
+                .getProperty(ConfigurationConstants.CLUSTER_HOME);
+
+        if (clusterHomeName == null)
         {
-            physicalDataServiceManagers.put(cds, props.getStringList(cds));
+            throw new ConfigurationException(
+                    "cluster.home system property is not set correctly.");
         }
+        loadDataServices();
     }
 
     public static DataServicesConfiguration getInstance()
@@ -90,8 +100,18 @@ public class DataServicesConfiguration extends ClusterConfiguration
         store(ConfigurationConstants.TR_SERVICES_PROPS, propsToStore);
     }
 
-    static public Map<String, List<String>> getPhyicalDataServiceManagersList()
+    public static Map<String, List<String>> getPhyicalDataServiceManagersList()
     {
+        try
+        {
+            getInstance().loadDataServices();
+        }
+        catch (ConfigurationException c)
+        {
+            System.out
+                    .println("Exception loading data services configuration: "
+                            + c);
+        }
         return physicalDataServiceManagers;
     }
 
@@ -114,5 +134,28 @@ public class DataServicesConfiguration extends ClusterConfiguration
     {
         return System.getProperty(ConfigurationConstants.CLUSTER_HOME)
                 + File.separator + ConfigurationConstants.TR_SERVICES_PROPS;
+    }
+
+    private void loadDataServices() throws ConfigurationException
+    {
+        if (dataServicesFile == null)
+        {
+            dataServicesFile = new File(
+                    getGlobalConfigDirName(clusterHomeName),
+                    ConfigurationConstants.TR_SERVICES_PROPS);
+        }
+
+        if (dataServicesFile.lastModified() > lastDataServicesUpdate)
+        {
+            lastDataServicesUpdate = dataServicesFile.lastModified();
+            physicalDataServiceManagers.clear();
+
+            load(ConfigurationConstants.TR_SERVICES_PROPS);
+
+            for (String cds : props.keyNames())
+            {
+                physicalDataServiceManagers.put(cds, props.getStringList(cds));
+            }
+        }
     }
 }

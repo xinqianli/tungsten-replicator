@@ -134,8 +134,6 @@ public class MySQLExtractor implements RawExtractor
 
     private int                             bufferSize              = 32768;
 
-    private int                             checksumAlgo            = 0xff;
-
     public String getHost()
     {
         return host;
@@ -375,18 +373,12 @@ public class MySQLExtractor implements RawExtractor
             // We can assume a V4 format description as we don't support MySQL
             // versions prior to 5.0.
             FormatDescriptionLogEvent description_event = new FormatDescriptionLogEvent(
-                    4, checksumAlgo);
+                    4);
 
             // Read from the log.
             LogEvent event = LogEvent.readLogEvent(runtime, position,
                     description_event, parseStatements, useBytesForStrings,
                     prefetchSchemaNameLDI);
-
-            if (event instanceof FormatDescriptionLogEvent)
-            {
-                this.checksumAlgo = ((FormatDescriptionLogEvent) event)
-                        .getChecksumAlgo();
-            }
             position.setEventID(position.getEventID() + 1);
 
             return event;
@@ -535,7 +527,7 @@ public class MySQLExtractor implements RawExtractor
         boolean doFileFragment = false;
         Timestamp startTime = null;
 
-        long sessionId = -1;
+        long sessionId = 0;
         ArrayList<DBMSData> dataArray = new ArrayList<DBMSData>();
 
         boolean foundRowsLogEvent = false;
@@ -691,7 +683,7 @@ public class MySQLExtractor implements RawExtractor
 
                         if (sessionId == -1)
                         {
-                            // first query in transaction / event
+                            // first query in transaction
                             sessionId = event.getSessionId();
                         }
                         else
@@ -1163,24 +1155,6 @@ public class MySQLExtractor implements RawExtractor
         // position.
         startRelayLogs(binlogPosition.getFileName(),
                 binlogPosition.getPosition());
-
-        // Extract FD event
-        try
-        {
-            LogEvent formatDescriptionEvent = processFile(new BinlogReader(4,
-                    binlogPosition.getFileName(), binlogDir, binlogFilePattern,
-                    bufferSize));
-            // Is this binlog using checksum ?
-            if (formatDescriptionEvent instanceof FormatDescriptionLogEvent)
-            {
-                FormatDescriptionLogEvent event = (FormatDescriptionLogEvent) formatDescriptionEvent;
-                event.getChecksumAlgo();
-            }
-        }
-        catch (InterruptedException ignore)
-        {
-            logger.warn("Interrupted while extracting format description event");
-        }
     }
 
     /**

@@ -33,17 +33,18 @@ public class DataSource extends Resource implements Serializable
     private static final Logger     logger                         = Logger.getLogger(DataSource.class);
 
     public static final String      NAME                           = "name";
+    public static final String      ALIAS                          = "alias";
     public static final String      CLUSTERNAME                    = "dataServiceName";
     public static final String      PRECEDENCE                     = "precedence";
     public static final String      ISAVAILABLE                    = "isAvailable";
     public static final String      STATE                          = "state";
     public static final String      ISCOMPOSITE                    = "isComposite";
-    public static final String      ISWITNESS                      = "isWitness";
     public static final String      ALERT_STATUS                   = "alertStatus";
     public static final String      ALERT_MESSAGE                  = "alertMessage";
     public static final String      ALERT_TIME                     = "alertTime";
     public static final String      APPLIED_LATENCY                = "appliedLatency";
     public static final String      HOST                           = "host";
+    public static final String      PORT                           = "port";
     public static final String      ROLE                           = "role";
     public static final String      VENDOR                         = "vendor";
     public static final String      DRIVER                         = "driver";
@@ -54,10 +55,9 @@ public class DataSource extends Resource implements Serializable
     public static final String      VIPINTERFACE                   = "vipInterface";
     public static final String      VIPADDRESS                     = "vipAddress";
     public static final String      VIPISBOUND                     = "vipIsBound";
-    public static final String      ACTIVE_CONNECTION_COUNT        = "activeConnectionCount";
+    public static final String      ACTIVE_CONNECTION_COUNT        = "activeConnectionsCount";
     public static final String      CONNECTIONS_CREATED_COUNT      = "connectionsCreatedCount";
     public static final String      TYPE                           = "type";
-    public static final String      MASTER_CONNECT_URI             = "masterConnectUri";
 
     // Defaults
     public static final double      DEFAULT_APPLIED_LATENCY        = 0.0;
@@ -71,14 +71,15 @@ public class DataSource extends Resource implements Serializable
      */
     private String                  dataServiceName                = "";
     private String                  host                           = "";
+    private String                  alias                          = "";
+    private int                     port                           = -1;
     private DataSourceRole          role                           = DataSourceRole.undefined;
     private String                  vendor                         = "";
     private String                  driver                         = "";
     private String                  url                            = "";
     private boolean                 isComposite                    = false;
     private int                     precedence                     = 0;
-    private boolean                 isAvailable                    = false;
-    private String                  masterConnectUri               = "";
+    private boolean                 available                      = false;
 
     private ResourceState           state                          = ResourceState.UNKNOWN;
 
@@ -95,12 +96,11 @@ public class DataSource extends Resource implements Serializable
 
     @SuppressWarnings("unused")
     private boolean                 isStandby                      = false;
-    private boolean                 isWitness                      = false;
 
     private HighWaterResource       highWater                      = new HighWaterResource();
 
     // Statistics.
-    private AtomicLong              activeConnectionsCount          = new AtomicLong(
+    private AtomicLong              activeConnectionsCount         = new AtomicLong(
                                                                            0);
     private AtomicLong              connectionsCreatedCount        = new AtomicLong(
                                                                            0);
@@ -127,7 +127,7 @@ public class DataSource extends Resource implements Serializable
     private boolean                 vipIsBound                     = false;
 
     /** Retains all non-closed connections to this data source */
-    private Set<DatabaseConnection> activeConnections               = Collections
+    private Set<DatabaseConnection> activeConnections              = Collections
                                                                            .synchronizedSet(new HashSet<DatabaseConnection>());
     public final static String      JDBC_URL_START                 = "jdbc:";
 
@@ -141,7 +141,7 @@ public class DataSource extends Resource implements Serializable
 
     public DataSource(TungstenProperties props)
     {
-        super(ResourceType.DATASOURCE, props.getString(DataSource.NAME,
+        super(ResourceType.DATASOURCE, props.getString(DataSource.HOST,
                 "unknown", true));
         props.applyProperties(this, true);
         String state = props.getString(DataSource.STATE);
@@ -205,17 +205,17 @@ public class DataSource extends Resource implements Serializable
 
     public void addConnection(DatabaseConnection conn)
     {
-        // thread-safe: ActiveConnection is a synchronizedSet
+        // thread-safe: activeConnections is a synchronizedSet
         activeConnections.add(conn);
     }
 
     public void removeConnection(DatabaseConnection conn)
     {
-        // thread-safe: ActiveConnection is a synchronizedSet
-       activeConnections.remove(conn);
+        // thread-safe: activeConnections is a synchronizedSet
+        activeConnections.remove(conn);
     }
 
-    public long getActiveConnectionCount()
+    public long getActiveConnectionsCount()
     {
         return activeConnectionsCount.get();
     }
@@ -275,7 +275,23 @@ public class DataSource extends Resource implements Serializable
                 .trim());
         newDs.setDriver(replicatorProps.getString(
                 Replicator.RESOURCE_JDBC_DRIVER).trim());
-        newDs.setRole(replicatorProps.getString(Replicator.ROLE).toLowerCase());
+
+        String port = replicatorProps.getString(Replicator.RESOURCE_PORT);
+
+        if (port != null)
+        {
+            newDs.setPort(Integer.parseInt(port));
+        }
+
+        newDs.setDriver(replicatorProps.getString(
+                Replicator.RESOURCE_JDBC_DRIVER).trim());
+
+        String role = replicatorProps.getString(Replicator.ROLE).toLowerCase();
+
+        newDs.setRole(role);
+
+        boolean roleIsDefined = !role.equals(DataSourceRole.undefined
+                .toString());
 
         boolean isStandby = replicatorProps
                 .getBoolean(Replicator.RESOURCE_IS_STANDBY_DATASOURCE);
@@ -286,6 +302,13 @@ public class DataSource extends Resource implements Serializable
             newDs.setIsAvailable(false);
             newDs.setState(ResourceState.OFFLINE);
             newDs.setStandby(true);
+        }
+        else if (!roleIsDefined)
+        {
+            // If the role is undefined, then set it up as offline.
+            newDs.setIsAvailable(false);
+            newDs.setState(ResourceState.OFFLINE);
+            newDs.setStandby(false);
         }
         else
         {
@@ -307,32 +330,6 @@ public class DataSource extends Resource implements Serializable
 
         newDs.setVipAddress(replicatorProps.getString(
                 Replicator.RESOURCE_VIP_ADDRESS, null, true));
-
-        newDs.setVipIsBound(false);
-
-        newDs.setComposite(false);
-
-        return newDs.toProperties();
-    }
-
-    static public TungstenProperties createWitnessFromMemberHeartbeat(
-            TungstenProperties memberHeartbeatProps)
-    {
-        DataSource newDs = new DataSource(
-                memberHeartbeatProps.getString("memberName"),
-                memberHeartbeatProps.getString("clusterName"),
-                memberHeartbeatProps.getString("memberName"));
-
-        newDs.setRole(DataSourceRole.witness.toString());
-
-        newDs.setAlertStatus(DataSourceAlertStatus.OK);
-
-        // Standby data sources are not available for reads or writes
-        newDs.setIsAvailable(false);
-        newDs.setState(ResourceState.OFFLINE);
-        newDs.setStandby(true);
-
-        newDs.setPrecedence(99);
 
         newDs.setVipIsBound(false);
 
@@ -387,16 +384,6 @@ public class DataSource extends Resource implements Serializable
         this.role = role;
     }
 
-    public String getMasterConnectUri()
-    {
-        return masterConnectUri;
-    }
-
-    public void setMasterConnectUri(String masterConnectUri)
-    {
-        this.masterConnectUri = masterConnectUri;
-    }
-
     public int getPrecedence()
     {
         return precedence;
@@ -425,7 +412,7 @@ public class DataSource extends Resource implements Serializable
      */
     public boolean isAvailable()
     {
-        return isAvailable;
+        return available;
     }
 
     /**
@@ -433,7 +420,7 @@ public class DataSource extends Resource implements Serializable
      */
     public boolean getIsAvailable()
     {
-        return isAvailable;
+        return available;
     }
 
     public void setCritical(String message)
@@ -444,9 +431,10 @@ public class DataSource extends Resource implements Serializable
     /**
      * @param isAvailable the isDateAvailable to set
      */
+    @JsonIgnore
     public void setIsAvailable(boolean isAvailable)
     {
-        this.isAvailable = isAvailable;
+        this.available = isAvailable;
 
         if (isAvailable)
         {
@@ -495,12 +483,12 @@ public class DataSource extends Resource implements Serializable
         {
             sequence.next();
             this.setName(ds.getName());
+            this.setAlias(ds.getAlias());
             this.setVendor(ds.getVendor());
             this.setDataServiceName(ds.getDataServiceName());
             this.setDriver(ds.getDriver());
             this.setUrl(ds.getUrl());
             this.setRole(ds.getRole());
-            this.setMasterConnectUri(ds.getMasterConnectUri());
             this.setPrecedence(ds.getPrecedence());
             this.setIsAvailable(ds.getIsAvailable());
             this.setState(ds.getState());
@@ -523,13 +511,14 @@ public class DataSource extends Resource implements Serializable
         TungstenProperties props = new TungstenProperties();
 
         props.setString(NAME, getName());
+        props.setString(ALIAS, (getAlias() == null ? "" : getAlias()));
         props.setString(VENDOR, getVendor());
         props.setString(CLUSTERNAME, getDataServiceName());
         props.setString(HOST, getHost());
+        props.setInt(PORT, getPort());
         props.setString(DRIVER, getDriver());
         props.setString(URL, getUrl());
         props.setString(ROLE, getRole().toString());
-        props.setString(MASTER_CONNECT_URI, getMasterConnectUri());
         props.setString(ALERT_STATUS, alertStatus.toString());
         props.setString(ALERT_MESSAGE, alertMessage);
         props.setLong(ALERT_TIME, alertTime);
@@ -588,6 +577,7 @@ public class DataSource extends Resource implements Serializable
      * 
      * @return Returns the sequence.
      */
+    @JsonIgnore
     public Sequence getSequence()
     {
         return sequence;
@@ -1057,5 +1047,50 @@ public class DataSource extends Resource implements Serializable
                     + (slashIdx != -1 ? slashIdx : remainder.length())
                     + ". Found colonIdx=" + colonIdx + " slashIdx=" + slashIdx);
         }
+    }
+
+    public int getPort()
+    {
+        return port;
+    }
+
+    public void setPort(int port)
+    {
+        this.port = port;
+    }
+
+    /**
+     * Explicitly set the alias for this data source. The default alias is null.
+     * 
+     * @param alias
+     */
+    public void setAlias(String alias)
+    {
+        this.alias = alias;
+    }
+
+    /**
+     * Implicitly get an alias if useAliasIfExists == true. This method is a
+     * means for selective code to use a logical name instead of the host name.
+     * Generally, when a datasource is first created, 'name' == 'host'. But this
+     * can be overridden and code that uses this method can see both the host
+     * and the logical name.
+     * 
+     * @param useAliasIfExists
+     * @return
+     */
+    public String getName(boolean useAliasIfExists)
+    {
+        if (useAliasIfExists && alias != null)
+        {
+            return alias;
+        }
+
+        return getName();
+    }
+
+    public String getAlias()
+    {
+        return alias;
     }
 }

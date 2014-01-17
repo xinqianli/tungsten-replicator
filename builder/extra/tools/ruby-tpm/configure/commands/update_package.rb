@@ -116,10 +116,6 @@ class UpdateCommand
     'update'
   end
   
-  def self.get_command_aliases
-    ['upgrade']
-  end
-  
   def self.get_command_description
     "Updates an existing installation of Tungsten.  If not arguments are specified, the local configuration is used to install.  If you specify --user, --hosts and --directory; this command will get the current configuration from each host and continue."
   end
@@ -131,7 +127,7 @@ module NotTungstenUpdatePrompt
       return false
     end
     
-    if [UpdateCommand.name, ValidateUpdateCommand.name].include?(@config.getNestedProperty([DEPLOYMENT_COMMAND]))
+    if [UpdateCommand.name, ValidateUpdateCommand.name, PrepareCommand.name, PromoteCommand.name].include?(@config.getProperty(DEPLOYMENT_COMMAND))
       return false
     else
       return (super() && true)
@@ -141,11 +137,7 @@ end
 
 module NotTungstenUpdateCheck
   def enabled?
-    if [UpdateCommand.name, ValidateUpdateCommand.name].include?(@config.getNestedProperty([DEPLOYMENT_COMMAND]))
-      return false
-    end
-    
-    if Configurator.instance.is_locked?
+    if [UpdateCommand.name, ValidateUpdateCommand.name, PrepareCommand.name, PromoteCommand.name].include?(@config.getProperty(DEPLOYMENT_COMMAND))
       return false
     end
     
@@ -155,7 +147,7 @@ end
 
 module TungstenUpdateCheck
   def enabled?
-    if [UpdateCommand.name, ValidateUpdateCommand.name].include?(@config.getProperty(DEPLOYMENT_COMMAND))
+    if [UpdateCommand.name, ValidateUpdateCommand.name, PrepareCommand.name, PromoteCommand.name].include?(@config.getProperty(DEPLOYMENT_COMMAND))
       return (super() && true)
     end
     

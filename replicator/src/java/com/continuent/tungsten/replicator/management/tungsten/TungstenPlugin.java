@@ -159,14 +159,12 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
      * @see com.continuent.tungsten.replicator.management.OpenReplicatorPlugin#consistencyCheck(java.lang.String,
      *      java.lang.String, java.lang.String, int, int)
      */
-    public int consistencyCheck(String method, String schemaName,
+    public void consistencyCheck(String method, String schemaName,
             String tableName, int rowOffset, int rowLimit) throws Exception
     {
         logger.info("Got consistency check request: " + method + ":"
                 + schemaName + "." + tableName + ":" + rowOffset + ","
                 + rowLimit);
-
-        int id = -1;
 
         // Ensure we have a runtime. This is null if we are offline.
         // TODO: This command should execute in a state machine.
@@ -245,9 +243,30 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
             }
 
             // Find the last consistency check id
-            Table ct = findConsistencyTable(conn,
-                    properties.getString("replicator.schema"));
-            id = findNextConsistencyId(conn, ct);
+            Table ct = null;
+            int id = 1;
+            try
+            {
+                Statement st;
+                st = conn.createStatement();
+                ct = conn.findTable(properties.getString("replicator.schema"),
+                        ConsistencyTable.TABLE_NAME);
+                ResultSet rs = st.executeQuery("SELECT MAX("
+                        + ConsistencyTable.idColumnName + ") FROM "
+                        + ct.getSchema() + "." + ct.getName());
+                if (rs.next())
+                {
+                    id = rs.getInt(1) + 1; // increment id
+                }
+                rs.close();
+                st.close();
+            }
+            catch (Exception e)
+            {
+                logger.error("Failed to query last consistency check ID: "
+                        + e.getMessage());
+                throw e;
+            }
 
             for (int i = 0; i < tables.size(); i++)
             {
@@ -274,67 +293,6 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
         {
             conn.close();
         }
-        return id;
-    }
-
-    /**
-     * Tries to locate consistency check table. Throws a wrapped exception on
-     * failure.
-     * 
-     * @param conn Database connection.
-     * @param replicatorSchema Schema name of the Replicator service.
-     * @return Consistency check table.
-     */
-    public static Table findConsistencyTable(Database conn,
-            String replicatorSchema) throws Exception
-    {
-        try
-        {
-            return conn
-                    .findTable(replicatorSchema, ConsistencyTable.TABLE_NAME);
-        }
-        catch (Exception e)
-        {
-            logger.error("Failed to find consistency check table: "
-                    + e.getMessage());
-            throw e;
-        }
-    }
-
-    /**
-     * Finds what ID should be used for the next consistency check.
-     * 
-     * @param conn Database connection.
-     * @param ct Consistency check table.
-     * @return Next consistency check ID.
-     * @throws Exception If SQL query fails.
-     */
-    public static int findNextConsistencyId(Database conn, Table ct)
-            throws Exception
-    {
-        // Find the last consistency check id
-        int id = 1;
-        try
-        {
-            Statement st;
-            st = conn.createStatement();
-            ResultSet rs = st.executeQuery("SELECT MAX("
-                    + ConsistencyTable.idColumnName + ") FROM "
-                    + ct.getSchema() + "." + ct.getName());
-            if (rs.next())
-            {
-                id = rs.getInt(1) + 1; // increment id
-            }
-            rs.close();
-            st.close();
-        }
-        catch (Exception e)
-        {
-            logger.error("Failed to query last consistency check ID: "
-                    + e.getMessage());
-            throw e;
-        }
-        return id;
     }
 
     /**
@@ -572,10 +530,6 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
                         "MASTER_ONLINE");
                 heartbeat(props);
             }
-            
-            // If we got this far, write the current role to help with recovery
-            // later on. 
-            runtime.setLastOnlineRoleName(runtime.getRoleName());
         }
         catch (ReplicatorException e)
         {
@@ -1064,13 +1018,6 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
                         avgBlock = 0.0;
                     props.put("averageBlockSize",
                             String.format("%-10.3f", avgBlock));
-                    props.put("lastCommittedBlockSize",
-                            Long.toString(progress.getLastCommittedBlockSize()));
-                    props.put("currentBlockSize",
-                            Long.toString(progress.getCurrentBlockSize()));
-                    props.put("commits", Long.toString(blockCount));
-                    props.put("lastCommittedBlockTime", Double
-                            .toString(progress.getLastCommittedBlockTime()));
                     props.put("appliedLatency",
                             Double.toString(progress.getApplyLatencySeconds()));
                     props.put("extractTime",

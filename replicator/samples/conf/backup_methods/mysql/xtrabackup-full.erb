@@ -1,0 +1,6 @@
+replicator.backup.agent.xtrabackup-full=com.continuent.tungsten.replicator.backup.generic.ScriptDumpAgent
+replicator.backup.agent.xtrabackup-full.script=${replicator.home.dir}/scripts/xtrabackup.sh
+replicator.backup.agent.xtrabackup-full.commandPrefix=<%= ENV['TUNGSTEN_REPL_BACKUP_COMMAND_PREFIX'] %>
+replicator.backup.agent.xtrabackup-full.hotBackupEnabled=true
+replicator.backup.agent.xtrabackup-full.logFilename=${replicator.home.dir}/log/xtrabackup.log
+replicator.backup.agent.xtrabackup-full.options=host=${replicator.global.db.host}&port=${replicator.global.db.port}&directory=<%= ENV['TUNGSTEN_REPL_MYSQL_XTRABACKUP_DIR'] %>&tungsten_backups=<%= ENV['TUNGSTEN_SERVICE_REPL_BACKUP_STORAGE_DIR'] %>&mysqllogdir=<%= ENV['TUNGSTEN_APPLIER_REPL_MASTER_LOGDIR'] %>&mysqllogpattern=<%= ENV['TUNGSTEN_APPLIER_REPL_MASTER_LOGPATTERN'] %>&mysql_service_command=<%= ENV['TUNGSTEN_APPLIER_REPL_BOOT_SCRIPT'] %>&my_cnf=<%= ENV['TUNGSTEN_APPLIER_REPL_MYSQL_SERVICE_CONF'] %>&restore_to_datadir=<%= ENV['TUNGSTEN_SERVICE_REPL_MYSQL_XTRABACKUP_RESTORE_TO_DATADIR'] %>&service=<%= ENV['TUNGSTEN_SERVICE_DEPLOYMENT_SERVICE'] %>

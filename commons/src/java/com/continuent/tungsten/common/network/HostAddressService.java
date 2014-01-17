@@ -62,6 +62,8 @@ public class HostAddressService
     /** Ping method using operating system ping command. */
     public static String                  PING          = "ping";
 
+    public static String                  PROXY_PING    = "proxyPing";
+
     // Ping methods are stored in a list as well as a hash index. The names list
     // contains only enabled methods. Access to these *must* be synchronized to
     // preserve thread safety.
@@ -82,6 +84,7 @@ public class HostAddressService
         // Add known ping methods.
         addMethod(DEFAULT, InetAddressPing.class.getName(), autoEnable);
         addMethod(PING, OsUtilityPing.class.getName(), autoEnable);
+        addMethod(PROXY_PING, PortProxyPing.class.getName(), autoEnable);
     }
 
     /**
@@ -215,6 +218,12 @@ public class HostAddressService
     /**
      * Given a pair of addresses and a single network prefix, determines if
      * hosts are on the same subnet.
+     * 
+     * @param host1
+     * @param host2
+     * @param prefix
+     * @return
+     * @throws Exception
      */
     public static boolean addressesAreInSameSubnet(String host1, String host2,
             short prefix) throws Exception
@@ -232,7 +241,7 @@ public class HostAddressService
         byte[] host1Raw = host1Address.getAddress();
         byte[] host2Raw = host2Address.getAddress();
 
-        for (int octet = 0; octet < 3; octet++)
+        for (int octet = 0; octet < 4; octet++)
         {
             if ((host1Raw[octet] & netMask[octet]) != (host2Raw[octet] & netMask[octet]))
                 return false;
@@ -359,7 +368,8 @@ public class HostAddressService
                 method = instantiatePingMethod(methodClass);
 
                 // Make the call.
-                boolean status = method.ping(host, timeoutMillis);
+                boolean status = method.ping(host, host.getPort(),
+                        timeoutMillis);
 
                 // Fill in missing ping information.
                 notification.setReachable(status);
@@ -405,6 +415,10 @@ public class HostAddressService
     /**
      * This method returns a prefix for a given internet address. It will only
      * work on the host for which the address is bound.
+     * 
+     * @param memberAddr
+     * @return
+     * @throws Exception
      */
     public static short getLocalNetworkPrefix(String hostName) throws Exception
     {

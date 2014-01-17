@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2009-2013 Continuent Inc.
+ * Copyright (C) 2009 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -40,12 +40,12 @@ public class RandLogEvent extends LogEvent
      * Variable data part:
      * <ul>
      * <li>8 bytes. The value for the first seed.</li>
-     * <li>8 bytes. The value for the second seed.</li>
+     * <li>8 bytes. The value for the second seed. </li>
      * </ul>
      * Source : http://forge.mysql.com/wiki/MySQL_Internals_Binary_Log
      */
 
-    static Logger  logger = Logger.getLogger(RandLogEvent.class);
+    static Logger  logger = Logger.getLogger(MySQLExtractor.class);
 
     private String query;
     private long   seed1;
@@ -57,15 +57,10 @@ public class RandLogEvent extends LogEvent
     }
 
     public RandLogEvent(byte[] buffer, int eventLength,
-            FormatDescriptionLogEvent descriptionEvent, String currentPosition)
+            FormatDescriptionLogEvent descriptionEvent)
             throws ReplicatorException
     {
         super(buffer, descriptionEvent, MysqlBinlog.RAND_EVENT);
-
-        this.startPosition = currentPosition;
-        if (logger.isDebugEnabled())
-            logger.debug("Extracting event at position  : " + startPosition
-                    + " -> " + getNextEventPosition());
 
         int commonHeaderLength, postHeaderLength;
         int offset;
@@ -89,12 +84,6 @@ public class RandLogEvent extends LogEvent
             throw new MySQLExtractException("rand event length is too short");
         }
 
-        if (descriptionEvent.useChecksum())
-        {
-            // Removing the checksum from the size of the event
-            eventLength -= 4;
-        }
-
         try
         {
             seed1 = LittleEndianConversion.convert8BytesToLong(buffer, offset);
@@ -109,6 +98,6 @@ public class RandLogEvent extends LogEvent
             throw new MySQLExtractException("Unable to read rand event", e);
         }
 
-        doChecksum(buffer, eventLength, descriptionEvent);
+        return;
     }
 }

@@ -1,5 +1,5 @@
 #################################
-# REPLICATOR.PROPERTIES.ARCHIVE #
+# REPLICATOR.PROPERTIES.DIRECT  #
 #################################
 #
 # This file contains properties for MySQL replication.
@@ -23,9 +23,10 @@ replicator.role=@{REPL_ROLE}
 # URI to which we connect when this replicator is a slave.   
 replicator.master.connect.uri=@{REPL_MASTER_URI}
 
-# URI for our listener when we are acting as a master.  Slaves 
-# use this as their connect URI.
-replicator.master.listen.uri=@{REPL_THL_PROTOCOL}://@{HOST.HOST}:@{REPL_SVC_THL_PORT}/
+# Force replicator to check if THL is in sync with database. 
+# This check is enabled by default. Set the following property 
+# to false in order to disable the check.
+# replicator.master.thl_check=true
 
 # Replicator auto-enable.  If true, replicator automatically goes online 
 # at start-up time. 
@@ -36,9 +37,8 @@ replicator.auto_enable=@{REPL_AUTOENABLE}
 # whether it runs in a separate, detached JVM.
 replicator.detached=false
 
-# Source ID.  Identifies the replication event source.  It must be 
-# unique for each replicator node and normally is the host name. 
-# Do not use values like localhost or 127.0.0.1.
+# Source ID. This required parameter is used to identify replication
+# event source.  It must be unique for each replicator node.
 replicator.source_id=@{EXTRACTOR.REPL_DBHOST}
 
 # Site to which the replicator belongs.
@@ -87,18 +87,6 @@ replicator.plugin=tungsten
 # REPLICATOR PIPELINES          #
 #################################
 
-# Pipeline stages use block commit to commit multiple source transactions
-# simultaneously.  Block commit is controlled by the following settings on 
-# stages:
-#   blockCommitRowCount -- Commit when this number of transactions is 
-#   reached or stage runs out of in-coming transactions
-#   blockCommitInterval -- Commit when time interval elapses *or* number of
-#   transactions for blockCommitRowCount is reached.
-# If neither setting is in effect, replicators commit each transaciton 
-# individually.  Interval settings are milliseconds by default.  You can also
-# apply settings in seconds, minutes, hours, and days, as in 10s, 30m, 2h, 
-# or 1d respectively. 
-
 # Generic pipelines.
 replicator.pipelines=archive
 
@@ -137,11 +125,6 @@ replicator.store.thl.password=
 replicator.store.thl.log_dir=@{SERVICE.REPL_LOG_DIR}
 replicator.store.thl.log_file_size=@{REPL_THL_LOG_FILE_SIZE}
 
-# Force replicator to check if THL is in sync with database.
-# This check is enabled by default. Set the following property
-# to false in order to disable the check.
-replicator.store.thl.logConsistencyCheck=true
-
 # The following property tells the THL server how long, as a maximum,
 # in milliseconds, to block during an accept() call.  This interval, in turn
 # will be directly factored into the amount of time a replicator will
@@ -151,6 +134,7 @@ replicator.store.thl.logConsistencyCheck=true
 # with new client connections, and if too long, will result in excessively
 # slow transitions to offline etc.
 replicator.thl.server.accept.timeout=5000
+
 
 # Change the following property to control the buffer size used for THL
 # I/O operations.  The default of 128k seems to work well. 
@@ -189,12 +173,12 @@ replicator.store.thl.doChecksum=@{REPL_THL_DO_CHECKSUM}
 # but as with queue store sizes require more memory.
 replicator.thl.protocol.buffer_size=10
 
-# THL listener address for remote access.  To listen on all interfaces,
-# use a host value of 0.0.0.0, as in thl://0.0.0.0:2112/.  The port
-# defaults to 2112 if you do not specify a value.  To enable SSL use
-# 'thls' instead of 'thl'.  Note that clients must exactly match the
-# scheme (thl vs. thls), host, and port to connect. 
-replicator.store.thl.storageListenerUri=@{REPL_THL_PROTOCOL}://0.0.0.0:@{REPL_SVC_THL_PORT}
+# THL listener address for remote access.  To listen on all ports, 
+# use a value like thl://0.0.0.0:2112/.  (2112 is default
+# port for Tungsten configurations.)  Note that this URI must provide
+# a listener that corresponds to the URL in replicator.master.listen.uri, or 
+# slaves may connect to the wrong port. 
+replicator.store.thl.storageListenerUri=thl://0.0.0.0:@{REPL_SVC_THL_PORT}
 
 # The transfer rate between the master and the slave can be improved
 # by setting the following setting to a value greater than 1, which
@@ -209,7 +193,7 @@ replicator.store.thl.readOnly=@{REPL_SVC_THL_READ_ONLY}
 # EXTRACTORS #
 ##############
 
-# Remote THL extractor.  
+# Remote THL extractor. 
 replicator.extractor.thl-remote=com.continuent.tungsten.replicator.thl.RemoteTHLExtractor
 replicator.extractor.thl-remote.connectUri=${replicator.master.connect.uri}
 

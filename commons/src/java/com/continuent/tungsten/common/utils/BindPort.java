@@ -1,6 +1,7 @@
 
 package com.continuent.tungsten.common.utils;
 
+import java.net.InetAddress;
 import java.net.ServerSocket;
 
 public class BindPort
@@ -9,33 +10,30 @@ public class BindPort
     public static void main(String[] args)
     {
 
-        if (args.length < 1)
+        if (args.length < 2)
         {
-            System.err.println("usage: bindPort <port>");
+            System.err.println("usage: bindPort <host> <port>");
             System.exit(1);
         }
 
         int iterations = 0;
         while (true)
         {
-            int port = Integer.parseInt(args[0]);
+            String host = args[0];
+            int port = Integer.parseInt(args[1]);
 
             try
             {
-                new ServerSocket(port);
+                InetAddress addr = InetAddress.getByName(host);
+                new ServerSocket(port, 100, addr);
                 System.out.println("listening on port " + port);
                 sleep(Long.MAX_VALUE);
 
             }
             catch (Exception ex)
             {
-                System.out.print("*");
-
-                if (++iterations % 40 == 0)
-                    System.out.println("");
-
-                sleep(1000);
-
+                System.out.println(ex);
+                System.exit(1);
             }
         }
 

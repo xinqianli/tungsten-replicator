@@ -73,9 +73,5 @@ class TungstenEnvironment
     # Optional logic to test the options
   end
   
-  def script_name
-    "tungsten_env.sh"
-  end
-  
   self.new().run()
 end

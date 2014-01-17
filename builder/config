@@ -7,17 +7,19 @@ BUILD_DIR=build
 
 # SVN URLs of the required modules
 # Replicator URL.
-TREP_SVN_URL=https://tungsten-replicator.googlecode.com/svn/trunk/replicator
+TREP_SVN_URL=https://tungsten-replicator.googlecode.com/svn/branches/tungsten-openshift-2.0.1/replicator
+# Replicator Extras URL.
+TREP_EXT_SVN_URL=https://tungsten-replicator.googlecode.com/svn/branches/tungsten-openshift-2.0.1/replicator-extra
 # Commons URL.
-TCOM_SVN_URL=https://tungsten-replicator.googlecode.com/svn/trunk/commons
+TCOM_SVN_URL=https://tungsten-replicator.googlecode.com/svn/branches/tungsten-openshift-2.0.1/commons
 # Bristlecone URL.
-BRI_SVN_URL=http://bristlecone.googlecode.com/svn/trunk/bristlecone
+BRI_SVN_URL=https://bristlecone.svn.sourceforge.net/svnroot/bristlecone/trunk/bristlecone
 # Tungsten Cookbook URL.
 COOK_SVN_URL=https://tungsten-toolbox.googlecode.com/svn/trunk/cookbook
 
 # Version name of the release to build
 VERSION_MAJOR=2
-VERSION_MINOR=2
+VERSION_MINOR=1
 VERSION_REVISION=1
 VERSION=$VERSION_MAJOR.$VERSION_MINOR.$VERSION_REVISION
 

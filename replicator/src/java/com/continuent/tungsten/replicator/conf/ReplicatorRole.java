@@ -19,6 +19,7 @@
  * Initial developer(s): Robert Hodges
  * Contributor(s): 
  */
+
 package com.continuent.tungsten.replicator.conf;
 
 /**
@@ -29,6 +30,9 @@ package com.continuent.tungsten.replicator.conf;
  */
 public enum ReplicatorRole
 {
+    /** Replicator role is undefined. */
+    UNDEFINED,
+    
     /** Replicator is operating as a master. */
     MASTER,
 

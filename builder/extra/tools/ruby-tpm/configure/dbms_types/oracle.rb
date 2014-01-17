@@ -91,15 +91,7 @@ class OracleDatabasePlatform < ConfigureDatabasePlatform
   end
   
   def get_replication_schema
-    @username
-  end
-  
-  def extractor_provides_colnames?
-    true
-  end
-  
-  def applier_supports_parallel_apply?()
-    true
+    "${replicator.global.db.user}"
   end
 end
 
@@ -150,7 +142,8 @@ class OracleService < OracleConfigurePrompt
   include DatasourcePrompt
   
   def initialize
-    super(REPL_ORACLE_SERVICE, "Oracle Service", PV_ANY)
+    super(REPL_ORACLE_SERVICE, "Oracle Service", 
+      PV_IDENTIFIER)
   end
 end
 
@@ -158,7 +151,7 @@ class OracleSCAN < OracleConfigurePrompt
   include DatasourcePrompt
   
   def initialize
-    super(REPL_ORACLE_SCAN, "Oracle SCAN", PV_HOSTNAME)
+    super(REPL_ORACLE_SCAN, "Oracle SCAN", PV_IDENTIFIER)
   end
   
   def required?
@@ -170,7 +163,8 @@ class OracleExtractorService < OracleConfigurePrompt
   include DatasourcePrompt
   
   def initialize
-    super(EXTRACTOR_REPL_ORACLE_SERVICE, "Oracle Service", PV_ANY)
+    super(EXTRACTOR_REPL_ORACLE_SERVICE, "Oracle Service", 
+      PV_IDENTIFIER)
   end
   
   def load_default_value
@@ -182,7 +176,7 @@ class OracleExtractorSCAN < OracleConfigurePrompt
   include DatasourcePrompt
   
   def initialize
-    super(EXTRACTOR_REPL_ORACLE_SCAN, "Oracle SCAN", PV_HOSTNAME)
+    super(EXTRACTOR_REPL_ORACLE_SCAN, "Oracle SCAN", PV_IDENTIFIER)
   end
   
   def required?

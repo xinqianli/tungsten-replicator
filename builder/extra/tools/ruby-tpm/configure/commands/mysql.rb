@@ -21,12 +21,6 @@ class MySQLTerminalCommand
   end
  
   def run
-    unless Configurator.instance.is_locked?()
-      error("Unable to run this command because this is not the installed directory. If this is the staging directory, try running tpm from an installed Tungsten directory.")
-      return
-    end
-    
-    build_topologies(@config)
     unless @config.getProperty(HOST_ENABLE_REPLICATOR) == "true"
       error("Unable to run this command because the current host is not a database server")
       return false

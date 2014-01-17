@@ -3,5 +3,4 @@
 require "#{File.dirname(__FILE__)}/../../cluster-home/lib/ruby/tungsten"
 require "#{File.dirname(__FILE__)}/../lib/ruby/xtrabackup"
 
-TU.set_log_level(Logger::DEBUG)
 TungstenXtrabackupScript.new().run()

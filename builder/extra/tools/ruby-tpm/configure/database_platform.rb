@@ -19,15 +19,11 @@ class ConfigureDatabasePlatform
   end
   
   def run(command)
-    Configurator.instance.debug("Unable to run #{command} against #{self.class.name} connection")
-    
-    nil
+    raise "Undefined function: #{self.class.name}.run"
   end
   
   def get_value(command, column = nil)
-    Configurator.instance.debug("Unable to run #{command} against #{self.class.name} connection")
-    
-    nil
+    raise "Undefined function: #{self.class.name}.get_value"
   end
 	
 	def get_extractor_template
@@ -39,15 +35,7 @@ class ConfigureDatabasePlatform
 	end
 	
 	def get_extractor_filters()
-    filters = []
-	  if @config.getProperty(@prefix + [ENABLE_HETEROGENOUS_MASTER]) == "true"
-	    unless extractor_provides_colnames?()
-	      filters << "colnames"
-	    end
-	    filters << "pkey"
-	  end
-	  
-	  return filters
+	  []
 	end
 	
 	def get_thl_filters()
@@ -55,12 +43,7 @@ class ConfigureDatabasePlatform
 	end
 	
 	def get_applier_filters()
-	  filters = []
-	  if @config.getProperty(@prefix + [ENABLE_HETEROGENOUS_SLAVE]) == "false"
-	    filters << "pkey"
-	  end
-	  
-	  return filters
+	  ["pkey"]
 	end
 	
 	def get_backup_agents()
@@ -96,10 +79,6 @@ class ConfigureDatabasePlatform
   
   def getJdbcDriver()
     raise "Undefined function: #{self.class.name}.getJdbcDriver"
-  end
-  
-  def getJdbcScheme()
-    getVendor()
   end
   
   def getVendor()
@@ -179,7 +158,7 @@ class ConfigureDatabasePlatform
   end
   
   def get_replication_schema
-    nil
+    "tungsten_${service.name}"
   end
   
   def get_default_table_engine
@@ -188,14 +167,6 @@ class ConfigureDatabasePlatform
   
   def get_allowed_table_engines
     ["innodb"]
-  end
-  
-  def extractor_provides_colnames?
-    false
-  end
-  
-  def applier_supports_parallel_apply?()
-    false
   end
   
   def self.build(prefix, config)

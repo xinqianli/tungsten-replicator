@@ -19,15 +19,14 @@ replicator.master.connect.uri=wal://@{REPL_MASTERHOST}/
 
 # URI for our listener when we are acting as a master.  Slaves 
 # use this as their connect URI.  
-replicator.master.listen.uri=@{REPL_THL_PROTOCOL}://@{HOST.HOST}:@{REPL_SVC_THL_PORT}/
+replicator.master.listen.uri=thl://@{HOST.HOST}:@{REPL_SVC_THL_PORT}/
 
 # Replicator auto-enable.  If true, replicator automatically goes online 
 # at start-up time. 
 replicator.auto_enable=@{REPL_AUTOENABLE}
 
-# Source ID.  Identifies the replication event source.  It must be 
-# unique for each replicator node and normally is the host name.
-# Do not use values like localhost or 127.0.0.1. 
+# Source ID. This required parameter is used to identify replication
+# event source.  It must be unique for each replicator node.
 replicator.source_id=@{EXTRACTOR.REPL_DBHOST}
 
 # Cluster name to which the replicator belongs.

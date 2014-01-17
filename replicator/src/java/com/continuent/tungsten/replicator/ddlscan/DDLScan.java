@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -38,11 +38,9 @@ import org.apache.velocity.runtime.RuntimeConstants;
 import org.apache.velocity.runtime.log.Log4JLogChute;
 
 import com.continuent.tungsten.replicator.ReplicatorException;
-import com.continuent.tungsten.replicator.conf.ReplicatorRuntimeConf;
 import com.continuent.tungsten.replicator.database.Column;
 import com.continuent.tungsten.replicator.database.Database;
 import com.continuent.tungsten.replicator.database.DatabaseFactory;
-import com.continuent.tungsten.replicator.database.MySQLDatabase;
 import com.continuent.tungsten.replicator.database.OracleDatabase;
 import com.continuent.tungsten.replicator.database.Table;
 import com.continuent.tungsten.replicator.database.TableMatcher;
@@ -67,7 +65,6 @@ public class DDLScan
     private Database          db                  = null;
 
     private ArrayList<String> reservedWordsOracle = null;
-    private ArrayList<String> reservedWordsMySQL  = null;
 
     VelocityEngine            velocity            = null;
     RenameDefinitions         renameDefinitions   = null;
@@ -94,8 +91,8 @@ public class DDLScan
      * 
      * @throws ReplicatorException
      */
-    public void prepare(String additionalPath) throws ReplicatorException,
-            InterruptedException, SQLException
+    public void prepare() throws ReplicatorException, InterruptedException,
+            SQLException
     {
         db = DatabaseFactory.createDatabase(url, user, pass);
         db.connect();
@@ -103,13 +100,6 @@ public class DDLScan
         // Prepare reserved words lists.
         OracleDatabase oracle = new OracleDatabase();
         reservedWordsOracle = oracle.getReservedWords();
-        MySQLDatabase mysql = new MySQLDatabase();
-        reservedWordsMySQL = mysql.getReservedWords();
-
-        // Do we need additional paths for loader?
-        String userPath = "";
-        if (additionalPath != null)
-            userPath = "," + additionalPath;
 
         // Configure and initialize Velocity engine. Using ourselves as a
         // logger.
@@ -118,9 +108,8 @@ public class DDLScan
                 "org.apache.velocity.runtime.log.Log4JLogChute");
         velocity.setProperty(Log4JLogChute.RUNTIME_LOG_LOG4J_LOGGER,
                 DDLScan.class.toString());
-        velocity.setProperty(RuntimeConstants.FILE_RESOURCE_LOADER_PATH, ".,"
-                + ReplicatorRuntimeConf.locateReplicatorHomeDir()
-                + "/samples/extensions/velocity" + userPath);
+        velocity.setProperty(RuntimeConstants.FILE_RESOURCE_LOADER_PATH,
+                ".,../samples/extensions/velocity");
         velocity.init();
     }
 
@@ -168,7 +157,7 @@ public class DDLScan
      * @throws ReplicatorException On parsing or CSV format errors.
      * @throws IOException If file cannot be read.
      * @see #resetRenameDefinitions()
-     * @see #scan(String, Hashtable, Writer)
+     * @see #scan(String, Writer)
      */
     public void parseRenameDefinitions(String definitionsFile)
             throws ReplicatorException, IOException
@@ -181,7 +170,7 @@ public class DDLScan
      * Stop using rename definitions file for future scan(...) calls.
      * 
      * @see #parseRenameDefinitions(String)
-     * @see #scan(String, Hashtable, Writer)
+     * @see #scan(String, Writer)
      */
     public void resetRenameDefinitions()
     {
@@ -205,9 +194,6 @@ public class DDLScan
             throws ReplicatorException, InterruptedException, SQLException,
             IOException
     {
-        // How many tables were actually matched?
-        int tablesRendered = 0;
-        
         // Regular expression matcher for tables.
         TableMatcher tableMatcher = null;
         if (tablesToFind != null)
@@ -242,8 +228,6 @@ public class DDLScan
         context.put("enum", EnumToStringFilter.class);
         context.put("date", new java.util.Date()); // Current time.
         context.put("reservedWordsOracle", reservedWordsOracle);
-        context.put("reservedWordsMySQL", reservedWordsMySQL);
-        context.put("velocity", velocity);
 
         // Iterate through all available tables in the database.
         for (Table table : tables)
@@ -257,16 +241,7 @@ public class DDLScan
 
                 // Velocity merge.
                 merge(context, table, writer);
-
-                tablesRendered++;
             }
-        }
-
-        // No tables have been found and/or matched.
-        if (tablesRendered == 0)
-        {
-            // Render the template once without table data. Eg. to output help.
-            merge(context, null, writer);
         }
 
         return writer.toString();

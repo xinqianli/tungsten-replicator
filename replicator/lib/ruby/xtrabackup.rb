@@ -1,29 +1,26 @@
 require "#{File.dirname(__FILE__)}/backup"
 
 class TungstenXtrabackupScript < TungstenBackupScript
-  include MySQLServiceScript
-  
   INCREMENTAL_BASEDIR_FILE = "xtrabackup_incremental_basedir"
-  MASTER_BACKUP_POSITION_SQL = "xtrabackup_tungsten_master_backup_position.sql"
   
   def configure
     super()
     
     add_option(:tar, {
       :on => "--tar",
-      :default => "false",
+      :default => false,
       :help => "Create the backup as a TAR file"
     })
     
     add_option(:restore_to_datadir, {
       :on => "--restore-to-datadir",
-      :default => "false",
+      :default => false,
       :help => "Use the MySQL data directory for staging and preparation"
     })
     
     add_option(:incremental, {
       :on => "--incremental",
-      :default => "false",
+      :default => false,
       :help => "Create the backup as an incremental snapshot since last backup"
     })
   end
@@ -46,10 +43,6 @@ class TungstenXtrabackupScript < TungstenBackupScript
       additional_args = []
       additional_args << "--no-timestamp"
       additional_args << "--stream=tar"
-      
-      if xtrabackup_supports_argument("--no-version-check")
-        additional_args << "--no-version-check"
-      end
 
       TU.output("Create full backup in #{tar_file}")  
       TU.cmd_stderr("#{get_xtrabackup_command()} #{additional_args.join(" ")} #{@options[:directory]} > #{tar_file}") {
@@ -62,20 +55,14 @@ class TungstenXtrabackupScript < TungstenBackupScript
           end
         end
       }
-      
-      if File.exist?("#{@options[:directory]}/xtrabackup_binary")
-        # We must add a file to the tar package without extracting the entire
-        # package. This command appends the file directly.
-        TU.cmd_result("cd #{@options[:directory]};tar rf #{tar_file} xtrabackup_binary")
-        File.unlink("#{@options[:directory]}/xtrabackup_binary")
-      end
 
       # Change the directory ownership if run with sudo
       if ENV.has_key?('SUDO_USER')
         TU.cmd_result("chown -R #{ENV['SUDO_USER']}: #{tar_file}")
       end
 
-      return tar_file
+      # Write the directory name to the final storage file
+      TU.cmd_result("echo \"file=#{tar_file}\" > #{@options[:properties]}")
     rescue => e
       TU.error(e.message)
 
@@ -106,7 +93,7 @@ class TungstenXtrabackupScript < TungstenBackupScript
 
           execute_backup(most_recent_dir)
         rescue BrokenLineageError => ble
-          TU.warning(ble.message)
+          TU.error(ble.message)
           execute_backup()
         end
       end
@@ -128,7 +115,8 @@ class TungstenXtrabackupScript < TungstenBackupScript
         TU.cmd_result("chown -R #{ENV['SUDO_USER']}: #{@storage_dir}")
       end
 
-      return storage_file
+      # Write the directory name to the final storage file
+      TU.cmd_result("echo \"file=#{storage_file}\" > #{@options[:properties]}")
     rescue => e
       TU.error(e.message)
 
@@ -147,14 +135,7 @@ class TungstenXtrabackupScript < TungstenBackupScript
 
     additional_args = []
     additional_args << "--no-timestamp"
-    
-    if xtrabackup_supports_argument("--no-version-check")
-      additional_args << "--no-version-check"
-    end
 
-    # Build the command and run it
-    # All STDERR output from the command is processed before going to STDERR
-    # When the MySQL binlog position is found, it is saved for later use
     if incremental_basedir == nil
       TU.output("Create full backup in #{@storage_dir}")
       TU.cmd_stderr("#{get_xtrabackup_command()} #{additional_args.join(" ")} #{@storage_dir}") {
@@ -174,6 +155,7 @@ class TungstenXtrabackupScript < TungstenBackupScript
       additional_args << "--incremental-lsn=#{incremental_lsn}"
 
       TU.output("Create an incremental backup from LSN #{incremental_lsn} in #{@storage_dir}")
+      # Copy the database files and apply any pending log entries
       TU.cmd_stderr("#{get_xtrabackup_command()} #{additional_args.join(" ")} #{@storage_dir}") {
         |line|
         if line =~ /MySQL binlog position/
@@ -185,52 +167,9 @@ class TungstenXtrabackupScript < TungstenBackupScript
         end
       }
 
-      # Store the directory that this incremental backup was based on
-      # That information is needed when doing the restore
       File.open(@storage_dir + "/#{INCREMENTAL_BASEDIR_FILE}", "w") {
         |f|
         f.puts(incremental_basedir)
-      }
-    end
-  end
-  
-  def store_master_position_sql(sql, storage_file)
-    # This will store the SQL statement in a file in the backup directory
-    # The restore process will run the SQL file after copying files back
-    # to the data directory and starting the server
-    
-    if @options[:tar] == "true"
-      path = "#{@options[:directory]}/#{MASTER_BACKUP_POSITION_SQL}"
-      begin
-        File.open(path, "w"){
-          |f|
-          sql.each{
-            |line|
-            f.puts(line)
-          }
-        }
-        
-        # We must add a file to the tar package without extracting the entire
-        # package. This command appends the file directly.
-        TU.cmd_result("cd #{File.dirname(path)};tar rf #{storage_file} #{MASTER_BACKUP_POSITION_SQL}")
-        
-        if File.exist?(path)
-          File.unlink(path)
-        end
-      rescue => e
-        if File.exist?(path)
-          File.unlink(path)
-        end
-        
-        raise e
-      end
-    else
-      File.open("#{@storage_dir}/#{MASTER_BACKUP_POSITION_SQL}", "w"){
-        |f|
-        sql.each{
-          |line|
-          f.puts(line)
-        }
       }
     end
   end
@@ -246,9 +185,6 @@ class TungstenXtrabackupScript < TungstenBackupScript
         @options[:restore_to_datadir] = "true"
       end
 
-      # If the InnoDB files are stored somewhere other than datadir we are
-      # not able to put them all in the correct position at this time
-      # This only matters if we are restoring directly to the data directory
       if @options[:restore_to_datadir] == "true"  
         if @options[:mysqlibdatadir].to_s() != "" || @options[:mysqliblogdir].to_s() != ""
           raise("Unable to restore to #{@options[:mysqldatadir]} because #{@options[:my_cnf]} includes a definition for 'innodb_data_home_dir' or 'innodb_log_group_home_dir'")
@@ -257,11 +193,13 @@ class TungstenXtrabackupScript < TungstenBackupScript
 
       # Does this version of innobackupex-1.5.1 support the faster 
       # --move-back instead of --copy-back
-      supports_move_back = xtrabackup_supports_argument("--move-back")
+      supports_move_back = TU.cmd_result("#{get_xtrabackup_command()} --help | grep -e\"\-\-move\-back\" | wc -l")
+      if supports_move_back == "1"
+        supports_move_back = true
+      else
+        supports_move_back = false
+      end
 
-      # Prepare the staging directory for the data
-      # If we are restoring directly to the data directory then MySQL
-      # must be shutdown and the data directory emptied
       id = build_timestamp_id("restore")
       if @options[:restore_to_datadir] == "true"
         empty_mysql_directory()
@@ -288,7 +226,6 @@ class TungstenXtrabackupScript < TungstenBackupScript
         TU.output("Apply the redo-log to #{staging_dir}")
         TU.cmd_result("#{get_xtrabackup_command()} --apply-log --redo-only #{staging_dir}")
         
-        # Some cleanup to prevent issues that were popping up
         if File.exists?("#{staging_dir}/#{INCREMENTAL_BASEDIR_FILE}")
           TU.cmd_result("rm -f #{staging_dir}/#{INCREMENTAL_BASEDIR_FILE}")
         end
@@ -298,7 +235,6 @@ class TungstenXtrabackupScript < TungstenBackupScript
           TU.output("Apply the incremental updates from #{incremental_dir}")
           TU.cmd_result("#{get_xtrabackup_command()} --apply-log --incremental-dir=#{incremental_dir} #{staging_dir}")
           
-          # Some cleanup to prevent issues that were popping up
           if File.exists?("#{staging_dir}/#{INCREMENTAL_BASEDIR_FILE}")
             TU.cmd_result("rm -f #{staging_dir}/#{INCREMENTAL_BASEDIR_FILE}")
           end
@@ -309,8 +245,6 @@ class TungstenXtrabackupScript < TungstenBackupScript
       TU.cmd_result("#{get_xtrabackup_command()} --apply-log #{staging_dir}")
 
       unless @options[:restore_to_datadir] == "true"
-        # Shutdown MySQL and empty the data directory in preparation for the 
-        # restored data
         empty_mysql_directory()
 
         # Copy the backup files to the mysql data directory
@@ -333,11 +267,7 @@ class TungstenXtrabackupScript < TungstenBackupScript
         TU.cmd_result("chown -RL #{@options[:mysqluser]}: #{@options[:mysqliblogdir]}")
       end
 
-      start_mysql_server()
-      
-      if File.exist?("#{@options[:mysqldatadir]}/#{MASTER_BACKUP_POSITION_SQL}")
-        TU.cmd_result("cat #{@options[:mysqldatadir]}/#{MASTER_BACKUP_POSITION_SQL} | #{get_mysql_command()}")
-      end
+      TU.cmd_result("#{@options[:mysql_service_command]} start")
 
       if @options[:restore_to_datadir] == "false" && staging_dir != "" && File.exists?(staging_dir)
         TU.output("Cleanup #{staging_dir}")
@@ -364,17 +294,12 @@ class TungstenXtrabackupScript < TungstenBackupScript
     
     # Read data locations from the my.cnf file
     @options[:mysqldatadir] = get_mysql_option("datadir")
-    if @options[:mysqldatadir].to_s() == ""
-      # The configuration file doesn't have a datadir value
-      # See if MySQL will give one and store it in wrapper config file
-      @options[:mysqldatadir] = get_mysql_variable("datadir")
-      if @options[:mysqldatadir].to_s() != ""
-        set_mysql_defaults_value("datadir=#{@options[:mysqldatadir]}")
-      end
-    end
-    
     @options[:mysqlibdatadir] = get_mysql_option("innodb_data_home_dir")
     @options[:mysqliblogdir] = get_mysql_option("innodb_log_group_home_dir")
+    @options[:mysqluser] = get_mysql_option("user")
+    if @options[:mysqluser].to_s() == ""
+      @options[:mysqluser] = "mysql"
+    end
     
     @storage_dir = nil
     
@@ -388,6 +313,14 @@ class TungstenXtrabackupScript < TungstenBackupScript
       # Change the directory ownership if run with sudo
       if ENV.has_key?('SUDO_USER')
         TU.cmd_result("chown -R #{ENV['SUDO_USER']}: #{@options[:directory]}")
+      end
+    end
+
+    if @options[:my_cnf] == nil
+      TU.error "Unable to determine location of MySQL my.cnf file"
+    else
+      unless File.exist?(@options[:my_cnf])
+        TU.error "The file #{@options[:my_cnf]} does not exist"
       end
     end
     
@@ -411,19 +344,32 @@ class TungstenXtrabackupScript < TungstenBackupScript
       TU.error "The MySQL log dir '#{@options[:mysqllogdir]}' is not writeable"
     end
 
-    if @options[:mysqldatadir].to_s() == ""
-      TU.error "The configuration file at #{@options[:my_cnf]} does not define a datadir value."
-    else
-      unless File.writable?(@options[:mysqldatadir])
-        TU.error "The MySQL data dir '#{@options[:mysqldatadir]}' is not writeable"
+    unless File.writable?(@options[:mysqldatadir])
+      TU.error "The MySQL data dir '#{@options[:mysqldatadir]}' is not writeable"
+    end
+    
+    if @options[:action] == ACTION_RESTORE
+      if @options[:mysql_service_command] == nil
+        service_command=cmd_result("which service")
+        if File.executable?(service_command)
+          if File.executable?("/etc/init.d/mysqld")
+            @options[:mysql_service_command] = "#{service_command} mysqld"
+          elsif File.executable?("/etc/init.d/mysql")
+            @options[:mysql_service_command] = "#{service_command} mysql"
+          else
+            TU.error "Unable to determine the service command to start/stop mysql"
+          end
+        else
+          if File.executable?("/etc/init.d/mysqld")
+            @options[:mysql_service_command] = "/etc/init.d/mysqld"
+          elsif File.executable?("/etc/init.d/mysql")
+            @options[:mysql_service_command] = "/etc/init.d/mysql"
+          else
+            TU.error "Unable to determine the init.d command to start/stop mysql"
+          end
+        end
       end
-    end
-    
-    if ENV['USER'] != @options[:mysqluser] && ENV['USER'] != "root"
-      TU.error("The current user is not the #{@options[:mysqluser]} system user or root. You must run Tungsten as #{@options[:mysqluser]} or enable sudo by running `tpm update --enable-sudo-access=true`.")
-    end
-    
-    if @options[:action] == ACTION_BACKUP
+    elsif @options[:action] == ACTION_BACKUP
       if @master_backup == true && @options[:incremental] == "true"
         TU.error("Unable to take an incremental backup of the master. Try running `trepctl -service #{@options[:service]} -backup xtrabackup-full")
       end
@@ -431,17 +377,53 @@ class TungstenXtrabackupScript < TungstenBackupScript
   end
   
   def empty_mysql_directory
-    stop_mysql_server()
+    begin
+      pid_file = get_mysql_variable("pid_file")
+      pid = TU.cmd_result("cat #{pid_file}")
+    rescue CommandError
+      pid = ""
+    end
+    
+    TU.output("Stop the MySQL server")
+    TU.cmd_result("#{@options[:mysql_service_command]} stop")
 
-    TU.cmd_result("#{sudo_prefix()}find #{@options[:mysqldatadir]}/ -mindepth 1 | xargs #{sudo_prefix()} rm -rf")
-    TU.cmd_result("#{sudo_prefix()}find #{@options[:mysqllogdir]}/ -name #{@options[:mysqllogpattern]}.*  | xargs #{sudo_prefix()} rm -rf")
+    begin
+      # Verify that the stop command worked properly
+      # We are expecting an error so we have to catch the exception
+      TU.cmd_result("#{get_mysql_command()} -e \"select 1\" > /dev/null 2>&1")
+      raise "Unable to properly shutdown the MySQL service"
+    rescue CommandError
+    end
+    
+    unless pid.to_s() == ""
+      begin
+        TU.output("Verify that the MySQL pid has gone away")
+        Timeout.timeout(30) {
+          pid_missing = false
+          
+          while pid_missing == false do
+            begin
+              TU.cmd_result("ps -p #{pid}")
+              sleep 5
+            rescue CommandError
+              pid_missing = true
+            end
+          end
+        }
+      rescue Timeout::Error
+        raise "Unable to verify that MySQL has fully shutdown"
+      end
+    end
+
+    TU.cmd_result("rm -rf #{@options[:mysqldatadir]}/*")
+    TU.cmd_result("rm -rf #{@options[:mysqllogdir]}/#{@options[:mysqllogpattern]}.*")
 
     if @options[:mysqlibdatadir].to_s() != ""
-      TU.cmd_result("#{sudo_prefix()}find #{@options[:mysqlibdatadir]}/ -mindepth 1 | xargs #{sudo_prefix()} rm -rf")
+      TU.cmd_result("rm -rf #{@options[:mysqlibdatadir]}/*")
     end
 
     if @options[:mysqliblogdir].to_s() != ""
-      TU.cmd_result("#{sudo_prefix()}find #{@options[:mysqliblogdir]}/ -mindepth 1 | xargs #{sudo_prefix()} rm -rf")
+      TU.cmd_result("rm -rf #{@options[:mysqliblogdir]}/*")
     end
   end
 
@@ -486,9 +468,6 @@ class TungstenXtrabackupScript < TungstenBackupScript
     return last_backup
   end
 
-  # Get the list of incremental snapshots and the full backup needed to
-  # restore a given incremental snapshot directory. This will recurse until
-  # a full backup is found.
   def get_snapshot_lineage(restore_directory)
     lineage = []
 
@@ -497,20 +476,14 @@ class TungstenXtrabackupScript < TungstenBackupScript
     basedir_path = restore_directory.to_s + "/" + INCREMENTAL_BASEDIR_FILE
     checkpoints_file = restore_directory.to_s + "/xtrabackup_checkpoints"
     backup_type = read_property_from_file("backup_type", checkpoints_file)
-    
+
     if backup_type == "full-backuped"
-      # There should not be an incremntal basedir reference in a full backup,
-      # this backup must not be valid.
       if File.exists?(basedir_path)
-        TU.warning("Unexpected #{INCREMENTAL_BASEDIR_FILE} found in full backup directory '#{restore_directory}.")
-        TU.cmd_result("rm -r #{basedir_path.to_s}")
+        raise BrokenLineageError.new "Unexpected #{INCREMENTAL_BASEDIR_FILE} found in full backup directory '#{restore_directory}'"
       end
       lineage << restore_directory
     elsif backup_type == "incremental"
       if File.exists?(basedir_path)
-        # Change the incremental basedir from a symlink to a file
-        # We previously used symlinks but that was causing issues during some
-        # restore operations.
         if File.symlink?(basedir_path)
           basedir = File.readlink(basedir_path)
           File.unlink(basedir_path)
@@ -523,7 +496,6 @@ class TungstenXtrabackupScript < TungstenBackupScript
         raise BrokenLineageError.new "Unable to find #{INCREMENTAL_BASEDIR_FILE} symlink in incremental backup directory '#{restore_directory}'"
       end
 
-      # Read the base directory of this snapshot and load the lineage for it
       basedir = TU.cmd_result("cat #{basedir_path}")
       lineage = get_snapshot_lineage(basedir)
       lineage << restore_directory
@@ -555,13 +527,42 @@ class TungstenXtrabackupScript < TungstenBackupScript
   def build_timestamp_id(prefix)
     return prefix + "_xtrabackup_" + Time.now.strftime("%Y-%m-%d_%H-%M") + "_" + rand(100).to_s
   end
-  
-  def require_local_mysql_service?
-    true
+
+  def get_mysql_command
+    "mysql --defaults-file=#{@options[:my_cnf]} -h#{@options[:host]} --port=#{@options[:port]}"
+  end
+
+  def get_xtrabackup_command
+    "innobackupex-1.5.1 --defaults-file=#{@options[:my_cnf]} --host=#{@options[:host]} --port=#{@options[:port]}"
   end
   
-  def script_name
-    "xtrabackup.sh"
+  def get_mysql_option(opt)
+    begin
+      val = TU.cmd_result("my_print_defaults --config-file=#{@options[:my_cnf]} mysqld | grep -e'^--#{opt.gsub(/[\-\_]/, "[-_]")}'")
+    rescue CommandError => ce
+      return nil
+    end
+
+    return val.split("\n")[0].split("=")[1]
+  end
+  
+  def get_mysql_variable(var)
+    response = TU.cmd_result("#{get_mysql_command()} -e \"SHOW VARIABLES LIKE '#{var}'\\\\G\"")
+    
+    response.split("\n").each{ | response_line |
+      parts = response_line.chomp.split(":")
+      if (parts.length != 2)
+        next
+      end
+      parts[0] = parts[0].strip;
+      parts[1] = parts[1].strip;
+      
+      if parts[0] == "Value"
+        return parts[1]
+      end
+    }
+    
+    return nil
   end
 end
 

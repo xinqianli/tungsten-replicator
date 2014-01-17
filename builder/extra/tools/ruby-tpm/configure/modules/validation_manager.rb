@@ -143,29 +143,6 @@ class ManagerListenerAddressCheck < ConfigureValidationCheck
   end
 end
 
-class ManagerWitnessNeededCheck < ConfigureValidationCheck
-  include ManagerCheck
-  
-  def set_vars
-    @title = "Manager Witness is needed check"
-  end
-  
-  def validate
-    witnesses = @config.getProperty(DATASERVICE_WITNESSES).to_s()
-    repl_members = @config.getProperty(DATASERVICE_REPLICATION_MEMBERS)
-    
-    if repl_members.to_s().split(",").size() < 3
-      if witnesses == ""
-        error("This dataservice is configured with less than 3 members and no witnesses. Update the configuration with an active witness for the highest stability. Visit http://docs.continuent.com/ct/host-types for more information.")
-      end
-    end
-    
-    if @config.getProperty(ENABLE_ACTIVE_WITNESSES) == "false" && witnesses != ""
-      warning("This dataservice is using a passive witness. Continuent Tungsten has support for active witnesses that improve stability over passive witnesses. Visit http://docs.continuent.com/ct/host-types for more information.")
-    end
-  end
-end
-
 class ManagerWitnessAvailableCheck < ConfigureValidationCheck
   include ManagerCheck
   
@@ -203,17 +180,17 @@ class ManagerWitnessAvailableCheck < ConfigureValidationCheck
       |witness|
       witness_ips = Configurator.instance.get_ip_addresses(witness)
       if witness_ips == false
-        error("Unable to find an IP address for the passive witness #{witness}. Continuent Tungsten has support for active witnesses that improve stability over passive witnesses. Visit http://docs.continuent.com/ct/host-types for more information.")
+        error("Unable to find an IP address for #{witness}")
         next
       end
       
       debug("Check if witness #{witness} is pingable")
       if Configurator.instance.check_addresses_is_pingable(witness) == false
-        error("The passive witness address '#{witness}' is not returning pings. Continuent Tungsten has support for active witnesses that improve stability over passive witnesses. Visit http://docs.continuent.com/ct/host-types for more information.")
-        help("Specify a valid hostname or ip address for the passive witness host ")
+        error("The witness address  '#{witness}' is not returning pings")
+        help("Specify a valid hostname or ip address for the witness host ")
       end
       
-      witness_octets = witness_ips[0].split(".")
+      witness_octets = witness.split(".")
       same_network = true
       
       4.times{
@@ -227,14 +204,12 @@ class ManagerWitnessAvailableCheck < ConfigureValidationCheck
       }
       
       if same_network != true
-        error("The passive witness address '#{witness}' is not in the same subnet as the manager. Continuent Tungsten has support for active witnesses that improve stability over passive witnesses. Visit http://docs.continuent.com/ct/host-types for more information.")
+        error("The witness address '#{witness}' is not in the same subnet as the manager")
       end
     }
   end
   
   def enabled?
-    super() && (@config.getProperty(DATASERVICE_WITNESSES).to_s() != "") &&
-      (@config.getProperty(ENABLE_ACTIVE_WITNESSES) == "false") &&
-      (@config.getProperty(MGR_VALIDATE_WITNESS) == "true")
+    super() && (@config.getProperty(DATASERVICE_WITNESSES).to_s() != "")
   end
 end

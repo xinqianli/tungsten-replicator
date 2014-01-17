@@ -88,6 +88,8 @@ public class Replicator extends Resource implements Serializable
     /** URI that slaves should use when connecting to this master. */
     public static final String MASTER_LISTEN_URI              = "masterListenUri";
 
+    public static final String MASTER_LISTEN_PROXY_PORT       = "masterListenProxyPort";
+
     /** Indicates if SSL connection is used. */
     public static final String USE_SSL_CONNECTION             = "useSSLConnection";
 
@@ -102,6 +104,8 @@ public class Replicator extends Resource implements Serializable
 
     /** Host name of this replicator. */
     public static final String DATASERVERHOST                 = "dataServerHost";
+
+    public static final String RESOURCE_PORT                  = "resourcePort";
 
     /** Seconds since replicator has started. */
     public static final String UPTIME_SECONDS                 = "uptimeSeconds";

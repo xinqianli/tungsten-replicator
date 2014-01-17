@@ -235,7 +235,7 @@ public class MySQLApplier extends JdbcApplier
 
             if (columnSpec.isUnsigned() && isNegative)
             {
-                switch (columnSpec.getLength())
+                switch ((int) columnSpec.getLength())
                 {
                     case 1 :
                         valToInsert = TINYINT_MAX_VALUE + 1 + extractedVal;

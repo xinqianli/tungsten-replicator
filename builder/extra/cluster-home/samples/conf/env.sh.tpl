@@ -16,7 +16,7 @@ set_tungsten_env() {
 		return 1
 	fi
 
-	export PATH=@{PREFERRED_PATH}:$PATH:$CONTINUENT_ROOT/tungsten/tungsten-manager/bin:$CONTINUENT_ROOT/tungsten/tungsten-replicator/bin:$CONTINUENT_ROOT/tungsten/tungsten-replicator/scripts:$CONTINUENT_ROOT/tungsten/cluster-home/bin:$CONTINUENT_ROOT/tungsten/tungsten-connector/bin:$CONTINUENT_ROOT/share:$CONTINUENT_ROOT/tungsten/tools
+	export PATH=@{PREFERRED_PATH}:$PATH:$CONTINUENT_ROOT/tungsten/tungsten-manager/bin:$CONTINUENT_ROOT/tungsten/tungsten-replicator/bin:$CONTINUENT_ROOT/tungsten/cluster-home/bin:$CONTINUENT_ROOT/tungsten/tungsten-connector/bin:$CONTINUENT_ROOT/share:$CONTINUENT_ROOT/tungsten/tools
 	
 	
 	_cctrl()
@@ -91,10 +91,6 @@ set_tungsten_env() {
     fi
   }
   complete -F _thl thl
-  
-  if [ -f "${CONTINUENT_ROOT}/tungsten/tools/.tpm.complete" ]; then
-    . "${CONTINUENT_ROOT}/tungsten/tools/.tpm.complete"
-  fi
 	
 	return 0
 }

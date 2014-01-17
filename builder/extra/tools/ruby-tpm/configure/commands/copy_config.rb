@@ -2,7 +2,6 @@ class CopyConfigCommand
   include ConfigureCommand
   include RemoteCommand
   include ClusterCommandModule
-  include DisabledForExternalConfiguration
   
   def run
     save_config_file()

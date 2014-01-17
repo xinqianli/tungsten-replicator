@@ -24,7 +24,6 @@ package com.continuent.tungsten.replicator.management;
 
 import java.net.InetAddress;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.UnknownHostException;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetEncoder;
@@ -95,12 +94,7 @@ import com.continuent.tungsten.replicator.consistency.ConsistencyException;
 import com.continuent.tungsten.replicator.filter.FilterManualProperties;
 import com.continuent.tungsten.replicator.management.events.GoOfflineEvent;
 import com.continuent.tungsten.replicator.management.events.OfflineNotification;
-import com.continuent.tungsten.replicator.management.tungsten.TungstenPlugin;
 import com.continuent.tungsten.replicator.plugin.PluginException;
-import com.continuent.tungsten.replicator.storage.Store;
-import com.continuent.tungsten.replicator.thl.ConnectorHandler;
-import com.continuent.tungsten.replicator.thl.ProtocolParams;
-import com.continuent.tungsten.replicator.thl.THL;
 
 /**
  * This class provides overall management for the replication and is the
@@ -169,7 +163,6 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
     /** Cluster name to which replicator belongs. */
     private String                  clusterName;
 
-    private String                  rmiHost                 = null;
     private int                     rmiPort                 = -1;
 
     // Open replicator plugin
@@ -416,8 +409,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
                 .getConfiguration(serviceName);
         propertiesManager = new PropertiesManager(
                 runtimeConf.getReplicatorProperties(),
-                runtimeConf.getReplicatorDynamicProperties(),
-                runtimeConf.getReplicatorDynamicRole());
+                runtimeConf.getReplicatorDynamicProperties());
         propertiesManager.loadProperties();
 
         // Clear properties if that is desired.
@@ -743,8 +735,8 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     class RestoreEvent extends Event
     {
-        private volatile Future<String> future;
-        private final String            uri;
+        private volatile Future<Boolean> future;
+        private final String             uri;
 
         public RestoreEvent(String uri)
         {
@@ -752,12 +744,12 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
             this.uri = uri;
         }
 
-        public Future<String> getFuture()
+        public Future<Boolean> getFuture()
         {
             return future;
         }
 
-        public void setFuture(Future<String> future)
+        public void setFuture(Future<Boolean> future)
         {
             this.future = future;
         }
@@ -1393,7 +1385,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
             {
                 RestoreEvent restoreEvent = (RestoreEvent) event;
                 String uri = restoreEvent.getUri();
-                Future<String> task = backupManager.spawnRestore(uri);
+                Future<Boolean> task = backupManager.spawnRestore(uri);
                 restoreEvent.setFuture(task);
             }
             catch (Exception e)
@@ -1628,56 +1620,11 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
         return properties.getString(ReplicatorConf.MASTER_LISTEN_URI);
     }
 
-    @MethodDesc(description = "Indicates if the replicator uses an SSL connection", usage = "useSSLConnection")
-    public Boolean getUseSSLConnection() throws URISyntaxException
+    @MethodDesc(description = "Gets the current proxy port for the THL listener", usage = "getMasterListenProxyPort")
+    public int getMasterListenProxyPort()
     {
-        URI uri = null;
-        Boolean useSSL = false;
-        // Uses the Master Listen URI to determine if a connection is using SSL
-        // or not
-        if (this.getMasterListenUri() != null)
-        {
-            uri = new URI(this.getMasterListenUri());
-            String scheme = uri.getScheme();
-            useSSL = THL.SSL_URI_SCHEME.equals(scheme) ? true : false;
-        }
-        return useSSL;
-    }
-
-    @MethodDesc(description = "Returns clients (slaves) of this server", usage = "getClients")
-    public List<Map<String, String>> getClients() throws Exception
-    {
-        if (openReplicator instanceof TungstenPlugin)
-        {
-            TungstenPlugin tungsten = (TungstenPlugin) openReplicator;
-
-            if (tungsten.getReplicatorRuntime() == null)
-                throw new Exception("No runtime found. Is Replicator ONLINE?");
-
-            // Drill down through the pipeline and collect clients of configured
-            // THL store(s).
-            List<Map<String, String>> clients = new ArrayList<Map<String, String>>();
-            for (Store store : tungsten.getReplicatorRuntime().getStores())
-            {
-                if (store instanceof THL)
-                {
-                    THL thl = (THL) store;
-                    for (ConnectorHandler handler : thl.getClients())
-                    {
-                        Map<String, String> client = new HashMap<String, String>();
-                        client.put(ProtocolParams.RMI_HOST,
-                                handler.getRmiHost());
-                        client.put(ProtocolParams.RMI_PORT,
-                                handler.getRmiPort());
-                        clients.add(client);
-                    }
-                }
-            }
-            return clients;
-        }
-        else
-            throw new Exception(
-                    "Unable to retrieve clients, because Replicator is not a TungstenPlugin instance");
+        return properties.getInt(ReplicatorConf.MASTER_LISTEN_PROXY_PORT, "-1",
+                false);
     }
 
     @MethodDesc(description = "Gets the replicator's current role.", usage = "getRole")
@@ -1943,13 +1890,9 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
                     getMasterConnectUri());
             pluginStatus
                     .put(Replicator.MASTER_LISTEN_URI, getMasterListenUri());
-            pluginStatus.put(Replicator.USE_SSL_CONNECTION, this
-                    .getUseSSLConnection().toString());
             pluginStatus.put(Replicator.SOURCEID, getSourceId());
             pluginStatus.put(Replicator.CLUSTERNAME, clusterName);
             pluginStatus.put(Replicator.ROLE, getRole());
-            pluginStatus.put(Replicator.HOST, getSourceId());
-
             pluginStatus.put(Replicator.DATASERVER_HOST, properties
                     .getString(ReplicatorConf.RESOURCE_DATASERVER_HOST));
             pluginStatus.put(Replicator.UPTIME_SECONDS,
@@ -1982,6 +1925,9 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
                             ReplicatorConf.RESOURCE_PRECEDENCE_DEFAULT, true));
             pluginStatus.put(Replicator.CURRENT_TIME_MILLIS,
                     Long.toString(System.currentTimeMillis()));
+
+            pluginStatus.put(Replicator.MASTER_LISTEN_PROXY_PORT,
+                    String.valueOf(getMasterListenProxyPort()));
 
             if (logger.isDebugEnabled())
                 logger.debug("plugin status: " + pluginStatus.toString());
@@ -2426,7 +2372,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      *      long)
      */
     @MethodDesc(description = "Restores the database", usage = "restore <uri> <timeout>")
-    public String restore(
+    public boolean restore(
             @ParamDesc(name = "uri", description = "URI of backup to restore") String uri,
             @ParamDesc(name = "timeout", description = "Seconds to wait before timing out (0=infinity") long timeout)
             throws Exception
@@ -2438,8 +2384,8 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
             handleEventSynchronous(restoreEvent);
 
             // The event returns a Future on the backup task.
-            Future<String> restoreTask = restoreEvent.getFuture();
-            String completed = null;
+            Future<Boolean> restoreTask = restoreEvent.getFuture();
+            boolean completed = false;
             try
             {
                 if (timeout <= 0)
@@ -2535,7 +2481,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
 
     @MethodDesc(description = "Perform a cluster-wide consistency check", usage = "consistencyCheck <schema>[.{<table> | *}]")
-    public int consistencyCheck(
+    public void consistencyCheck(
             @ParamDesc(name = "method", description = "md5") String method,
             @ParamDesc(name = "schemaName", description = "schema to check") String schemaName,
             @ParamDesc(name = "tableName", description = "name of table to check") String tableName,
@@ -2549,8 +2495,8 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
                     + schemaName + "." + tableName + ":" + rowOffset + ","
                     + rowLimit);
 
-            return openReplicator.consistencyCheck(method, schemaName,
-                    tableName, rowOffset, rowLimit);
+            openReplicator.consistencyCheck(method, schemaName, tableName,
+                    rowOffset, rowLimit);
         }
         catch (Exception e)
         {
@@ -2746,8 +2692,13 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
         // Determine the replicator role, providing a proper exception if the
         // role is not correctly set.
         String roleName = properties.getString(ReplicatorConf.ROLE);
+
+        boolean roleIsUndefined = ReplicatorConf.ROLE_UNDEFINED
+                .equals(roleName);
+
         if (ReplicatorConf.ROLE_MASTER.equals(roleName)
-                || ReplicatorConf.ROLE_SLAVE.equals(roleName))
+                || ReplicatorConf.ROLE_SLAVE.equals(roleName)
+                || roleIsUndefined)
         {
             // OK, do nothing
         }
@@ -2760,7 +2711,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
             }
             else
             {
-                logger.warn("Setting role to a value other than master or slave: "
+                logger.warn("Setting role to a value other than master, slave or undefined: "
                         + roleName);
             }
         }
@@ -2791,8 +2742,28 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
         openReplicator = loadAndConfigurePlugin(ReplicatorConf.OPEN_REPLICATOR,
                 replicatorName);
 
-        // Call configure method.
-        openReplicator.configure(properties);
+        try
+        {
+            // Call configure method.
+            openReplicator.configure(properties);
+        }
+        catch (ReplicatorException r)
+        {
+            /*
+             * We expect to get an exception in the case where the role is
+             * undefined, and if we were asked not to go online automatically,
+             * it's safe to ignore this exception.
+             */
+            if (roleIsUndefined
+                    && properties.getBoolean(ReplicatorConf.AUTO_ENABLE) == false)
+            {
+                logger.warn("Expected exception during configuration: role is currently undefined.  Going offline.");
+            }
+            else
+            {
+                throw r;
+            }
+        }
     }
 
     // Ensure backup manager is initialized.
@@ -2976,22 +2947,6 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
     }
 
     /**
-     * Returns RMI port.
-     */
-    public String getRmiHost()
-    {
-        return rmiHost;
-    }
-
-    /**
-     * Sets RMI host.
-     */
-    public void setRmiHost(String rmiHost)
-    {
-        this.rmiHost = rmiHost;
-    }
-
-    /**
      * Returns the rmiPort value.
      * 
      * @return Returns the rmiPort.
@@ -3019,8 +2974,7 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
                 .getConfiguration(serviceName);
         PropertiesManager propertiesManager = new PropertiesManager(
                 runtimeConf.getReplicatorProperties(),
-                runtimeConf.getReplicatorDynamicProperties(),
-                runtimeConf.getReplicatorDynamicRole());
+                runtimeConf.getReplicatorDynamicProperties());
         propertiesManager.loadProperties();
 
         return propertiesManager.getProperties();

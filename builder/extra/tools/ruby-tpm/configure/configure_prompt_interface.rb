@@ -228,9 +228,6 @@ module ConfigurePromptInterface
     output_usage_line("--#{get_command_line_argument()}", get_prompt(), get_output_usage_value(), nil, get_prompt_description())
     get_command_line_aliases().each{
       |a|
-      if a == get_command_line_argument()
-        next
-      end
       output_usage_line("--#{a}", get_prompt() + " (Alias of --#{get_command_line_argument()})", get_output_usage_value(), nil, get_prompt_description())
     }
   end
@@ -261,11 +258,7 @@ module ConfigurePromptInterface
   
   # Output how to specify this value in a template file
   def output_template_file_usage
-    if enabled_for_command_line?()
-      output_usage_line(get_template_file_usage_symbol(), "--#{get_command_line_argument()}")
-    else
-      output_usage_line(get_template_file_usage_symbol(), get_prompt())
-    end
+    output_usage_line(get_template_file_usage_symbol(), get_prompt())
   end
   
   # The template parameter to output in output_template_file_usage

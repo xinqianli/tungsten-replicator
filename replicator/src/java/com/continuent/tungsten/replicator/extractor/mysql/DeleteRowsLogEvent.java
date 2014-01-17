@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2009-2013 Continuent Inc.
+ * Copyright (C) 2009-2010 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -37,16 +37,10 @@ public class DeleteRowsLogEvent extends RowsLogEvent
 
     public DeleteRowsLogEvent(byte[] buffer, int eventLength,
             FormatDescriptionLogEvent descriptionEvent,
-            boolean useBytesForString, String currentPosition)
-            throws ReplicatorException
+            boolean useBytesForString) throws ReplicatorException
     {
         super(buffer, eventLength, descriptionEvent,
-                buffer[MysqlBinlog.EVENT_TYPE_OFFSET], useBytesForString);
-
-        this.startPosition = currentPosition;
-        if (logger.isDebugEnabled())
-            logger.debug("Extracting event at position  : " + startPosition
-                    + " -> " + getNextEventPosition());
+                MysqlBinlog.DELETE_ROWS_EVENT, useBytesForString);
     }
 
     /**
@@ -72,14 +66,7 @@ public class DeleteRowsLogEvent extends RowsLogEvent
 
         int rowIndex = 0; /* index of the row in value arrays */
 
-        int size = bufferSize;
-        if (descriptionEvent.useChecksum())
-        {
-            // Remove 4 bytes for CRC
-            size -= 4;
-        }
-
-        for (int i = 0; i < size;)
+        for (int i = 0; i < bufferSize;)
         {
             int length = 0;
 
@@ -99,9 +86,5 @@ public class DeleteRowsLogEvent extends RowsLogEvent
             i += length;
         }
         rowChanges.appendOneRowChange(oneRowChange);
-
-        // Store options, if any
-        rowChanges.addOption("foreign_key_checks", getForeignKeyChecksFlag());
-        rowChanges.addOption("unique_checks", getUniqueChecksFlag());
     }
 }

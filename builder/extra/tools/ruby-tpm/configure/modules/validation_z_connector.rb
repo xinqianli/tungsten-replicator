@@ -126,56 +126,10 @@ class ConnectorUserCheck < ConfigureValidationCheck
     conuser = @config.getProperty('connector_user')
     repluser = @config.getProperty('repl_datasource_user')
    
-    if conuser == repluser
-      error("Connector User must be different from Datasource User")
-      help("The Connector user and the Datasource user must be different users - Ensure the --application-user parameter is specified")
-    end
-  end
-  
-  def enabled?
-    super() && @config.getProperty(ENABLE_CONNECTOR_BRIDGE_MODE) != "true"
-  end
-end
-
-class ConnectorDBVersionCheck < ConfigureValidationCheck
-  include ConnectorCheck
-
-  def set_vars
-    @title = "Connector DB Version check"
-  end
-
-  def validate
-    version = @config.getProperty(CONN_DB_VERSION)
-    if version != "autodetect" && version[0,1] =~ /[A-Za-z]/
-      error("connector-db-version must start with a numeric value - current value is #{@config.getProperty('connector_db_version')}")
-    end
-  end
-end
-
-class RouterKeepAliveTimeoutCheck < ConfigureValidationCheck
-  include ConnectorCheck
-
-  def set_vars
-    @title = "Router Keep Alive Timeout Check"
-  end
-
-  def validate
-    if @config.getProperty('connector_keepalive_timeout').to_i <= 0 or   @config.getProperty('connector_keepalive_timeout').to_i > 300000
-      error("connector_keepalive_timeout must start greater than 0 and less than 300000  - current value is #{@config.getProperty('connector_keepalive_timeout').to_i}")
-    end
-  end
-end
-
-class RouterDelayBeforeOfflineCheck < ConfigureValidationCheck
-  include ConnectorCheck
-
-  def set_vars
-    @title = "Router Delay Before Offline Check"
-  end
-
-  def validate
-    if @config.getProperty('connector_delay_before_offline').to_i <= 0 or @config.getProperty('connector_delay_before_offline').to_i > 60
-      error("connector_delay_before_offline must start greater than 0 and less than 60  - current value is #{@config.getProperty('connector_delay_before_offline').to_i}")
-    end
+      if conuser == repluser
+        error("Connector User must be different from Datasource User")
+        help("The Connector user and the Datasource user must be different users - Ensure the --connector-user parameter is specified")
+      end
+    
   end
 end

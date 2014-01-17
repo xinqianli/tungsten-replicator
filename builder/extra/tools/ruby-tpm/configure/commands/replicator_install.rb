@@ -2,6 +2,7 @@ class InstallCommand
   include ConfigureCommand
   include ResetConfigPackageModule
   include ClusterCommandModule
+  include RequireDataserviceArgumentModule
   
   def output_command_usage()
     super()
@@ -18,13 +19,11 @@ class InstallCommand
   end
   
   def arguments_valid?
-    super()
-    
     if Configurator.instance.is_locked?()
       error("Unable to install from an installed directory")
+    else
+      return true
     end
-    
-    return is_valid?()
   end
   
   def enable_log?()

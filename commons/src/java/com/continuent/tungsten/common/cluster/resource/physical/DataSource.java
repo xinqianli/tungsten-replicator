@@ -110,7 +110,7 @@ public class DataSource extends Resource implements Serializable
 
     public DataSource(TungstenProperties props)
     {
-        super(ResourceType.DATASOURCE, props.getString(DataSource.NAME,
+        super(ResourceType.DATASOURCE, props.getString(DataSource.HOST,
                 "unknown", true));
 
         applyDefaults();

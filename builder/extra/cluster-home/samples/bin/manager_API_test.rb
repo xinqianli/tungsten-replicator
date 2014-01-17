@@ -23,10 +23,6 @@ class TungstenEnvironment
         puts e
       end
   end
-  
-  def script_name
-    "manager_API_test.rb"
-  end
 
   self.new().run()
 end

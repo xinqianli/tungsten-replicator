@@ -35,6 +35,11 @@ public class HostAddress
     private final InetAddress address;
 
     /**
+     * Some ping methods require a specific port. This is it!
+     */
+    private int               port = -1;
+
+    /**
      * Create a new host address on a given InetAddress.
      * 
      * @param address InetAddress to use
@@ -109,5 +114,20 @@ public class HostAddress
     public String toString()
     {
         return address.toString();
+    }
+
+    public int getPort()
+    {
+        return port;
+    }
+
+    /**
+     * Sets the port
+     * 
+     * @param port
+     */
+    public void setPort(int port)
+    {
+        this.port = port;
     }
 }

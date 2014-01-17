@@ -22,7 +22,6 @@
 
 package com.continuent.tungsten.replicator.conf;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -35,8 +34,6 @@ import org.apache.log4j.MDC;
 import com.continuent.tungsten.common.cluster.resource.OpenReplicatorParams;
 import com.continuent.tungsten.common.config.PropertyException;
 import com.continuent.tungsten.common.config.TungstenProperties;
-import com.continuent.tungsten.common.config.TungstenPropertiesIO;
-import com.continuent.tungsten.common.file.FileIOException;
 import com.continuent.tungsten.fsm.event.EventDispatcher;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.event.ReplDBMSHeader;
@@ -90,13 +87,6 @@ public class ReplicatorRuntime implements PluginContext
 
     /** Replicator role. */
     private ReplicatorRole                    role;
-
-    // Variables used to maintain value of last online role.
-    // These are not used if we are running without a full replicator
-    // release directory as there is no place to write the file.
-    private static final String               ONLINE_ROLE_KEY = "replicator.lastOnlineRole";
-    private TungstenPropertiesIO              onlineRoleFile;
-    private String                            lastOnlineRoleName;
 
     /** True if replicator should go online automatically at startup. */
     private boolean                           autoEnable;
@@ -194,20 +184,6 @@ public class ReplicatorRuntime implements PluginContext
         String autoEnableSetting = assertPropertyDefault(
                 ReplicatorConf.AUTO_ENABLE, ReplicatorConf.AUTO_ENABLE_DEFAULT);
         autoEnable = new Boolean(autoEnableSetting);
-
-        // Ensure auto-master repositioning property is set to an acceptable
-        // value.
-        String autoMasterRepositioningSetting = assertPropertyDefault(
-                ReplicatorConf.AUTO_MASTER_REPOSITIONING,
-                ReplicatorConf.AUTO_MASTER_REPOSITIONING_DEFAULT);
-        if (!"false".equals(autoMasterRepositioningSetting)
-                && !"true".equals(autoMasterRepositioningSetting))
-        {
-            throw new ReplicatorException(String.format(
-                    "%s property must be set to true or false: %s",
-                    ReplicatorConf.AUTO_MASTER_REPOSITIONING,
-                    autoMasterRepositioningSetting));
-        }
 
         // Ensure source ID is available.
         sourceId = assertPropertyDefault(ReplicatorConf.SOURCE_ID,
@@ -425,30 +401,6 @@ public class ReplicatorRuntime implements PluginContext
                             + properties
                                     .getString(ReplicatorConf.APPLIER_FAIL_ON_0_ROW_UPDATE));
 
-        }
-
-        // If we have a role file location, use that to configure a manager
-        // for same and fetch the current value.
-        File roleFileLocation = ReplicatorRuntimeConf
-                .locateReplicatorRoleFile(serviceName);
-        if (roleFileLocation != null)
-        {
-            onlineRoleFile = new TungstenPropertiesIO(roleFileLocation);
-            if (onlineRoleFile.exists())
-            {
-                try
-                {
-                    TungstenProperties onlineRoleProps = onlineRoleFile.read();
-                    lastOnlineRoleName = onlineRoleProps.get(ONLINE_ROLE_KEY);
-                }
-                catch (FileIOException e)
-                {
-                    throw new ReplicatorException(
-                            "Unable to read online role file; try removing to get past this error: file="
-                                    + roleFileLocation.getAbsolutePath()
-                                    + " message=" + e.getMessage(), e);
-                }
-            }
         }
 
         // Instantiate and configure extensions.
@@ -773,14 +725,6 @@ public class ReplicatorRuntime implements PluginContext
     }
 
     /**
-     * Returns OpenReplicatorContext used for registering current runtime.
-     */
-    public OpenReplicatorContext getOpenReplicatorContext()
-    {
-        return context;
-    }
-
-    /**
      * Returns the current replicator properties.
      */
     public TungstenProperties getReplicatorProperties()
@@ -918,35 +862,6 @@ public class ReplicatorRuntime implements PluginContext
     public String getRoleName()
     {
         return roleName;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.plugin.PluginContext#getLastOnlineRoleName()
-     */
-    public String getLastOnlineRoleName()
-    {
-        return lastOnlineRoleName;
-    }
-
-    /** Writes the value of the last online role to storage. */
-    public void setLastOnlineRoleName(String roleName)
-            throws ReplicatorException
-    {
-        try
-        {
-            TungstenProperties onlineRoleProps = new TungstenProperties();
-            onlineRoleProps.set("replicator.lastOnlineRole", roleName);
-            onlineRoleFile.write(onlineRoleProps, true);
-            lastOnlineRoleName = roleName;
-        }
-        catch (Exception e)
-        {
-            throw new ReplicatorException(
-                    "Unable to write online role file to storage: message="
-                            + e.getMessage(), e);
-        }
     }
 
     /**

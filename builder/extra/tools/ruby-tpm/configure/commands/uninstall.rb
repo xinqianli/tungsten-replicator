@@ -2,6 +2,7 @@ class UninstallClusterCommand
   include ConfigureCommand
   include RemoteCommand
   include ClusterCommandModule
+  include RequireDataserviceArgumentModule
   
   def initialize(config)
     super(config)
@@ -86,7 +87,6 @@ module UninstallClusterDeploymentStep
     end
     
     if is_replicator?()
-      Configurator.instance.command.build_topologies(@config)
       @config.getPropertyOr([REPL_SERVICES], {}).each_key{
         |rs_alias|
         if rs_alias == DEFAULTS
@@ -95,7 +95,7 @@ module UninstallClusterDeploymentStep
         
         ds = get_applier_datasource(rs_alias)
         if ds.is_a?(MySQLDatabasePlatform)
-          ds.run("drop schema if exists #{@config.getProperty([REPL_SERVICES, rs_alias, REPL_SVC_SCHEMA])}")
+          ds.run("drop schema #{@config.getProperty([REPL_SERVICES, rs_alias, REPL_SVC_SCHEMA])}")
         end
         
         [
@@ -114,33 +114,12 @@ module UninstallClusterDeploymentStep
       }
     end
     
-    # Only remove the files in the share directory that we put in place
-    sharedir = Regexp.new("^#{@config.getProperty(HOME_DIRECTORY)}/share")
-    watchedfiles = @config.getProperty(CURRENT_RELEASE_DIRECTORY) + "/.watchfiles"
-    if File.exist?(watchedfiles)
-      File.open(watchedfiles, 'r') do |file|
-        file.read.each_line do |line|
-          line.strip!
-          if line =~ sharedir
-            FileUtils.rm_f(line)
-            original_file = File.dirname(line) + "/." + File.basename(line) + ".orig"
-            FileUtils.rm_f(original_file)
-          end
-        end
-      end
-    end
-    
-    if File.exist?("#{@config.getProperty(HOME_DIRECTORY)}/share/mysql-connector-java.jar")
-      linked = File.readlink("#{@config.getProperty(HOME_DIRECTORY)}/share/mysql-connector-java.jar")
-      FileUtils.rm_f(linked)
-      FileUtils.rm_f("#{@config.getProperty(HOME_DIRECTORY)}/share/mysql-connector-java.jar")
-    end
-
+    FileUtils.rmtree(@config.getProperty(RELEASES_DIRECTORY))
+    FileUtils.rmtree("#{@config.getProperty(HOME_DIRECTORY)}/share")
     FileUtils.rmtree("#{@config.getProperty(HOME_DIRECTORY)}/#{LOGS_DIRECTORY_NAME}")
     FileUtils.rmtree(@config.getProperty(CONFIG_DIRECTORY))
-    FileUtils.rmtree(@config.getProperty(LOGS_DIRECTORY))
-    FileUtils.rmtree(@config.getProperty(RELEASES_DIRECTORY))
     FileUtils.rmtree(@config.getProperty(CURRENT_RELEASE_DIRECTORY))
+    FileUtils.rmtree(@config.getProperty(LOGS_DIRECTORY))
   end
 end
 

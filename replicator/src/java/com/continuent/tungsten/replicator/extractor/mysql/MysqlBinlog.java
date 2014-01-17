@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2009-2013 Continuent Inc.
+ * Copyright (C) 2009 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,31 +17,24 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Seppo Jaakola
- * Contributor(s): Stephane Giron, Robert Hodges
+ * Contributor(s): Stephane Giron
  */
 
 package com.continuent.tungsten.replicator.extractor.mysql;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.BitSet;
 import java.util.Hashtable;
-import java.util.zip.CRC32;
 
 import org.apache.log4j.Logger;
 
-import com.continuent.tungsten.common.config.TungstenProperties;
-import com.continuent.tungsten.common.jmx.ServerRuntimeException;
-import com.continuent.tungsten.replicator.conf.ReplicatorRuntimeConf;
+import com.continuent.tungsten.replicator.extractor.mysql.conversion.BigEndianConversion;
 import com.continuent.tungsten.replicator.extractor.mysql.conversion.LittleEndianConversion;
 
 /**
- * Implements methods required to load binlogs. This class among other important
- * tasks handles MySQL to Java character set name mapping. In addition to
- * baked-in character set defaults we look for a mapping file named
- * mysql-java-charsets.properties in the configuration directory of the
- * replicator.
+ * @author <a href="mailto:seppo.jaakola@continuent.com">Seppo Jaakola</a>
+ * @author <a href="mailto:stephane.giron@continuent.com">Stephane Giron</a>
+ * @version 1.0
  */
 public class MysqlBinlog
 {
@@ -53,7 +46,6 @@ public class MysqlBinlog
     public static final int                     EVENT_LEN_OFFSET                    = 9;
     public static final int                     LOG_POS_OFFSET                      = 13;
     public static final int                     FLAGS_OFFSET                        = 17;
-    public static final byte                    LOG_EVENT_BINLOG_IN_USE_F           = 0x1;
     public static final int                     LOG_EVENT_THREAD_SPECIFIC_F         = 0x4;
 
     public static final int                     BIN_LOG_HEADER_SIZE                 = 4;
@@ -117,34 +109,12 @@ public class MysqlBinlog
      */
 
     public static final int                     ENUM_END_EVENT                      = 27;
-
-    /* 5.6 new events */
-    public static final int                     HEARTBEAT_LOG_EVENT                 = 27;
     /*
-     * In some situations, it is necessary to send over ignorable data to the
-     * slave: data that a slave can handle in case there is code for handling
-     * it, but which can be ignored if it is not recognized.
+     * end marker
      */
-    public static final int                     IGNORABLE_LOG_EVENT                 = 28;
-    public static final int                     ROWS_QUERY_LOG_EVENT                = 29;
-
-    /* Version 2 of the Row events */
-    public static final int                     NEW_WRITE_ROWS_EVENT                = 30;
-    public static final int                     NEW_UPDATE_ROWS_EVENT               = 31;
-    public static final int                     NEW_DELETE_ROWS_EVENT               = 32;
-
-    public static final int                     GTID_LOG_EVENT                      = 33;
-    public static final int                     ANONYMOUS_GTID_LOG_EVENT            = 34;
-
-    public static final int                     PREVIOUS_GTIDS_LOG_EVENT            = 35;
-
-    public static final int                     ENUM_END_EVENT_FROM_56              = 36;
-    /* End of 5.6 new events */
 
     public static final int                     ST_SERVER_VER_LEN                   = 50;
-    public static final int                     LOG_EVENT_TYPES                     = ENUM_END_EVENT - 1;
-    public static final int                     LOG_NEW_5_6_EVENT_TYPES             = ENUM_END_EVENT_FROM_56
-                                                                                            - ENUM_END_EVENT;
+    public static final int                     LOG_EVENT_TYPES                     = 26;
 
     public static final int                     OLD_HEADER_LEN                      = 13;
     public static final int                     LOG_EVENT_HEADER_LEN                = 19;
@@ -167,11 +137,7 @@ public class MysqlBinlog
     public static final int                     APPEND_BLOCK_HEADER_LEN             = 4;
     public static final int                     EXEC_LOAD_HEADER_LEN                = 4;
     public static final int                     DELETE_FILE_HEADER_LEN              = 4;
-
     public static final int                     FORMAT_DESCRIPTION_HEADER_LEN       = (START_V3_HEADER_LEN + 1 + LOG_EVENT_TYPES);
-    public static final int                     FORMAT_DESCRIPTION_HEADER_LEN_5_6   = (START_V3_HEADER_LEN
-                                                                                            + LOG_EVENT_TYPES + LOG_NEW_5_6_EVENT_TYPES);
-
     public static final int                     ROWS_HEADER_LEN                     = 8;
     public static final int                     TABLE_MAP_HEADER_LEN                = 8;
     public static final int                     EXECUTE_LOAD_QUERY_EXTRA_HEADER_LEN = (4 + 4 + 4 + 1);
@@ -236,7 +202,7 @@ public class MysqlBinlog
         sql_modes.put(Long.valueOf(0x400000), "STRICT_ALL_TABLES");
         sql_modes.put(Long.valueOf(0x800000), "NO_ZERO_IN_DATE");
         sql_modes.put(Long.valueOf(0x1000000), "NO_ZERO_DATE");
-        sql_modes.put(Long.valueOf(0x2000000), "ALLOW_INVALID_DATES");
+        sql_modes.put(Long.valueOf(0x2000000), "INVALID_DATES");
         sql_modes.put(Long.valueOf(0x4000000), "ERROR_FOR_DIVISION_BY_ZERO");
         sql_modes.put(Long.valueOf(0x8000000), "TRADITIONAL");
         sql_modes.put(Long.valueOf(0x10000000), "NO_AUTO_CREATE_USER");
@@ -309,10 +275,6 @@ public class MysqlBinlog
     public static final int                     MYSQL_TYPE_NEWDATE                  = 14;
     public static final int                     MYSQL_TYPE_VARCHAR                  = 15;
     public static final int                     MYSQL_TYPE_BIT                      = 16;
-    public static final int                     MYSQL_TYPE_TIMESTAMP2               = 17;
-    public static final int                     MYSQL_TYPE_DATETIME2                = 18;
-    public static final int                     MYSQL_TYPE_TIME2                    = 19;
-
     public static final int                     MYSQL_TYPE_NEWDECIMAL               = 246;
     public static final int                     MYSQL_TYPE_ENUM                     = 247;
     public static final int                     MYSQL_TYPE_SET                      = 248;
@@ -365,66 +327,11 @@ public class MysqlBinlog
     }
 
     // Character set data used in lookups. The array will be sparse.
-    public static CharsetInfo[]       charsets           = new CharsetInfo[255];
-
-    // Name of the charset property file to map MySQL values to Java character
-    // sets.
-    private static TungstenProperties charsetMap;
-    private static String             MYSQL_JAVA_CHARSET = "mysql-java-charsets.properties";
+    public static CharsetInfo[] charsets = new CharsetInfo[255];
 
     // Load character set data statically.
     static
     {
-        // Try to load a character set map, which is a properties file with
-        // alternative MySQL to Java character set mappings.
-        charsetMap = new TungstenProperties();
-        File confDir;
-        try
-        {
-            confDir = ReplicatorRuntimeConf.locateReplicatorConfDir();
-        }
-        catch (ServerRuntimeException e)
-        {
-            // This can happen if we are running in a unit test.
-            logger.debug("Could not find replicator conf directory; using current working directory instead");
-            confDir = new File(".");
-        }
-        File charsetPropFile = new File(confDir, MYSQL_JAVA_CHARSET);
-        FileInputStream fis = null;
-        if (charsetPropFile.canRead())
-        {
-            logger.info("Loading MySQL character set mapping file: "
-                    + charsetPropFile.getAbsolutePath());
-            try
-            {
-                fis = new FileInputStream(charsetPropFile);
-                charsetMap.load(fis);
-            }
-            catch (IOException e)
-            {
-                logger.warn("Unable to load character set mapping file", e);
-            }
-            finally
-            {
-                if (fis != null)
-                {
-                    try
-                    {
-                        fis.close();
-                    }
-                    catch (IOException e)
-                    {
-                    }
-                }
-            }
-        }
-        else
-        {
-            logger.info("MySQL character mapping file not found found, using default mappings: "
-                    + charsetPropFile.getAbsolutePath());
-        }
-
-        // Now load character set definitions.
         loadCharset(1, "big5", "big5_chinese_ci");
         loadCharset(2, "latin2", "latin2_czech_cs");
         loadCharset(3, "dec8", "dec8_swedish_ci");
@@ -628,12 +535,7 @@ public class MysqlBinlog
             String mysqlCollation)
     {
         String javaCharset = null;
-
-        // Look up the Java character set for each MySQL charset, starting
-        // with the optional character set map file.
-        if (charsetMap.getString(mysqlCharset) != null)
-            javaCharset = charsetMap.getString(mysqlCharset);
-        else if ("armscii8".equals(mysqlCharset))
+        if ("armscii8".equals(mysqlCharset))
             javaCharset = "";
         else if ("ascii".equals(mysqlCharset))
             javaCharset = "US-ASCII";
@@ -786,6 +688,86 @@ public class MysqlBinlog
         return ret;
     }
 
+    public static String convertDecimalToString(byte[] buffer, int offset,
+            int length)
+    {
+        //
+        // Decimal representation in binlog seems to be as follows:
+        // 1 byte - 'precision'
+        // 1 byte - 'scale'
+        // remaining n bytes - integer such that value = n / (10^scale)
+        // Integer is represented as follows:
+        // 1st bit - sign such that set == +, unset == -
+        // every 4 bytes represent 9 digits in big-endian order, so that if
+        // you print the values of these quads as big-endian integers one after
+        // another, you get the whole number string representation in decimal.
+        // What remains is to put a sign and a decimal dot.
+        // 13 0a 80 00 00 05 1b 38 b0 60 00 means:
+        // 0x13 - precision = 19
+        // 0x0a - scale = 10
+        // 0x80 - positive
+        // 0x00000005 0x1b38b060 0x00
+        // 5 456700000 0
+        // 54567000000 / 10^{10} = 5.4567
+        //
+        // int_size below shows how long is integer part
+        //
+
+        int precision = buffer[offset];
+        int scale = buffer[offset + 1];
+        offset = offset + 2; // offset of the number part
+
+        int intg = precision - scale;
+        int intg0 = intg / DIG_PER_INT32;
+        int frac0 = scale / DIG_PER_INT32;
+        int intg0x = intg - intg0 * DIG_PER_INT32;
+        int frac0x = scale - frac0 * DIG_PER_INT32;
+
+        int sign = (buffer[offset] & 0x80) != 0x80 ? 1 : -1;
+
+        // how many bytes are used to represent given amount of digits?
+        int integerSize = intg0 * SIZE_OF_INT32 + dig2bytes[intg0x];
+        int decimalSize = frac0 * SIZE_OF_INT32 + dig2bytes[frac0x];
+        int bin_size = integerSize + decimalSize; // total bytes
+        byte[] d_copy = new byte[bin_size];
+
+        if (bin_size > (length - 2))
+        {
+            throw new ArrayIndexOutOfBoundsException("Calculated bin_size: "
+                    + bin_size + ", available bytes: " + (length - 2));
+        }
+
+        for (int i = 0; i < bin_size; i++)
+        {
+            d_copy[i] = buffer[offset + i];
+        }
+        // clear sign bit
+        d_copy[0] = (byte) (d_copy[0] & 0x7F);
+
+        // first digits of integer part are special:
+        // no need for leading zeroes and sign must be present
+        offset = (integerSize < SIZE_OF_INT32) ? integerSize : SIZE_OF_INT32;
+        int int32 = BigEndianConversion.convertNBytesToInt(d_copy, 0, offset);
+        String num = Integer.toString(int32);
+        if (sign < 0)
+        {
+            num = "-" + num;
+        }
+
+        // remaining integer part
+        num = num
+                + BigEndianConversion.convertNBytesToString(d_copy, offset,
+                        integerSize - offset);
+        // decimal point
+        num = num + ".";
+        // fraction part
+        num = num
+                + BigEndianConversion.convertNBytesToString(d_copy,
+                        integerSize, decimalSize);
+
+        return num;
+    }
+
     public static long[] decodePackedInteger(byte[] buffer, int position)
             throws IOException
     {
@@ -933,25 +915,4 @@ public class MysqlBinlog
         return "";
     }
 
-    public static long getChecksum(int chkAlgo, byte[] buffer, int offset,
-            int length)
-    {
-        switch (chkAlgo)
-        {
-            case 1 :
-                return getCrc32(buffer, offset, length);
-            default :
-                break;
-        }
-        return -1;
-    }
-
-    private final static CRC32 crc32 = new CRC32();
-
-    public static long getCrc32(byte[] buffer, int offset, int length)
-    {
-        crc32.reset();
-        crc32.update(buffer, offset, length);
-        return crc32.getValue();
-    }
 }

@@ -13,35 +13,7 @@ class ReverseEngineerCommand
   
   def run
     commands = build_commands(@config)
-    Configurator.instance.force_output commands.join("\n")
-  end
-  
-  def parsed_options?(arguments)
-    arguments = super(arguments)
-
-    if display_help?() && !display_preview?()
-      return arguments
-    end
-    
-    @public_arguments = false
-  
-    # Define extra option to load event.  
-    opts=OptionParser.new
-    opts.on("--public") { @public_arguments = true }
-    remainder = Configurator.instance.run_option_parser(opts, arguments)
-
-    # Return remaining options. 
-    remainder
-  end
-  
-  def get_bash_completion_arguments
-    super() + ["--public"]
-  end
-  
-  def output_command_usage
-    super()
-  
-    output_usage_line("--public", "Hide passwords in the command output")
+    output commands.join("\n")
   end
   
   def build_commands(cfg)
@@ -62,7 +34,7 @@ class ReverseEngineerCommand
           prompt = ph.find_prompt_by_name(k)
           if prompt
             begin
-              add_to(prompt.build_command_line_argument(DEFAULTS, v, @public_arguments), default_arguments)
+              add_to(prompt.build_command_line_argument(v), default_arguments)
             rescue IgnoreError
             end
           else
@@ -96,9 +68,9 @@ class ReverseEngineerCommand
         if prompt
           begin
             unless is_composite
-              add_to(prompt.build_command_line_argument(ds_alias, v, @public_arguments), dataservice_arguments[ds_alias])
+              add_to(prompt.build_command_line_argument(v), dataservice_arguments[ds_alias])
             else
-              add_to(prompt.build_command_line_argument(ds_alias, v, @public_arguments), composite_dataservice_arguments[ds_alias])
+              add_to(prompt.build_command_line_argument(v), composite_dataservice_arguments[ds_alias])
             end
           rescue IgnoreError
           end
@@ -122,9 +94,9 @@ class ReverseEngineerCommand
           if prompt
             begin
               unless is_composite
-                add_to(prompt.build_command_line_argument(ds_alias, v, @public_arguments), dataservice_arguments[ds_alias])
+                add_to(prompt.build_command_line_argument(v), dataservice_arguments[ds_alias])
               else
-                add_to(prompt.build_command_line_argument(ds_alias, v, @public_arguments), composite_dataservice_arguments[ds_alias])
+                add_to(prompt.build_command_line_argument(v), composite_dataservice_arguments[ds_alias])
               end
             rescue IgnoreError
             end
@@ -149,7 +121,7 @@ class ReverseEngineerCommand
         prompt = ph.find_prompt_by_name(k)
         if prompt
           begin
-            add_to(prompt.build_command_line_argument(DEFAULTS, v, @public_arguments), default_arguments)
+            add_to(prompt.build_command_line_argument(v), default_arguments)
           rescue IgnoreError
           end
         else
@@ -167,7 +139,7 @@ class ReverseEngineerCommand
           prompt = ph.find_prompt_by_name(k)
           if prompt
             begin
-              add_to(prompt.build_command_line_argument(DEFAULTS, v, @public_arguments), default_arguments)
+              add_to(prompt.build_command_line_argument(v), default_arguments)
             rescue IgnoreError
             end
           else
@@ -195,7 +167,7 @@ class ReverseEngineerCommand
         prompt = ph.find_prompt_by_name(k)
         if prompt
           begin
-            add_to(prompt.build_command_line_argument(h_alias, v, @public_arguments), host_arguments[h_alias])
+            add_to(prompt.build_command_line_argument(v), host_arguments[h_alias])
           rescue IgnoreError
           end
         else
@@ -232,7 +204,7 @@ class ReverseEngineerCommand
             prompt = ph.find_prompt_by_name(k)
             if prompt
               begin
-                arg = prompt.build_command_line_argument(p_alias, v, @public_arguments)
+                arg = prompt.build_command_line_argument(v)
                 ds_alias.each{
                   |d|
                   unless host_service_arguments[h_alias].has_key?(d)
@@ -282,8 +254,8 @@ class ReverseEngineerCommand
     host_arguments.each{
       |h_alias,args|
       if args.length > 0
-        commands << "# Options for #{command_host_alias(cfg, h_alias)}"
-        commands << "tools/tpm configure --hosts=#{command_host_alias(cfg, h_alias)} \\"
+        commands << "# Options for #{cfg.getProperty([HOSTS, h_alias, HOST])}"
+        commands << "tools/tpm configure --hosts=#{cfg.getProperty([HOSTS, h_alias, HOST])} \\"
         commands << args.sort().map{|s| Escape.shell_single_word(s)}.join(" \\\n")
       end
     }
@@ -293,22 +265,14 @@ class ReverseEngineerCommand
       ds.each{
         |ds_alias,args|
         if args.length > 0
-          commands << "# Options for #{command_host_alias(cfg, h_alias)}"
-          commands << "tools/tpm configure #{cfg.getProperty([DATASERVICES, ds_alias, DATASERVICENAME])} \\\n--hosts=#{command_host_alias(cfg, h_alias)} \\"
+          commands << "# Options for #{cfg.getProperty([HOSTS, h_alias, HOST])}"
+          commands << "tools/tpm configure #{cfg.getProperty([DATASERVICES, ds_alias, DATASERVICENAME])} \\\n--hosts=#{cfg.getProperty([HOSTS, h_alias, HOST])} \\"
           commands << args.sort().map{|s| Escape.shell_single_word(s)}.join(" \\\n")
         end
       }
     }
     
     commands
-  end
-  
-  def command_host_alias(cfg, h_alias)
-    if to_identifier(cfg.getProperty([HOSTS, h_alias, HOST])) == h_alias
-      cfg.getProperty([HOSTS, h_alias, HOST])
-    else
-      h_alias
-    end
   end
   
   def add_to(args, container)
@@ -322,10 +286,6 @@ class ReverseEngineerCommand
     end
   end
   
-  def allow_multiple_tpm_commands?
-    true
-  end
-  
   def self.display_command
     true
   end
@@ -335,7 +295,7 @@ class ReverseEngineerCommand
   end
   
   def self.get_command_aliases
-    ['reverse', 'export']
+    ['reverse']
   end
   
   def self.get_command_description

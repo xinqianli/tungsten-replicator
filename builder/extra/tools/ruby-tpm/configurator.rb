@@ -23,7 +23,6 @@ system_require 'pp'
 system_require 'timeout'
 system_require 'cgi'
 system_require 'json'
-system_require 'iniparse'
 system_require 'escape'
 system_require 'transformer'
 system_require 'validator'
@@ -73,13 +72,6 @@ class String
     def getbyte(index)
       self[index]
     end
-  end
-  
-  def include_alias?(a)
-    self.split(",").map{
-      |entry|
-      to_identifier(entry)
-    }.include?(a)
   end
 end
 
@@ -168,7 +160,6 @@ class Configurator
     @options = OpenStruct.new
     @options.output_threshold = Logger::NOTICE
     @options.stream_output = false
-    @options.fake_tty = false
     @options.ssh_options = {
       :timeout => 5,
       :auth_methods => ["publickey", "hostbased"],
@@ -186,17 +177,10 @@ class Configurator
     stop_alive_thread()
     
     if @log
-      begin
-        @log.chmod(0660)
-      rescue
-      end
-      
       @log.close
       @log = nil
     end
     
-    # Depending on the requested command, we will transfer the log file to
-    # the configured directory on each affected server
     if @command && @command.distribute_log?()
       @command.distribute_log(get_log_filename())
     end
@@ -204,21 +188,14 @@ class Configurator
     exit(code)
   end
 
+  # The standard process, collect prompt values, validate on each host
+  # then deploy on each host
   def run
-    # Each of these directories includes Ruby Classes and Modules that extend
-    # the behavior of tpm. Some of them will raise an IgnoreError exception
-    # if they should not be enabled.
     Dir[File.dirname(__FILE__) + '/configure/modules/*.rb'].sort().each do |file| 
-      begin
-        require File.dirname(file) + '/' + File.basename(file, File.extname(file))
-      rescue IgnoreError
-      end
+      require File.dirname(file) + '/' + File.basename(file, File.extname(file))
     end
-    Dir[File.dirname(__FILE__) + '/configure/commands/*.rb'].sort().each do |file|
-      begin
-        require File.dirname(file) + '/' + File.basename(file, File.extname(file))
-      rescue IgnoreError
-      end
+    Dir[File.dirname(__FILE__) + '/configure/commands/*.rb'].sort().each do |file| 
+      require File.dirname(file) + '/' + File.basename(file, File.extname(file))
     end
     Dir[File.dirname(__FILE__) + '/configure/dbms_types/*.rb'].sort().each do |file| 
       begin
@@ -233,17 +210,12 @@ class Configurator
       end
     end
     
-    # The get_default_filenames() files allow users to place configuration
-    # defaults in files on the system that will override any programmed
-    # default value
+    get_release_version()
+    
     load_default_files()
-    
-    # Take the arguments provided on the command line and parse out generic
-    # options as well as options for the requested command
     parsed_options?()
+    debug("Logging started to #{get_log_filename()}")
     
-    # Hand of control to the ConfigureCommand object. After completion
-    # cleanup the process and exit with a 0 or 1
     begin
       if @command.run() == false
         cleanup(1)
@@ -266,8 +238,6 @@ class Configurator
     ]
   end
   
-  # Parse the get_default_filenames() files to override default values
-  # for all configurations
   def load_default_files
     get_default_filenames().each{
       |filename|
@@ -290,12 +260,10 @@ class Configurator
   # Parse command line arguments.
   def parsed_options?()
     arguments = ARGV
-    if arguments.size() > 0
-      log(JSON.pretty_generate(arguments))
-    end
+    
+    log(JSON.pretty_generate(arguments))
     
     begin
-      # Eliminate characters that will cause exceptions in the Ruby parsing
       arguments = arguments.map{|arg|
         newarg = ''
         arg.split("").each{|b| 
@@ -318,30 +286,24 @@ class Configurator
       
       # Backwards compatibility
       opts.on("--master-slave")         {}
-      # alias for `tpm configure`
       opts.on("--build-config")         { @command = ConfigureDataServiceCommand.new(@config) }
-      # alias for `tpm configure defaults`
       opts.on("--defaults-only")        { @command = ConfigureDataServiceCommand.new(@config)
                                           @command.subcommand(ConfigureDataServiceCommand::CONFIGURE_DEFAULTS)
       }
-      # alias for `tpm configure --hosts=<val>`
       opts.on("--build-host String")    { |val|
                                           @command = ConfigureDataServiceCommand.new(@config) 
                                           @command.command_hosts(val)
       }
-      # alias for `tpm install`
+      opts.on("--interactive")          { @command = InteractiveCommand.new(@config) }
       opts.on("-b", "--batch")          { @command = InstallCommand.new(@config) }
-      # Displays the possible keys that can be used in the deploy.cfg file
       opts.on("--config-file-help")     {
                                           @command = HelpCommand.new(@config)
                                           @command.subcommand(HelpCommand::HELP_CONFIG_FILE)
       }
-      # Displays the possible template placeholders
       opts.on("--template-file-help")   {
                                           @command = HelpCommand.new(@config)
                                           @command.subcommand(HelpCommand::HELP_TEMPLATE_FILE)
       }
-      # Force logging to be enabled for this command
       opts.on("--log String")           { |val|
         @options.log_name = val
       }
@@ -349,15 +311,13 @@ class Configurator
     
       # Attempt to identify the TPM command if one has not been chosen
       if arguments.size() > 0
-        # Guess the command class based on the first remaining argument
-        # This will return nil if the first argument isn't a valid command
         command_class = ConfigureCommand.get_command_class(arguments[0])
 
         if command_class
-          # Remove the first argument since it is the command class
+          # Remove the first argument which was our command
           arguments.shift()
         else
-          # Look for a command argument in the remaining values
+          # Look for a command argument
           opts=OptionParser.new
           # Needed again so that an exception isn't thrown
           opts.on("-p", "--package String") {|klass|
@@ -370,7 +330,6 @@ class Configurator
           arguments = run_option_parser(opts, arguments)
         end
         
-        # Instantiate the command option based on the class that we found
         if @command == nil && command_class
           begin
             unless defined?(command_class)
@@ -389,17 +348,16 @@ class Configurator
       end
       
       if @command == nil
-        # Fall back to the help command when nothing else has worked
+        # Fall back to the help command
         @command = HelpCommand.new(@config)
       else
-        # Apply the display_help setting to the command object
+        # Apply the display_help setting to the command
         @command.display_help?(display_help)
       end  
       @command.advanced?(advanced)
       
       if @command.enable_log?()
         initialize_log()
-        debug("Logging started to #{get_log_filename()}")
       else
         disable_log()
       end
@@ -408,10 +366,7 @@ class Configurator
       start_alive_thread()
       
       opts=OptionParser.new
-      # Define the file to use for storing the staging configuration
-      opts.on("--profile String", "-c String", "--config String")  {|val| 
-                                        @options.config = val
-                                        }
+      opts.on("--profile String", "-c String", "--config String")  {|val| @options.config = val }
       opts.on("--skip-validation-check String")      {|val|
                                           val.split(",").each{
                                             |v|
@@ -451,17 +406,14 @@ class Configurator
     
       # Argument used by the validation and deployment handlers
       opts.on("--stream")               {@options.stream_output = true }
-      opts.on("--tty")                  {@options.fake_tty = true }
 
       remainder = run_option_parser(opts, arguments)
 
-      if arguments_valid?() != true && display_help?() != true
+      unless display_help?() || arguments_valid?() 
         cleanup(1)
       end
-      
+    
       begin
-        # Hand off option parsing to the command object. This will run through
-        # the command class and any included modules
         remainder = @command.parsed_options?(remainder)
         unless display_help?()
           unless @command.is_valid?() && remainder.empty?()
@@ -473,10 +425,19 @@ class Configurator
             
             cleanup(1)
           end
-
+          
           @command.arguments_valid?()
           unless @command.is_valid?()
             cleanup(1)
+          end
+          
+          h_alias = @config.getNestedProperty([DEPLOYMENT_HOST])
+          unless h_alias == nil
+            path = @config.getProperty([HOSTS, h_alias, PREFERRED_PATH])
+            unless path.to_s() == ""
+              debug("Adding #{path} to $PATH")
+              ENV['PATH'] = path + ":" + ENV['PATH']
+            end
           end
         end
       rescue IgnoreError
@@ -495,17 +456,6 @@ class Configurator
     rescue => e
       exception(e)
       cleanup(1)
-    end
-    
-    # Extend the path for this command so utilities in uncommon locations
-    # can be found
-    h_alias = @config.getNestedProperty([DEPLOYMENT_HOST])
-    unless h_alias == nil
-      path = @config.getProperty([HOSTS, h_alias, PREFERRED_PATH])
-      unless path.to_s() == ""
-        debug("Adding #{path} to $PATH")
-        ENV['PATH'] = path + ":" + ENV['PATH']
-      end
     end
     
     # Some commands (query) need to be able to run while a higher level TPM script is running
@@ -540,22 +490,23 @@ class Configurator
       end
     end
     
-    if File.exist?(@options.config)
-      if ! File.writable?(@options.config)
-        write "Config file must be writable: #{@options.config}", Logger::ERROR
-        return false
-      end
-      if ! File.readable?(@options.config) && File.exist?(@options.config)
-        write "Config file is not readable: #{@options.config}", Logger::ERROR
-        return false
+    if is_interactive?()
+      # For interactive mode, must be able to write the config file.
+      if File.exist?(@options.config)
+        if ! File.writable?(@options.config)
+          write "Config file must be writable for interactive mode: #{@options.config}", Logger::ERROR
+          return false
+        end
+      else
+        if ! File.writable?(File.dirname(@options.config))
+          write "Config file directory must be writable for interactive mode: #{@options.config}", Logger::ERROR
+          return false
+        end
       end
     else
-      if ! File.writable?(File.dirname(@options.config))
-        write "Config file directory must be writable: #{@options.config}", Logger::ERROR
-        return false
-      end
-      if ! File.readable?(File.dirname(@options.config))
-        write "Config file directory must be readable: #{@options.config}", Logger::ERROR
+      # For batch mode, options file must be readable.
+      if ! File.readable?(@options.config) && File.exist?(@options.config)
+        write "Config file is not readable: #{@options.config}", Logger::ERROR
         return false
       end
     end
@@ -682,7 +633,7 @@ class Configurator
   def initialize_log
     unless @log
       begin
-        @log = File.open(get_log_filename(), "a", 0660)
+        @log = File.open(get_log_filename(), "a")
       rescue => e
         raise e
       end
@@ -1042,11 +993,7 @@ class Configurator
   end
   
   def has_tty?
-    if @options.fake_tty == true
-      return true
-    else
-      (`tty > /dev/null 2>&1; echo $?`.chomp == "0")
-    end
+    (`tty > /dev/null 2>&1; echo $?`.chomp == "0")
   end
   
   def enable_output?
@@ -1078,6 +1025,7 @@ class Configurator
   end
   
   def get_release_details
+    
     version=''
     unless @release_details
       # Read manifest to find build version. 
@@ -1091,8 +1039,7 @@ class Configurator
               version = version + "-#{parsed['hudson']['buildNumber']}"
             end
             @release_details = {
-              "version" => version,
-              "product" => parsed['product']
+              "version" => version
             }
             
             release_info = cmd_result("grep RELEASE #{get_manifest_file_path()}")
@@ -1121,7 +1068,6 @@ class Configurator
     get_basename()
   end
   
-  # Parse the manifest to determine what kind of package this is
   def get_release_version
     release_details = get_release_details()
     release_details["version"]
@@ -1157,12 +1103,6 @@ class Configurator
     tungsten_base_path ||= get_base_path()
     
     "#{tungsten_base_path}/tungsten-replicator/bin/thl"
-  end
-  
-  def get_tpm_path(tungsten_base_path = nil)
-    tungsten_base_path ||= get_base_path()
-    
-    "#{tungsten_base_path}/tools/tpm"
   end
   
   def svc_is_running?(cmd)
@@ -1502,7 +1442,7 @@ class SSHConnections
     if user != ssh_user
       Configurator.instance.debug("SSH user changed to #{ssh_user}")
       command = command.tr('"', '\"')
-      command = "echo \"#{command}\" | sudo -n -u #{user} -i"
+      command = "echo \"#{command}\" | sudo -u #{user} -i"
     end
 
     Configurator.instance.debug("Execute `#{command}` on #{host} as #{user}")
@@ -1733,7 +1673,7 @@ def scp_result(local_file, remote_file, host, user)
     end
     
     if user != ssh_user
-      ssh_result("sudo -n chown -R #{user} #{remote_file}", host, ssh_user)
+      ssh_result("sudo chown -R #{user} #{remote_file}", host, ssh_user)
     end
     
     return true
@@ -1749,19 +1689,6 @@ def scp_result(local_file, remote_file, host, user)
     raise MessageError.new(connection_error)
   rescue Exception => e
     raise RemoteCommandError.new(user, host, "scp #{local_file} #{ssh_user}@#{host}:#{remote_file}", nil, '')
-  end
-end
-
-def remote_file_exists?(remote_file, host, user)
-  begin
-    exists = ssh_result("if [ -f #{remote_file} ]; then echo 0; else echo 1; fi", host, user)
-    if exists == "1"
-      return false
-    else
-      return true
-    end
-  rescue CommandError
-    raise MessageError.new("Unable to check if '#{remote_file}' exists on #{host}")
   end
 end
 
@@ -2132,14 +2059,4 @@ end
 
 class NetworkAdapter
   attr_reader :networks
-end
-
-module IniParse
-  module Lines
-    class Option
-      def self.typecast(value)
-        value
-      end
-    end
-  end
 end

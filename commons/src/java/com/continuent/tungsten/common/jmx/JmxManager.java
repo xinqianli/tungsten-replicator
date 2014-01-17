@@ -23,12 +23,18 @@
 package com.continuent.tungsten.common.jmx;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.net.UnknownHostException;
 import java.rmi.NoSuchObjectException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
+import java.rmi.server.RMIClientSocketFactory;
+import java.rmi.server.RMIServerSocketFactory;
+import java.rmi.server.RMISocketFactory;
 import java.rmi.server.UnicastRemoteObject;
 import java.text.MessageFormat;
 import java.util.HashMap;
@@ -67,26 +73,41 @@ import com.continuent.tungsten.common.security.RealmJMXAuthenticator;
  * @author <a href="mailto:robert.hodges@continuent.com">Robert Hodges</a>
  * @version 1.0
  */
-public class JmxManager implements NotificationListener
+public class JmxManager implements NotificationListener, Serializable
 {
-    private static final Logger       logger              = Logger.getLogger(JmxManager.class);
+    /**
+     * 
+     */
+    private static final long              serialVersionUID    = 1L;
+
+    private static final Logger            logger              = Logger.getLogger(JmxManager.class);
 
     // RMI registry and connector server we are managing.
-    protected Registry                rmiRegistry;
-    protected JMXConnectorServer      jmxConnectorServer;
+    static Registry                        rmiRegistry;
+    static JMXConnectorServer              jmxConnectorServer;
     // TODO: Do not destroy registry if we have multiple class instances.
 
     // JMX server parameters.
-    private final String              host;
-    private final int                 registryPort;
-    private static int                beanPort;
+    private static String                  host;
 
-    private final String              serviceName;
+    /**
+     * Port where the registry is bound
+     */
+    private final int                      registryPort;
+    /**
+     * Port for 'bean server'
+     */
+    private static int                     beanPort;
 
-    public final static String        CREATE_MBEAN_HELPER = "createHelper";
+    private final String                   serviceName;
+
+    public final static String             CREATE_MBEAN_HELPER = "createHelper";
 
     // Authentication and Encryption parameters
-    private static AuthenticationInfo authenticationInfo  = null;
+    private static AuthenticationInfo      authenticationInfo  = null;
+
+    // --- Define security attributes ---
+    private static HashMap<String, Object> env                 = new HashMap<String, Object>();
 
     /**
      * Creates an instance to manage a JMX service
@@ -99,22 +120,19 @@ public class JmxManager implements NotificationListener
     public JmxManager(String host, int beanPort, int registryPort,
             String serviceName)
     {
-        this.host = host;
-        this.registryPort = registryPort;
-        this.serviceName = serviceName;
-        JmxManager.beanPort = beanPort;
+        this(host, beanPort, registryPort, serviceName, null);
     }
 
-    /**
-     * Creates an instance to manage a JMX service
-     * 
-     * @param host The host name or IP to use
-     * @param registryPort The JMX server RMI registryPort
-     * @param serviceName The JMX service name
-     */
     public JmxManager(String host, int registryPort, String serviceName)
     {
-        this(host, registryPort + 1, registryPort, serviceName);
+        this(host, registryPort + 1, registryPort, serviceName, null);
+    }
+
+    public JmxManager(String host, int registryPort, String serviceName,
+            TungstenProperties tungstenProperty)
+    {
+        this(host, registryPort + 1, registryPort, serviceName,
+                tungstenProperty);
     }
 
     /**
@@ -129,16 +147,47 @@ public class JmxManager implements NotificationListener
      * @param serviceName
      * @param tungstenProperty
      */
-    public JmxManager(String host, int registryPort, String serviceName,
-            TungstenProperties tungstenProperty)
+    public JmxManager(String host, int beanPort, int registryPort,
+            String serviceName, TungstenProperties tungstenProperty)
     {
-        this(host, registryPort, serviceName);
+        JmxManager.host = host;
+        this.registryPort = registryPort;
+        this.serviceName = serviceName;
+        JmxManager.beanPort = beanPort;
 
         // Authentication and encryption parameters
         if (tungstenProperty != null)
+        {
             authenticationInfo = (AuthenticationInfo) tungstenProperty
                     .getObject(AuthenticationInfo.AUTHENTICATION_INFO_PROPERTY,
                             null, false);
+        }
+
+        try
+        {
+            RMISocketFactory currentFactory = RMISocketFactory
+                    .getSocketFactory();
+
+            if (currentFactory != null)
+            {
+                logger.info(String.format("Default RMI Socket Factory is %s",
+                        currentFactory.getClass().getName()));
+            }
+            else
+            {
+                RMISocketFactory.setSocketFactory(new TungstenRMISocketFactory(
+                        host, 9000, 20000));
+            }
+        }
+        catch (IOException io)
+        {
+            logger.warn(
+                    String.format(
+                            "Unable to set the RMISocketFactory: %s\n"
+                                    + "This may lead to an inability for this component to run at all.",
+                            io.getMessage()), io);
+        }
+
     }
 
     /**
@@ -181,6 +230,8 @@ public class JmxManager implements NotificationListener
 
     /**
      * Starts the rmi registry.
+     * 
+     * @param host TODO
      */
     protected void createRegistry(int port)
     {
@@ -189,18 +240,18 @@ public class JmxManager implements NotificationListener
         {
             try
             {
-                if (logger.isDebugEnabled())
-                {
-                    logger.debug("Starting RMI registry on registryPort: "
-                            + port);
-                }
+                logger.info(String.format("Starting RMI registry on %s:%d",
+                        host, port));
+
+
                 rmiRegistry = LocateRegistry.createRegistry(port);
+
             }
             catch (Throwable e)
             {
-                throw new ServerRuntimeException(
-                        "Unable to start rmi registry on registryPort: " + port,
-                        e);
+                throw new ServerRuntimeException(String.format(
+                        "Unable to start RMI registry on %s:%d\n%s", host,
+                        port, e.toString()), e);
             }
 
         }
@@ -259,6 +310,14 @@ public class JmxManager implements NotificationListener
                         authenticationInfo.getAccessFileLocation());
             }
 
+            RMIClientSocketFactory clientSocketFactory = null;
+            RMIServerSocketFactory serverSocketFactory = null;
+
+            logger.info(String.format("Starting the connector at %s:%d", host,
+                    beanPort));
+
+            JMXConnectorServer connector = null;
+
             // --- SSL encryption ---
             if (authenticationInfo != null
                     && authenticationInfo.isEncryptionNeeded())
@@ -268,26 +327,51 @@ public class JmxManager implements NotificationListener
                         authenticationInfo.getKeystoreLocation());
                 System.setProperty("javax.net.ssl.keyStorePassword",
                         authenticationInfo.getKeystorePassword());
-                // Configure SSL
-                SslRMIClientSocketFactory csf = new SslRMIClientSocketFactory();
-                SslRMIServerSocketFactory ssf = new SslRMIServerSocketFactory();
+
+                clientSocketFactory = new SslRMIClientSocketFactory();
+                serverSocketFactory = new SslRMIServerSocketFactory();
+
                 env.put(RMIConnectorServer.RMI_CLIENT_SOCKET_FACTORY_ATTRIBUTE,
-                        csf);
+                        clientSocketFactory);
                 env.put(RMIConnectorServer.RMI_SERVER_SOCKET_FACTORY_ATTRIBUTE,
-                        ssf);
+                        serverSocketFactory);
+
+                connector = JMXConnectorServerFactory.newJMXConnectorServer(
+                        address, env, mbs);
+
+                connector.start();
+
+            }
+            else
+            {
+                env.put(RMIConnectorServer.JNDI_REBIND_ATTRIBUTE, "true");
+
+                connector = JMXConnectorServerFactory.newJMXConnectorServer(
+                        address, env, mbs);
+
+                connector.start();
             }
 
-            env.put(RMIConnectorServer.JNDI_REBIND_ATTRIBUTE, "true");
-            JMXConnectorServer connector = JMXConnectorServerFactory
-                    .newJMXConnectorServer(address, env, mbs);
-            connector.start();
-
-            logger.info(MessageFormat
-                    .format("JMXConnector: security.propoerties={0} \n\t use.authentication={1} \n\t use.tungsten.authenticationRealm.encrypted.password={2} \n\t use.encryption={3}",
-                            (authenticationInfo != null) ? authenticationInfo.getParentPropertiesFileLocation() : "No security.propoerties file found !...",
-                            (authenticationInfo != null) ? authenticationInfo.isAuthenticationNeeded() : false,
-                            (authenticationInfo != null) ? authenticationInfo.isUseEncryptedPasswords(): false,
-                            (authenticationInfo != null) ? authenticationInfo.isEncryptionNeeded() : false));
+            if (logger.isDebugEnabled())
+            {
+                logger.debug(MessageFormat
+                        .format("JMXConnector: security.propoerties={0} \n\t use.authentication={1} \n\t use.tungsten.authenticationRealm.encrypted.password={2} \n\t use.encryption={3}",
+                                (authenticationInfo != null)
+                                        ? authenticationInfo
+                                                .getParentPropertiesFileLocation()
+                                        : "No security.propoerties file found !...",
+                                (authenticationInfo != null)
+                                        ? authenticationInfo
+                                                .isAuthenticationNeeded()
+                                        : false,
+                                (authenticationInfo != null)
+                                        ? authenticationInfo
+                                                .isUseEncryptedPasswords()
+                                        : false,
+                                (authenticationInfo != null)
+                                        ? authenticationInfo
+                                                .isEncryptionNeeded() : false));
+            }
             logger.info(String.format("JMXConnector started at address %s",
                     serviceAddress));
 
@@ -523,6 +607,10 @@ public class JmxManager implements NotificationListener
 
                 env.put("jmx.remote.credentials", credentials);
             }
+
+            RMIServerSocketFactory serverSocketFactory = null;
+            RMIClientSocketFactory clientSocketFactory = null;
+
             // --- SSL ---
             if (authInfo != null && authInfo.isEncryptionNeeded())
             {
@@ -531,11 +619,22 @@ public class JmxManager implements NotificationListener
                         authInfo.getTruststoreLocation());
                 System.setProperty("javax.net.ssl.trustStorePassword",
                         authInfo.getTruststorePassword());
+
+                clientSocketFactory = new SslRMIClientSocketFactory();
+                serverSocketFactory = new SslRMIServerSocketFactory();
+
+                env.put(RMIConnectorServer.RMI_CLIENT_SOCKET_FACTORY_ATTRIBUTE,
+                        clientSocketFactory);
+                env.put(RMIConnectorServer.RMI_SERVER_SOCKET_FACTORY_ATTRIBUTE,
+                        serverSocketFactory);
             }
 
-            serviceAddress = generateServiceAddress(host, beanPort,
+            env.put(RMIConnectorServer.JNDI_REBIND_ATTRIBUTE, "true");
+
+            serviceAddress = generateServiceAddress(host, registryPort,
                     registryPort, serviceName);
             JMXServiceURL address = new JMXServiceURL(serviceAddress);
+
             JMXConnector connector = JMXConnectorFactory.connect(address, env);
             return connector;
         }
@@ -936,6 +1035,93 @@ public class JmxManager implements NotificationListener
                 mbeanName, info);
 
         return helper;
-
     }
+
+    public class TungstenClientSocketFactory
+            implements
+                RMIClientSocketFactory,
+                Serializable
+    {
+        /**
+         * 
+         */
+        private static final long serialVersionUID = 1L;
+
+        private String            host             = null;
+        private int               port             = -1;
+
+        public TungstenClientSocketFactory(String host, int port)
+        {
+            this.host = host;
+            this.port = port;
+        }
+
+        @Override
+        public Socket createSocket(String host, int port) throws IOException
+        {
+            InetAddress addr = InetAddress.getByName(this.host);
+            if (logger.isDebugEnabled())
+            {
+                logger.debug(String
+                        .format("TungstenClientSocketFactory().createSocket(port=%d, address=%s)",
+                                this.port, addr));
+            }
+            return new Socket(addr, this.port);
+
+        }
+
+        public String getHost()
+        {
+            return host;
+        }
+
+        public void setHost(String host)
+        {
+            this.host = host;
+        }
+
+        public int getPort()
+        {
+            return port;
+        }
+
+        public void setPort(int port)
+        {
+            this.port = port;
+        }
+    }
+
+    private class TungstenServerSocketFactory
+            implements
+                RMIServerSocketFactory,
+                Serializable
+    {
+        /**
+         * 
+         */
+        private static final long serialVersionUID = 1L;
+
+        private String            host             = null;
+        private int               port             = -1;
+
+        public TungstenServerSocketFactory(String host, int port)
+        {
+            this.host = host;
+            this.port = port;
+        }
+
+        @Override
+        public ServerSocket createServerSocket(int port) throws IOException
+        {
+            InetAddress addr = InetAddress.getByName(this.host);
+            if (logger.isDebugEnabled())
+            {
+                logger.debug(String
+                        .format("TungstenServerSocketFactory().createServerSocket(port=%d, backlog=0, address=%s)",
+                                this.port, addr));
+            }
+            return new ServerSocket(port, 0, addr);
+        }
+    }
+
 }

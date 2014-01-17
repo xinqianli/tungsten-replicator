@@ -24,6 +24,9 @@ package com.continuent.tungsten.common.network;
 
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
+
+import org.apache.log4j.Logger;
 
 /**
  * Tests for reachability using the Java InetAddress.isReachable() method.
@@ -32,7 +35,8 @@ import java.net.InetAddress;
  */
 public class InetAddressPing implements PingMethod
 {
-    private String notes;
+    private String        notes;
+    private static Logger logger = Logger.getLogger(InetAddressPing.class);
 
     /**
      * Tests a host for reachability.
@@ -41,7 +45,8 @@ public class InetAddressPing implements PingMethod
      * @param timeout Timeout in milliseconds
      * @return True if host is reachable, otherwise false.
      */
-    public boolean ping(HostAddress address, int timeout) throws HostException
+    public boolean ping(HostAddress address, int port, int timeout)
+            throws HostException
     {
         notes = "InetAddress.isReachable()";
         InetAddress inetAddress = address.getInetAddress();
@@ -51,7 +56,34 @@ public class InetAddressPing implements PingMethod
         }
         catch (IOException e)
         {
-            throw new HostException("Ping operation failed unexpectedly", e);
+            if (logger.isTraceEnabled())
+            {
+                logger.trace(String.format(
+                        "Exception during reachable test. Returning false",
+                        inetAddress, e));
+            }
+            return false;
+        }
+    }
+
+    public boolean ping(String host, int port, int timeoutMillis)
+            throws HostException
+    {
+        try
+        {
+            InetAddress inetAddr = InetAddress.getByName(host);
+            return (ping(new HostAddress(inetAddr), port, timeoutMillis));
+        }
+        catch (UnknownHostException u)
+        {
+            if (logger.isTraceEnabled())
+            {
+                logger.trace(String.format(
+                        "Unable to resolve host %s, %s. Returning false", host,
+                        u), u);
+            }
+
+            return false;
         }
     }
 

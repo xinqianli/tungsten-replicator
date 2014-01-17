@@ -247,7 +247,8 @@ class THLStorageCheck < ConfigureValidationCheck
     end
     
     begin
-      get_applier_datasource.check_thl_schema(@config.getProperty(get_member_key(REPL_SVC_SCHEMA)))
+      thl_schema = "tungsten_"+@config.getProperty(DATASERVICENAME)
+      get_applier_datasource.check_thl_schema(thl_schema)
     rescue => e
       error(e.message)
     end
@@ -339,14 +340,6 @@ class ParallelReplicationCountCheck < ConfigureValidationCheck
       error("You are trying to configure this host with a custom replication channels setting.  That is not currently supported.  Please update the host configuration with --channels=#{ds_channels}")
     end
   end
-  
-  def enabled?
-    if get_topology().is_a?(ClusterTopology)
-      super()
-    else
-      false
-    end
-  end
 end
 
 class DatasourceBootScriptCheck < ConfigureValidationCheck
@@ -374,7 +367,7 @@ class DatasourceBootScriptCheck < ConfigureValidationCheck
       if @config.getProperty(get_host_key(ROOT_PREFIX)) == "true"
         begin
           # Test if this script can be run via sudo w/o actually running it
-          cmd_result("sudo -n -l #{script}")
+          cmd_result("sudo -l #{script}")
         rescue CommandError
           error("Unable to run 'sudo #{script}'")
           help("Update the /etc/sudoers file or disable sudo by adding --enable-sudo-access=false")
@@ -420,45 +413,6 @@ class ParallelReplicationCheck < ConfigureValidationCheck
       error("Parallelization type is set to 'none' but channels are set to #{channels}; either set parallelization type to 'disk' or 'memory' using --svc-parallelization-type or set channels to 1 using --channels")
     elsif ptype == "memory"
       warning("The 'memory' parallelization type is not recommended for production use; use 'disk' instead")
-    end
-  end
-end
-
-class ConsistentReplicationCredentialsCheck < ConfigureValidationCheck
-  include ReplicationServiceValidationCheck
-  
-  def set_vars
-    @title = "Consistent replication credentials check"
-  end
-  
-  def validate
-    p = @config.getPromptHandler().find_prompt(get_member_key(REPL_DBLOGIN))
-    host_value = @config.getNestedProperty(get_member_key(REPL_DBLOGIN))
-    ds_value = p.get_default_value()
-    if host_value != nil && host_value != ds_value
-      error("You are trying to configure this host with a custom --replication-user.  That is not currently supported.")
-    end
-    
-    p = @config.getPromptHandler().find_prompt(get_member_key(REPL_DBPASSWORD))
-    host_value = @config.getNestedProperty(get_member_key(REPL_DBPASSWORD))
-    ds_value = p.get_default_value()
-    if host_value != nil && host_value != ds_value
-      error("You are trying to configure this host with a custom --replication-password.  That is not currently supported.")
-    end
-    
-    p = @config.getPromptHandler().find_prompt(get_member_key(REPL_DBPORT))
-    host_value = @config.getNestedProperty(get_member_key(REPL_DBPORT))
-    ds_value = p.get_default_value()
-    if host_value != nil && host_value != ds_value
-      error("You are trying to configure this host with a custom --replication-port.  That is not currently supported.")
-    end
-  end
-  
-  def enabled?
-    if get_topology().is_a?(ClusterTopology)
-      super()
-    else
-      false
     end
   end
 end

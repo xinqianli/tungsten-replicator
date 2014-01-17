@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2011-13 Continuent Inc.
+ * Copyright (C) 2011-12 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -95,20 +95,10 @@ public class BufferedFileDataInput
      * 
      * @return Number of bytes available for non-blocking read
      */
-    public long available() throws IOException, InterruptedException
+    public long available() throws IOException
     {
-        try
-        {
-            available = fileChannel.size() - offset;
-            return available;
-        }
-        catch (ClosedByInterruptException e)
-        {
-            // This is NIO's version of an interrupt, which we convert
-            // for convenience of callers. At this point the channel is
-            // no longer good, and further calls will fail.
-            throw new InterruptedException(e.getClass().getName());
-        }
+        available = fileChannel.size() - offset;
+        return available;
     }
 
     /**
@@ -136,12 +126,6 @@ public class BufferedFileDataInput
         while (available() < requested
                 && System.currentTimeMillis() < timeoutMillis)
         {
-            // We might get interrupted, in which case we want to terminate
-            // the loop.
-            if (Thread.interrupted())
-                throw new InterruptedException();
-
-            // Now bide a wee.
             Thread.sleep(50);
             if (System.currentTimeMillis() > nextReportMillis)
             {
@@ -151,7 +135,7 @@ public class BufferedFileDataInput
             }
         }
 
-        // Return number of bytes available for non-blocking read.
+        // Return number of bytes available for non-blocking read. 
         return available;
     }
 
@@ -213,38 +197,25 @@ public class BufferedFileDataInput
     public void seek(long seekBytes) throws FileNotFoundException, IOException,
             InterruptedException
     {
+        fileInput = new FileInputStream(file);
+        fileChannel = fileInput.getChannel();
+
         try
         {
-            // We do a close to avoid leaking file descriptors. Close might
-            // generate a ClosedByInterruptException but it is hard to be sure.
-            if (fileInput != null)
-            {
-                fileInput.close();
-            }
-
-            // Refresh the file input.
-            fileInput = new FileInputStream(file);
-            fileChannel = fileInput.getChannel();
-
-            // Position on the correct location in the file.
             fileChannel.position(seekBytes);
         }
         catch (ClosedByInterruptException e)
         {
-            // This is NIO's version of an interrupt, which we convert
-            // for convenience of callers. At this point the channel is
-            // no longer good, and further calls will fail.
+            // NIO rewrites InterruptException into this, which seems broken.
+            // To preserve interrupt handling behavior up the stack, we throw
+            // InterruptException.
             throw new InterruptedException();
         }
         bufferedInput = new BufferedInputStream(fileInput, size);
         dataInput = new DataInputStream(bufferedInput);
         offset = seekBytes;
         markOffset = -1;
-
-        // Determine number of bytes available immediately. This appears
-        // to mitigate a race condition that occurs if the thread is interrupted
-        // shortly after doing a seek. (See Google Issue 714.)
-        available();
+        available = 0;
     }
 
     /**
@@ -315,12 +286,9 @@ public class BufferedFileDataInput
     {
         try
         {
-            // We don't try to trap NIO interrupts here as we are shutting down
-            // anyway.
             if (fileChannel != null)
                 fileChannel.close();
-            if (fileInput != null)
-                fileInput.close();
+            fileInput.close();
         }
         catch (IOException e)
         {

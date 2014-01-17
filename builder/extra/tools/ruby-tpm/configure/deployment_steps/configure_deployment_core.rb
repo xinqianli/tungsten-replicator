@@ -141,6 +141,12 @@ module ConfigureDeploymentCore
     @config.getProperty(PREPARE_DIRECTORY)
   end
   
+  def get_deployment_config_file
+    file = @config.getProperty(CONFIG_FILENAME)
+    mkdir_if_absent(File.dirname(file))
+    return file
+  end
+  
   def alter_deployment_method_name(method_name)
     method_name
   end
@@ -170,7 +176,7 @@ module ConfigureDeploymentCore
   def get_root_prefix()
     prefix = @config.getProperty(ROOT_PREFIX)
     if prefix == "true" or prefix == "sudo"
-      return "sudo -n"
+      return "sudo"
     else
       return ""
     end
@@ -252,10 +258,6 @@ module ConfigureDeploymentCore
     unless File.exists?("#{@config.getProperty(LOGS_DIRECTORY)}/#{basename}")
       FileUtils.ln_sf("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/#{log_file}", "#{@config.getProperty(LOGS_DIRECTORY)}/#{basename}")
     end
-  end
-  
-  def get_host_alias
-    @config.getProperty(DEPLOYMENT_HOST)
   end
   
   def get_host_key(key)
@@ -471,9 +473,7 @@ module ConfigureDeploymentCore
       Dir.glob("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/cluster-home/conf/cluster/*").each{
         |ds_name|
         debug("Remove all files in #{ds_name}")
-        if File.exist?("#{ds_name}/datasource")
-          FileUtils.rm_rf(Dir.glob("#{ds_name}/datasource/*"))
-        end
+        FileUtils.rm_rf(Dir.glob("#{ds_name}/*"))
       }
     end
   end

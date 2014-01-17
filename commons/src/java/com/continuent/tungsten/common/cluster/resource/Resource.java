@@ -31,7 +31,14 @@ public class Resource implements Serializable
     protected String          description      = "";
     protected boolean         isContainer      = false;
     protected boolean         isExecutable     = false;
-    protected Boolean         compositeMember  = null;                      // True if part of a higher level Composite DataService
+    protected Boolean         compositeMember  = null;                  // True
+                                                                         // if
+                                                                         // part
+                                                                         // of a
+                                                                         // higher
+                                                                         // level
+                                                                         // Composite
+                                                                         // DataService
     protected ResourceType    childType        = ResourceType.UNDEFINED;
 
     public Resource()
@@ -166,7 +173,8 @@ public class Resource implements Serializable
     /**
      * Returns the compositeMember value.
      * 
-     * @return Returns the compositeMember. True if the resource is part of a higher level Composite DataService
+     * @return Returns the compositeMember. True if the resource is part of a
+     *         higher level Composite DataService
      */
     public Boolean getCompositeMember()
     {
@@ -183,7 +191,8 @@ public class Resource implements Serializable
         this.compositeMember = compositeMember;
     }
 
-    // --------------------------------- Utility functions ----------------------------------
+    // --------------------------------- Utility functions
+    // ----------------------------------
     /**
      * Copies values from fields of this instance to another instance
      * 

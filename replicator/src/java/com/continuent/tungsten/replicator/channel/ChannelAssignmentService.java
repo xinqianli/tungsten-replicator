@@ -40,8 +40,8 @@ import com.continuent.tungsten.replicator.service.PipelineService;
 /**
  * Provides a service interface to the shard-to-channel assignment table. This
  * service only works for relational databases and deactivates automatically if
- * the URL is not set.  This is necessary to permit proper operation when 
- * applying against NoSQL DBMS like MongoDB. 
+ * the URL is not set. This is necessary to permit proper operation when
+ * applying against NoSQL DBMS like MongoDB.
  * 
  * @author <a href="mailto:robert.hodges@continuent.com">Robert Hodges</a>
  */
@@ -154,12 +154,14 @@ public class ChannelAssignmentService implements PipelineService
         try
         {
             conn = DatabaseFactory.createDatabase(url, user, password);
-            conn.connect(false);
+            conn.connect();
         }
-        catch (SQLException e)
+        catch (Exception e)
         {
-            throw new ReplicatorException("Unable to connect to database: "
-                    + e.getMessage(), e);
+            throw new ReplicatorException(String.format(
+                    "Unable to connect to to database\n"
+                            + "username=%s, password=%s, url=%s", user,
+                    password, url), e);
         }
 
         String metadataSchema = context.getReplicatorSchemaName();

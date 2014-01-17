@@ -33,10 +33,15 @@ public interface PingMethod
      * Tests a host for reachability.
      * 
      * @param address Host name
+     * @param port TODO
      * @param timeout Timeout in milliseconds
      * @return True if host is reachable, otherwise false.
      */
-    public boolean ping(HostAddress address, int timeout) throws HostException;
+    public boolean ping(HostAddress address, int port, int timeout)
+            throws HostException;
+
+    public boolean ping(String host, int port, int timeoutMillis)
+            throws HostException;
 
     /**
      * Return a string describing what this ping method did. They should be set

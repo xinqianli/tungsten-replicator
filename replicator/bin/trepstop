@@ -1,0 +1,36 @@
+#!/bin/sh
+# Tungsten Replicator 1.0.3
+# (c) 2009 Continuent, Inc.  All rights reserved. 
+# 
+# Replicator *nix shutdown script
+#
+RPHOME=${OPENSHIFT_TUNGSTEN_DIR}/opt/continuent/tungsten/tungsten-replicator
+
+os=`uname -s`
+
+if [ "$os" = "SunOS" ]
+then
+   ps=/usr/ucb/ps
+else
+   ps=ps
+fi
+
+PID=`ps aux | grep ReplicationServiceManager | grep -v grep | awk '{print $2}'`
+
+# Make sure we have a PID file. 
+if [ -z $PID ]; then
+  echo "Tungsten replicator is not currently running"
+  exit 1
+fi
+
+# Kill the process. 
+kill $PID
+# Sleep to give kill a chance to work
+sleep 1
+$ps $PID > /dev/null
+if [ "$?" != 0 ]; then
+  rm $RPHOME/var/trep.pid
+  echo "Replicator process stopped [PID=$PID]" 
+else
+  echo "Could not stop the replicator at [PID=$PID] or the process did not exist"
+fi

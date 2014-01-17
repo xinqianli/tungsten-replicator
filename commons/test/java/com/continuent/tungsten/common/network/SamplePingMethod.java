@@ -22,6 +22,11 @@
 
 package com.continuent.tungsten.common.network;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+
+import org.apache.log4j.Logger;
+
 /**
  * Sample ping method to test exception handling.
  * 
@@ -31,6 +36,7 @@ public class SamplePingMethod implements PingMethod
 {
     // Can be set to tell the sample method to throw an exception.
     public static boolean exception = false;
+    private static Logger logger    = Logger.getLogger(SamplePingMethod.class);
 
     private String        notes;
 
@@ -41,7 +47,8 @@ public class SamplePingMethod implements PingMethod
      * @param timeout Timeout in milliseconds
      * @return True if host is reachable, otherwise false.
      */
-    public boolean ping(HostAddress address, int timeout) throws HostException
+    public boolean ping(HostAddress address, int port, int timeout)
+            throws HostException
     {
         if (exception)
         {
@@ -52,6 +59,27 @@ public class SamplePingMethod implements PingMethod
         {
             notes = "ok";
             return true;
+        }
+    }
+
+    public boolean ping(String host, int port, int timeoutMillis)
+            throws HostException
+    {
+        try
+        {
+            InetAddress inetAddr = InetAddress.getByName(host);
+            return (ping(new HostAddress(inetAddr), port, timeoutMillis));
+        }
+        catch (UnknownHostException u)
+        {
+            if (logger.isTraceEnabled())
+            {
+                logger.trace(String.format(
+                        "Unable to resolve host %s, %s. Returning false", host,
+                        u), u);
+            }
+
+            return false;
         }
     }
 

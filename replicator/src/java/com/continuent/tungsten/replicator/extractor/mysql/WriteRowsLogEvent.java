@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2009-2013 Continuent Inc.
+ * Copyright (C) 2009-2010 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -36,17 +36,10 @@ public class WriteRowsLogEvent extends RowsLogEvent
 
     public WriteRowsLogEvent(byte[] buffer, int eventLength,
             FormatDescriptionLogEvent descriptionEvent,
-            boolean useBytesForString, String currentPosition)
-            throws ReplicatorException
+            boolean useBytesForString) throws ReplicatorException
     {
         super(buffer, eventLength, descriptionEvent,
-                buffer[MysqlBinlog.EVENT_TYPE_OFFSET], useBytesForString);
-
-        this.startPosition = currentPosition;
-        if (logger.isDebugEnabled())
-            logger.debug("Extracting event at position  : " + startPosition
-                    + " -> " + getNextEventPosition());
-
+                MysqlBinlog.WRITE_ROWS_EVENT, useBytesForString);
     }
 
     /**
@@ -71,14 +64,7 @@ public class WriteRowsLogEvent extends RowsLogEvent
 
         int rowIndex = 0; /* index of the row in value arrays */
 
-        int size = bufferSize;
-        if (descriptionEvent.useChecksum())
-        {
-            // Remove 4 bytes for CRC
-            size -= 4;
-        }
-
-        for (int bufferIndex = 0; bufferIndex < size;)
+        for (int bufferIndex = 0; bufferIndex < bufferSize;)
         {
             int length;
 
@@ -90,8 +76,10 @@ public class WriteRowsLogEvent extends RowsLogEvent
             }
             catch (ReplicatorException e)
             {
-                logger.error(
-                        "Failure while processing extracted write row event", e);
+                logger
+                        .error(
+                                "Failure while processing extracted write row event",
+                                e);
                 throw (e);
             }
             rowIndex++;
@@ -101,11 +89,6 @@ public class WriteRowsLogEvent extends RowsLogEvent
             bufferIndex += length;
         }
         rowChanges.appendOneRowChange(oneRowChange);
-
-        // Store options, if any
-        rowChanges.addOption("foreign_key_checks", getForeignKeyChecksFlag());
-        rowChanges.addOption("unique_checks", getUniqueChecksFlag());
-
     }
 
 }

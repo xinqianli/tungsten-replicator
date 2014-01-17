@@ -1,0 +1,42 @@
+#################################
+# SERVICE-NAMES.PROPERTIES      #
+#################################
+#
+# This file defines the main JMX port for the replicator process as well
+# as the name of all replication services.  Each replication service 
+# operates a separate replicator pipeline and has a separate JMX 
+# OpenReplicatorManagerMBean interface. 
+replicator.masterListenPortStart=2112
+replicator.serviceRMIPortStart=10600
+
+# RMI port to use for advertising JMX services
+replicator.rmi_port=<%= ENV['OPENSHIFT_TUNGSTEN_REPL_RMI_PORT'] %>
+replicator.rmi_host=<%= ENV['OPENSHIFT_TUNGSTEN_IP'] %>
+
+# Comma-separate list of replicator service names.  Each replicator 
+# service must have a corresponding static-<hostname>.<svcname>.properties file.  
+replicator.services=replicator
+
+# Host where replicator is running
+replicator.host=<%= ENV['OPENSHIFT_TUNGSTEN_IP'] %>
+
+# Database connection information. 
+replicator.global.db.user=$dataService.user$
+replicator.global.db.password=$dataService.password$
+
+
+# Used by manager to create data sources dynamically
+cluster.name=<%= ENV['OPENSHIFT_APP_NAME'] %>
+replicator.source_id=<%= ENV['OPENSHIFT_TUNGSTEN_IP'] %>
+replicator.resourceJdbcUrl=jdbc:mysql://<%= ENV['OPENSHIFT_TUNGSTEN_IP'] %>:<%= ENV['OPENSHIFT_TUNGSTEN_DB_PORT'] %>/\${DBNAME}?jdbcCompliantTruncation=false&zeroDateTimeBehavior=convertToNull&tinyInt1isBit=false&allowMultiQueries=true&yearIsDateType=false
+replicator.resourceJdbcDriver=com.mysql.jdbc.Driver
+replicator.resourceVendor=mysql
+replicator.resourceLogPattern=$serviceFacet.logPattern$
+replicator.resourceLogDir=$serviceFacet.logDir$
+replicator.resourcePort=<%= ENV['OPENSHIFT_TUNGSTEN_DB_PORT'] %>
+replicator.resourceDiskLogDir=$serviceFacet.diskLogDir$ 
+replicator.resourceDataServerHost=<%= ENV['OPENSHIFT_TUNGSTEN_IP'] %>
+
+
+
+ 

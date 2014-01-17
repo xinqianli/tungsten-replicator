@@ -29,6 +29,7 @@ module ConfigureDeployment
   
   def get_deployment_configurations
     if @deployment_configs == nil
+      @config.setProperty(DEPLOYMENT_COMMAND, self.class.name)
       @deployment_configs = build_deployment_configurations()
     end
     
@@ -41,21 +42,12 @@ module ConfigureDeployment
     results = {}
 
     reset_errors()
-    
-    if use_external_configuration?()
-      load_external_configuration()
-    end
 
     begin
       @config.getPropertyOr([HOSTS], {}).each_key{
         |h_alias|
         if h_alias == DEFAULTS
           next
-        end
-        if use_external_configuration?()
-          if @config.getProperty([HOSTS, h_alias, HOST]) != Configurator.instance.hostname()
-            next
-          end
         end
 
         results[h_alias] = Tempfile.new('tpm')
@@ -83,15 +75,6 @@ module ConfigureDeployment
             elsif result.instance_of?(Hash)
               config_obj = Properties.new()
               config_obj.import(result)
-              config_obj.setProperty(DEPLOYMENT_COMMAND, self.class.name)
-              
-              # This is a local server and we need to make sure the 
-              # PREFERRED_PATH is added
-              path = config_obj.getProperty(PREFERRED_PATH)
-              unless path.to_s() == ""
-                debug("Adding #{path} to $PATH")
-                ENV['PATH'] = path + ":" + ENV['PATH']
-              end
               
               config_objs << config_obj
             end
@@ -110,11 +93,15 @@ module ConfigureDeployment
       }
     end
     
-    config_objs
+    post_build_deployment_configurations(config_objs)
   end
   
   def get_deployment_configuration(host_alias)
     raise "Undefined function: get_deployment_configuration"
+  end
+  
+  def post_build_deployment_configurations(config_objs)
+    config_objs
   end
   
   def get_deployment_objects

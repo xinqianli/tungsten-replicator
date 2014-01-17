@@ -122,8 +122,7 @@ public class PipelineProgressTest extends TestCase
         pipeline.start(new MockEventDispatcher());
 
         // Wait for and verify events.
-        Future<ReplDBMSHeader> wait = pipeline.watchForCommittedSequenceNumber(
-                9, false);
+        Future<ReplDBMSHeader> wait = pipeline.watchForProcessedSequenceNumber(9);
         ReplDBMSHeader lastEvent = wait.get(10, TimeUnit.SECONDS);
         assertEquals("Expected 10 sequence numbers", 9, lastEvent.getSeqno());
 
@@ -141,7 +140,7 @@ public class PipelineProgressTest extends TestCase
         List<TaskProgress> tasks = pipeline.getTaskProgress();
         assertEquals("two tasks in list", 2, tasks.size());
         TaskProgress task = tasks.get(1);
-        assertEquals("applied event", lastEvent, task.getLastCommittedEvent());
+        assertEquals("applied event", lastEvent, task.getLastProcessedEvent());
         assertEquals("committed event seqno", lastEvent.getSeqno(), task
                 .getLastCommittedEvent().getSeqno());
         assertEquals("events processed on task", 10, task.getEventCount());

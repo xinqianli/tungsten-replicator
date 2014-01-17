@@ -96,9 +96,8 @@ public class Replicator
 
     /** URI that slaves should use when connecting to this master. */
     public static final String MASTER_LISTEN_URI           = "masterListenUri";
-    
-    /** Indicates if SSL connection is used. */
-    public static final String USE_SSL_CONNECTION         = "useSSLConnection";
+
+    public static final String MASTER_LISTEN_PROXY_PORT    = "masterListenProxyPort";
 
     /** Name of the site to which this replicator belongs. */
     public static final String SITENAME                    = "siteName";
@@ -222,11 +221,6 @@ public class Replicator
      * Denotes the source of the head extractor.
      */
     public static final String PIPELINE_SOURCE             = "pipelineSource";
-
-    /**
-     * Denotes the source of the head extractor.
-     */
-    public static final String SSL_LOG_CONNECTION          = "sslLogConnection";
 
     /**
      * Denotes the number of channels for parallel apply.

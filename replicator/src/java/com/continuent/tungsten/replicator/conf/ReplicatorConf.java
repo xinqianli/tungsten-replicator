@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Teemu Ollakka
- * Contributor(s): Alex Yurchenko, Linas Virbalas, Stephane Giron, Robert Hodges
+ * Contributor(s): Alex Yurchenko, Linas Virbalas, Stephane Giron
  */
 
 package com.continuent.tungsten.replicator.conf;
@@ -37,6 +37,7 @@ public class ReplicatorConf
     static public final String   ROLE                                  = "replicator.role";
     static public final String   ROLE_MASTER                           = "master";
     static public final String   ROLE_SLAVE                            = "slave";
+    static public final String   ROLE_UNDEFINED                        = "undefined";
 
     /** Whether we are operating normally or in slave takeover mode. */
     static public final String   NATIVE_SLAVE_TAKEOVER                 = "replicator.nativeSlaveTakeover";
@@ -55,6 +56,13 @@ public class ReplicatorConf
     static public final String   MASTER_LISTEN_URI                     = "replicator.master.listen.uri";
 
     /**
+     * Port that we must connect to in order to get to the replicator behind a
+     * firewall. The replicator will be listening on a local port and external
+     * processes can then connect to that port via this proxy.
+     */
+    static public final String   MASTER_LISTEN_PROXY_PORT              = "replicator.master.listen.proxy.port";
+
+    /**
      * Should the master checks that its THL is in sync with its database before
      * starting. By default, it is turned on
      */
@@ -64,13 +72,6 @@ public class ReplicatorConf
     /** Whether to go online automatically at startup time. */
     static public final String   AUTO_ENABLE                           = "replicator.auto_enable";
     static public final String   AUTO_ENABLE_DEFAULT                   = "false";
-
-    /**
-     * Whether to reposition data extraction automatically on a master when the
-     * source_id changes.
-     */
-    static public final String   AUTO_MASTER_REPOSITIONING             = "replicator.repositionOnSourceIdChange";
-    static public final String   AUTO_MASTER_REPOSITIONING_DEFAULT     = "true";
 
     /** Whether to automatically provision this server at startup time. */
     static public final String   AUTO_PROVISION                        = "replicator.auto_provision";

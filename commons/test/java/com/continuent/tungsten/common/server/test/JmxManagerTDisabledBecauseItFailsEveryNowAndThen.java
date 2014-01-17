@@ -85,8 +85,9 @@ public class JmxManagerTDisabledBecauseItFailsEveryNowAndThen extends TestCase
         System.out.println(String.format(
                 "Connecting to service, host=%s, port=%d, serviceName=%s", host,
                 port, serviceName));
+        
         // Connect to the JMX server and get a stub for this MBean.
-        JMXConnector connector = JmxManager.getRMIConnector(host, port,
+        JMXConnector connector = jmx.getRMIConnector(host, port,
                 serviceName);
         assertNotNull("Checking that connector is not null", connector);
 

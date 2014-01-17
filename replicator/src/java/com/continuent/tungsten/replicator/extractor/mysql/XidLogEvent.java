@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2009-2013 Continuent Inc.
+ * Copyright (C) 2009 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -37,22 +37,10 @@ public class XidLogEvent extends LogEvent
     long xid;
 
     public XidLogEvent(byte[] buffer, int eventLength,
-            FormatDescriptionLogEvent descriptionEvent, String currentPosition)
+            FormatDescriptionLogEvent descriptionEvent)
             throws ReplicatorException
     {
         super(buffer, descriptionEvent, MysqlBinlog.XID_EVENT);
-
-        this.startPosition = currentPosition;
-        if (logger.isDebugEnabled())
-            logger.debug("Extracting event at position  : " + startPosition
-                    + " -> " + getNextEventPosition());
-
-        if (descriptionEvent.useChecksum())
-        {
-            // Removing the checksum from the size of the event
-            eventLength -= 4;
-        }
-
         try
         {
             xid = LittleEndianConversion.convert8BytesToLong(buffer,
@@ -62,8 +50,6 @@ public class XidLogEvent extends LogEvent
         {
             throw new MySQLExtractException("could not extract trx id", e);
         }
-
-        doChecksum(buffer, eventLength, descriptionEvent);
     }
 
     public long getXid()

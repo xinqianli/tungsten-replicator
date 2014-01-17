@@ -58,10 +58,8 @@ public class Encryptor
      * Creates a new <code>Encryptor</code> object
      * 
      * @param authenticationInfo
-     * @throws ConfigurationException 
-     * @throws ServerRuntimeException 
      */
-    public Encryptor(AuthenticationInfo authenticationInfo) throws ServerRuntimeException, ConfigurationException
+    public Encryptor(AuthenticationInfo authenticationInfo)
     {
         this.authenticationInfo = authenticationInfo;
 
@@ -149,7 +147,7 @@ public class Encryptor
     }
 
     /**
-     * Encrypt a String using public key located in truststore.
+     * Encrypt a String using private key located in keystore.
      * 
      * @param message to be encrypted
      * @return Base64 encoded and encryoted message
@@ -157,12 +155,12 @@ public class Encryptor
     public String encrypt(String message)
     {
         String base64 = null;
-        PublicKey publicKey = this.getPublicKey_from_Truststore();
+        PrivateKey privateKey = this.getPrivateKey_from_KeyStore();
 
         try
         {
-            Cipher cipher = Cipher.getInstance(publicKey.getAlgorithm());
-            cipher.init(Cipher.ENCRYPT_MODE, publicKey);
+            Cipher cipher = Cipher.getInstance(privateKey.getAlgorithm());
+            cipher.init(Cipher.ENCRYPT_MODE, privateKey);
 
             // Gets the raw bytes to encrypt, UTF8 is needed for
             // having a standard character set
@@ -186,7 +184,7 @@ public class Encryptor
     }
 
     /**
-     * Decrypt a String using private key located in KeyStore.
+     * Encrypt a String using private key located in truststore.
      * 
      * @param encryptedMessage
      * @return Decrypted String
@@ -199,12 +197,12 @@ public class Encryptor
             return null;
 
         String clearMessage = null;
-        PrivateKey privateKey = this.getPrivateKey_from_KeyStore();
+        PublicKey publicKey = this.getPublicKey_from_Truststore();
 
         try
         {
-            Cipher cipher = Cipher.getInstance(privateKey.getAlgorithm());
-            cipher.init(Cipher.DECRYPT_MODE, privateKey);
+            Cipher cipher = Cipher.getInstance(publicKey.getAlgorithm());
+            cipher.init(Cipher.DECRYPT_MODE, publicKey);
 
             // Decode the BASE64 coded message
             byte[] raw = DatatypeConverter.parseBase64Binary(encryptedMessage);
@@ -213,8 +211,7 @@ public class Encryptor
             byte[] stringBytes = cipher.doFinal(raw);
 
             // converts the decoded message to a String
-            clearMessage = new String(stringBytes, "UTF8");      
-            
+            clearMessage = new String(stringBytes, "UTF8");
         }
         catch (Exception e)
         {

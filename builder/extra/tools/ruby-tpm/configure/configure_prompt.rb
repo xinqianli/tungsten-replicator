@@ -426,12 +426,8 @@ class ConfigurePrompt
     end
   end
   
-  def build_command_line_argument?(member, v)
-    enabled_for_command_line?()
-  end
-  
-  def build_command_line_argument(member, v, public_argument = false)
-    if build_command_line_argument?(member, v)
+  def build_command_line_argument(v)
+    if enabled_for_command_line?()
       return ["--#{get_command_line_argument()}=#{v}"]
     else
       debug("The argument for #{@name} is not accepted on the command line")
@@ -521,14 +517,16 @@ module ConstantValueModule
     
     return enabled_for_config?()
   end
+  
+  def output_config_file_usage
+  end
 end
 
 module HiddenValueModule
   def output_usage
   end
   
-  def required?
-    false
+  def output_template_file_usage
   end
 end
 
@@ -710,7 +708,7 @@ module CommercialPrompt
     if Configurator.instance.is_enterprise?()
       super()
     else
-      super()
+      false
     end
   end
   
@@ -718,7 +716,7 @@ module CommercialPrompt
     if Configurator.instance.is_enterprise?()
       super()
     else
-      super()
+      false
     end
   end
 end
@@ -741,35 +739,6 @@ module NoStoredServerConfigValue
       @config.setProperty(get_name(), nil)
       @config.setProperty([SYSTEM] + get_name().split('.'), nil)
     end
-  end
-end
-
-module PrivateArgumentModule
-  def build_command_line_argument(member, v, public_argument = false)
-    if public_argument == true
-      v = Array.new(v.length).fill("@").join("")
-    end
-    
-    super(member, v, public_argument)
-  end
-end
-
-module MigrateFromReplicationServices
-  def update_deprecated_keys
-    @config.getPropertyOr([REPL_SERVICES], {}).each{
-      |rs_alias,rs_props|
-      if rs_props.has_key?(@name)
-        @config.setProperty([HOSTS, rs_props[DEPLOYMENT_HOST], @name], rs_props[@name])
-        rs_props.delete(@name)
-      end
-    }
-    @config.getPropertyOr([DATASERVICE_REPLICATION_OPTIONS], {}).each{
-      |rs_alias,rs_props|
-      if rs_props.has_key?(@name)
-        @config.setProperty([DATASERVICE_HOST_OPTIONS, rs_alias, @name], rs_props[@name])
-        rs_props.delete(@name)
-      end
-    }
   end
 end
 
@@ -811,15 +780,5 @@ module PortForReplicators
 
   def self.paths
     @paths || []
-  end
-end
-module DeploymentFiles
-  def self.register(local, global, group = HOSTS)
-    @prompts ||= []
-    @prompts << {:local => local, :global => global, :group => group}
-  end
-
-  def self.prompts
-    @prompts || []
   end
 end

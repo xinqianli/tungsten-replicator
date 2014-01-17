@@ -123,7 +123,7 @@ public class JdbcApplier implements RawApplier
      * because some statements may be very large. TODO: make this configurable
      * via replicator.properties
      */
-    protected int                     maxSQLLogLength            = 5000;
+    protected int                     maxSQLLogLength            = 3000;
 
     private TableMetadataCache        tableMetadataCache;
 
@@ -184,9 +184,13 @@ public class JdbcApplier implements RawApplier
         this.ignoreSessionVars = ignoreSessionVars;
     }
 
-    public void setGetColumnMetadataFromDB(boolean getColumnInformationFromDB)
+    public void setGetColumnMetadataFromDB(String getMetadataFromDB)
     {
-        this.getColumnInformationFromDB = getColumnInformationFromDB;
+        getColumnInformationFromDB = getMetadataFromDB.toLowerCase().compareTo(
+                "false") != 0;
+        if (!getColumnInformationFromDB)
+            logger.info("Using event column metadata. Not fetching information from underlying database.");
+
     }
 
     /**
@@ -320,24 +324,20 @@ public class JdbcApplier implements RawApplier
                 String msg = "Consistency check succeeded on table '"
                         + schemaName + "." + tableName + "' id: " + id
                         + ", offset: " + rowOffset + ", limit: " + rowLimit
-                        + ", method: '" + method + "' succeeded";
-                logger.info(msg);
-                String debug = "this_cnt  : " + this_cnt + "\nmaster_cnt: "
+                        + ", method: '" + method + "' succeeded:"
+                        + "\nthis_cnt  : " + this_cnt + "\nmaster_cnt: "
                         + master_cnt + "\nthis_crc  : " + this_crc
                         + "\nmaster_crc: " + master_crc;
-                if (logger.isDebugEnabled())
-                    logger.debug(debug);
+                logger.info(msg);
                 return;
             }
         }
 
         String msg = "Consistency check failed on table '" + schemaName + "."
                 + tableName + "' id: " + id + ", offset: " + rowOffset
-                + ", limit: " + rowLimit + ", method: '" + method + "' failed";
-        if (logger.isDebugEnabled())
-            msg += "\nthis_cnt  : " + this_cnt + "\nmaster_cnt: " + master_cnt
-                    + "\nthis_crc  : " + this_crc + "\nmaster_crc: "
-                    + master_crc;
+                + ", limit: " + rowLimit + ", method: '" + method + "' failed:"
+                + "\nthis_cnt  : " + this_cnt + "\nmaster_cnt: " + master_cnt
+                + "\nthis_crc  : " + this_crc + "\nmaster_crc: " + master_crc;
 
         throw new ConsistencyException(msg);
     }
@@ -415,10 +415,8 @@ public class JdbcApplier implements RawApplier
      * @return Number of columns that a table has. Zero, if no columns were
      *         retrieved (table does not exist or has no columns).
      * @throws SQLException
-     * @throws ApplierException
      */
-    protected int fillColumnNames(OneRowChange data) throws SQLException,
-            ApplierException
+    protected int fillColumnNames(OneRowChange data) throws SQLException
     {
         Table t = tableMetadataCache.retrieve(data.getSchemaName(),
                 data.getTableName());
@@ -433,32 +431,16 @@ public class JdbcApplier implements RawApplier
             {
                 rs = conn.getColumnsResultSet(meta, data.getSchemaName(),
                         data.getTableName());
-                if (rs.next())
+                while (rs.next())
                 {
-                    do
-                    {
-                        String columnName = rs.getString("COLUMN_NAME");
-                        int columnIdx = rs.getInt("ORDINAL_POSITION");
+                    String columnName = rs.getString("COLUMN_NAME");
+                    int columnIdx = rs.getInt("ORDINAL_POSITION");
 
-                        Column column = addColumn(rs, columnName);
-                        column.setPosition(columnIdx);
-                        t.AddColumn(column);
-                    }
-                    while (rs.next());
-                    tableMetadataCache.store(t);
+                    Column column = addColumn(rs, columnName);
+                    column.setPosition(columnIdx);
+                    t.AddColumn(column);
                 }
-                else
-                {
-                    // Empty resultset, i.e. table not found in database : it
-                    // won't be possible to generate a correct statement for
-                    // this row update
-                    throw new ApplierException(
-                            "Table "
-                                    + data.getSchemaName()
-                                    + "."
-                                    + data.getTableName()
-                                    + " not found in database. Unable to generate a valid statement.");
-                }
+                tableMetadataCache.store(t);
             }
             finally
             {
@@ -1099,7 +1081,7 @@ public class JdbcApplier implements RawApplier
                     .getKeyValues();
             ArrayList<ArrayList<OneRowChange.ColumnVal>> columnValues = oneRowChange
                     .getColumnValues();
-            String log = "Failing statement: " + stmt.toString()
+            String log = "Failing statement : " + stmt.toString()
                     + "\nArguments:";
             log += logFailedRowChangeValues(keys, columns, keyValues,
                     columnValues, row);
@@ -1182,7 +1164,7 @@ public class JdbcApplier implements RawApplier
                 OneRowChange.ColumnVal value = values.get(c);
                 log.append('\n');
                 log.append(THLManagerCtrl.formatColumn(colSpec, value, "COL",
-                        "utf8", false, true));
+                        "utf8", false));
             }
         }
         // Print key values.
@@ -1195,7 +1177,7 @@ public class JdbcApplier implements RawApplier
                 OneRowChange.ColumnVal value = values.get(k);
                 log.append('\n');
                 log.append(THLManagerCtrl.formatColumn(colSpec, value, "KEY",
-                        "utf8", false, true));
+                        "utf8", false));
             }
         }
         return log.toString();
@@ -1209,26 +1191,6 @@ public class JdbcApplier implements RawApplier
             try
             {
                 if (applySessionVariables(options))
-                {
-                    // Apply session variables to the connection only if
-                    // something changed
-                    statement.executeBatch();
-                    statement.clearBatch();
-                }
-            }
-            catch (SQLException e)
-            {
-                throw new ApplierException("Failed to apply session variables",
-                        e);
-            }
-        }
-
-        List<ReplOption> rowOptions = data.getOptions();
-        if (rowOptions != null)
-        {
-            try
-            {
-                if (applySessionVariables(rowOptions))
                 {
                     // Apply session variables to the connection only if
                     // something changed
@@ -1321,7 +1283,7 @@ public class JdbcApplier implements RawApplier
             else if (header instanceof ReplDBMSFilteredEvent)
             {
                 // This is a range of filtered events
-                // Update the position and commit if desired.
+                // Update the position and commit if desired. 
                 ((ReplDBMSFilteredEvent) header).updateCommitSeqno();
                 updateCommitSeqno(header, appliedLatency);
                 if (doCommit)

@@ -1,5 +1,5 @@
 module ClusterDiagnosticPackage
-  LOG_SIZE = 10*1024*1024
+  LOG_SIZE = 2*1024*1024
   
   def get_diagnostic_file
     @zip_file
@@ -30,48 +30,20 @@ module ClusterDiagnosticPackage
     
     get_deployment_configurations().each{
       |config|
-      build_topologies(config)
-      
       h_alias = config.getProperty(DEPLOYMENT_HOST)
       FileUtils.mkdir_p("#{diag_dir}/#{h_alias}")
       
-      out = File.open("#{diag_dir}/#{h_alias}/manifest.json", "w")
-      out.puts(@promotion_settings.getProperty([h_alias, "manifest"]))
-      out.close
-      
-      out = File.open("#{diag_dir}/#{h_alias}/tpm.txt", "w")
-      out.puts(@promotion_settings.getProperty([h_alias, "tpm_reverse"]))
-      out.close
-      
       if @promotion_settings.getProperty([h_alias, REPLICATOR_ENABLED]) == "true"
-        if @promotion_settings.getProperty([h_alias, MANAGER_ENABLED]) == "true"
-          out = File.open("#{diag_dir}/#{h_alias}/cctrl.txt", "w")
-          out.puts(@promotion_settings.getProperty([h_alias, "cctrl_status"]))
-          out.close
-        end
-      
-        out = File.open("#{diag_dir}/#{h_alias}/trepctl.json", "w")
-        out.puts(@promotion_settings.getProperty([h_alias, "replicator_json_status"]))
+        out = File.open("#{diag_dir}/#{h_alias}/cctrl.txt", "w")
+        out.puts(@promotion_settings.getProperty([h_alias, "cctrl_status"]))
         out.close
-        
+      
         out = File.open("#{diag_dir}/#{h_alias}/trepctl.txt", "w")
-        config.getPropertyOr([REPL_SERVICES], {}).keys().sort().each{
-          |rs_alias|
-          if rs_alias == DEFAULTS
-            next
-          end
-          out.puts(@promotion_settings.getProperty([h_alias, "replicator_status_#{rs_alias}"]))
-        }
+        out.puts(@promotion_settings.getProperty([h_alias, "replicator_status"]))
         out.close
       
         out = File.open("#{diag_dir}/#{h_alias}/thl.txt", "w")
-        config.getPropertyOr([REPL_SERVICES], {}).keys().sort().each{
-          |rs_alias|
-          if rs_alias == DEFAULTS
-            next
-          end
-          out.puts(@promotion_settings.getProperty([h_alias, "thl_info_#{rs_alias}"]))
-        }
+        out.puts(@promotion_settings.getProperty([h_alias, "thl_info"]))
         out.close
         
         begin
@@ -85,48 +57,13 @@ module ClusterDiagnosticPackage
         end
         
         begin
-          log = "#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/log/xtrabackup.log"
-          if remote_file_exists?(log, config.getProperty(HOST), config.getProperty(USERID))
-            scp_download(log, "#{diag_dir}/#{h_alias}/xtrabackup.log", config.getProperty(HOST), config.getProperty(USERID))
-          end
+          scp_download("#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-manager/log/tmsvc.log", "#{diag_dir}/#{h_alias}/tmsvc.log.tmp", config.getProperty(HOST), config.getProperty(USERID))
+          copy_log("#{diag_dir}/#{h_alias}/tmsvc.log.tmp", "#{diag_dir}/#{h_alias}/tmsvc.log", LOG_SIZE)
+          FileUtils.rm("#{diag_dir}/#{h_alias}/tmsvc.log.tmp")
         rescue CommandError => ce
           exception(ce)
         rescue MessageError => me
           exception(me)
-        end
-        
-        begin
-          log = "#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/log/mysqldump.log"
-          if remote_file_exists?(log, config.getProperty(HOST), config.getProperty(USERID))
-            scp_download(log, "#{diag_dir}/#{h_alias}/mysqldump.log", config.getProperty(HOST), config.getProperty(USERID))
-          end
-        rescue CommandError => ce
-          exception(ce)
-        rescue MessageError => me
-          exception(me)
-        end
-        
-        begin
-          log = "#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/log/script.log"
-          if remote_file_exists?(log, config.getProperty(HOST), config.getProperty(USERID))
-            scp_download(log, "#{diag_dir}/#{h_alias}/script.log", config.getProperty(HOST), config.getProperty(USERID))
-          end
-        rescue CommandError => ce
-          exception(ce)
-        rescue MessageError => me
-          exception(me)
-        end
-        
-        if @promotion_settings.getProperty([h_alias, MANAGER_ENABLED]) == "true"
-          begin
-            scp_download("#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-manager/log/tmsvc.log", "#{diag_dir}/#{h_alias}/tmsvc.log.tmp", config.getProperty(HOST), config.getProperty(USERID))
-            copy_log("#{diag_dir}/#{h_alias}/tmsvc.log.tmp", "#{diag_dir}/#{h_alias}/tmsvc.log", LOG_SIZE)
-            FileUtils.rm("#{diag_dir}/#{h_alias}/tmsvc.log.tmp")
-          rescue CommandError => ce
-            exception(ce)
-          rescue MessageError => me
-            exception(me)
-          end
         end
       end
       
@@ -142,7 +79,7 @@ module ClusterDiagnosticPackage
         end
       end
       
-      df_output=ssh_result("df -hP| grep -v Filesystem", config.getProperty(HOST), config.getProperty(USERID)).split("\n")
+      df_output=ssh_result("df -hP| grep -v Filesystem", config.getProperty(HOST), config.getProperty(USERID))
       df_output.each {|partition|
         partition_a=partition.split(" ")
         if partition_a[4] == '100%'
@@ -197,12 +134,8 @@ class ClusterDiagnosticCheck < ConfigureValidationCheck
     cctrl_cmd = c.get_cctrl_path(current_release_directory, @config.getProperty(MGR_RMI_PORT))
     trepctl_cmd = c.get_trepctl_path(current_release_directory, @config.getProperty(REPL_RMI_PORT))
     thl_cmd = c.get_thl_path(current_release_directory)
-    tpm_cmd = c.get_tpm_path(current_release_directory)
     
     begin
-      output_property("manifest", cmd_result("cat #{current_release_directory}/.manifest.json"))
-      output_property("tpm_reverse", cmd_result("#{tpm_cmd} reverse --public"))
-      
       ["manager", "replicator", "connector"].each {
         |svc|
         svc_path = c.get_svc_path(svc, c.get_base_path())
@@ -212,24 +145,11 @@ class ClusterDiagnosticCheck < ConfigureValidationCheck
         end
       }
       
-      if c.svc_is_running?(c.get_svc_path("manager", c.get_base_path()))
-        cmd_result("echo 'physical;*/*/manager/ServiceManager/diag' | #{cctrl_cmd} -expert", true)
-        cmd_result("echo 'physical;*/*/router/RouterManager/diag' | #{cctrl_cmd} -expert", true)
-        output_property("cctrl_status", cmd_result("echo 'ls -l' | #{cctrl_cmd} -expert", true))
-      end
-      
-      if c.svc_is_running?(c.get_svc_path("replicator", c.get_base_path()))
-        output_property("replicator_json_status", cmd_result("#{trepctl_cmd} services -full -json", true))
-        
-        @config.getPropertyOr([REPL_SERVICES], {}).keys().sort().each{
-          |rs_alias|
-          if rs_alias == DEFAULTS
-            next
-          end
-          output_property("replicator_status_#{rs_alias}", cmd_result("#{trepctl_cmd} -service #{@config.getProperty([REPL_SERVICES, rs_alias, DEPLOYMENT_SERVICE])} status", true))
-          output_property("thl_info_#{rs_alias}", cmd_result("#{thl_cmd} -service #{@config.getProperty([REPL_SERVICES, rs_alias, DEPLOYMENT_SERVICE])} info", true))
-        }
-      end
+      cmd_result("echo 'physical;*/*/manager/ServiceManager/diag' | #{cctrl_cmd} -expert", true)
+      cmd_result("echo 'physical;*/*/router/RouterManager/diag' | #{cctrl_cmd} -expert", true)
+      output_property("cctrl_status", cmd_result("echo 'ls -l' | #{cctrl_cmd} -expert", true))
+      output_property("replicator_status", cmd_result("#{trepctl_cmd} status", true))
+      output_property("thl_info", cmd_result("#{thl_cmd} info", true))
     rescue CommandError => ce
       exception(ce)
       error(ce.message)

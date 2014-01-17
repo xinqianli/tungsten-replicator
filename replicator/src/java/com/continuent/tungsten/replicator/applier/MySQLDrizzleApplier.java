@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2013 Continuent Inc.
+ * Copyright (C) 2010 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -32,11 +32,8 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.SQLWarning;
 import java.sql.Time;
-import java.sql.Timestamp;
 import java.sql.Types;
-import java.text.SimpleDateFormat;
 import java.util.List;
-import java.util.TimeZone;
 
 import org.apache.log4j.Logger;
 import org.drizzle.jdbc.DrizzleStatement;
@@ -57,12 +54,9 @@ import com.continuent.tungsten.replicator.plugin.PluginContext;
 public class MySQLDrizzleApplier extends MySQLApplier
 {
 
-    static Logger                         logger        = Logger.getLogger(MySQLDrizzleApplier.class);
+    static Logger   logger        = Logger.getLogger(MySQLDrizzleApplier.class);
 
-    private boolean                       alreadyLogged = false;
-
-    private static final SimpleDateFormat formatter     = new SimpleDateFormat(
-                                                                "yyyy-MM-dd HH:mm:ss");
+    private boolean alreadyLogged = false;
 
     @Override
     public void configure(PluginContext context) throws ReplicatorException
@@ -85,7 +79,6 @@ public class MySQLDrizzleApplier extends MySQLApplier
         }
         else if (logger.isDebugEnabled())
             logger.debug("Property url already set; ignoring host and port properties");
-        formatter.setTimeZone(TimeZone.getTimeZone("GMT"));
         super.configure(context);
     }
 
@@ -260,12 +253,11 @@ public class MySQLDrizzleApplier extends MySQLApplier
         {
             ((DrizzleStatement) statement).setLocalInfileInputStream(null);
         }
-
+        
         // Clean up the temp file as we may not get a delete file event.
         if (logger.isDebugEnabled())
         {
-            logger.debug("Deleting temp file: "
-                    + temporaryFile.getAbsolutePath());
+            logger.debug("Deleting temp file: " + temporaryFile.getAbsolutePath());
         }
         temporaryFile.delete();
     }
@@ -290,24 +282,8 @@ public class MySQLDrizzleApplier extends MySQLApplier
         }
         else if (columnSpec.getType() == Types.TIME)
         {
-            if (value.getValue() instanceof Timestamp)
-            {
-                Timestamp timestamp = ((Timestamp) value.getValue());
-                StringBuffer time = new StringBuffer(new Time(
-                        timestamp.getTime()).toString());
-                if (timestamp.getNanos() > 0)
-                {
-                    time.append(".");
-                    time.append(String.format("%09d%n", timestamp.getNanos()));
-                }
-                prepStatement.setString(bindLoc, time.toString());
-            }
-            else
-            {
-
-                Time t = (Time) value.getValue();
-                prepStatement.setString(bindLoc, t.toString());
-            }
+            Time t = (Time) value.getValue();
+            prepStatement.setString(bindLoc, t.toString());
         }
         else if (columnSpec.getType() == Types.DOUBLE)
         {
@@ -324,8 +300,7 @@ public class MySQLDrizzleApplier extends MySQLApplier
         {
             int length = ((byte[]) value.getValue()).length;
 
-            if (columnSpec.getTypeDescription() != null
-                    && columnSpec.getTypeDescription().startsWith("BINARY")
+            if (columnSpec.getTypeDescription().startsWith("BINARY")
                     && length < columnSpec.getLength())
             {
                 ByteBuffer bb = ByteBuffer.allocate(columnSpec.getLength());
@@ -337,25 +312,6 @@ public class MySQLDrizzleApplier extends MySQLApplier
             else
                 prepStatement.setString(bindLoc,
                         hexdump((byte[]) value.getValue()));
-        }
-        else if (columnSpec.getType() == Types.TIMESTAMP
-                && value.getValue() instanceof Timestamp /* Issue 679 */)
-        {
-            prepStatement.setString(bindLoc,
-                    ((Timestamp) value.getValue()).toString());
-        }
-        else if (columnSpec.getType() == Types.DATE
-                && value.getValue() instanceof Timestamp)
-        {
-            Timestamp ts = (Timestamp) value.getValue();
-            StringBuffer date = new StringBuffer(formatter.format(ts));
-            if (ts.getNanos() > 0)
-            {
-                date.append(".");
-                date.append(String.format("%09d%n", ts.getNanos()));
-            }
-            prepStatement.setString(bindLoc, date.toString());
-
         }
         else if (columnSpec.getType() == Types.BLOB
                 && value.getValue() instanceof SerialBlob
@@ -369,4 +325,5 @@ public class MySQLDrizzleApplier extends MySQLApplier
         else
             super.setObject(prepStatement, bindLoc, value, columnSpec);
     }
+
 }

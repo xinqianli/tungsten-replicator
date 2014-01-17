@@ -177,9 +177,6 @@ class Configurator
   def run
     parsed_options?(ARGV)
     
-    warning("This command has been DEPRECATED")
-    warning("Switch to the tpm script for managing installation and upgrade")
-    
     write_header "Tungsten #{tungsten_version()} Configuration Procedure"
     display_help()
     
@@ -635,7 +632,7 @@ Do you want to continue with the configuration (Y) or quit (Q)?"
   end
 
   def output_version
-    write "#{File.basename(__FILE__)} version #{get_release_version}"
+    write "#{File.basename(__FILE__)} version #{VERSION}"
   end
   
   def display_help
@@ -954,12 +951,6 @@ Do you want to continue with the configuration (Y) or quit (Q)?"
   def get_release_name
     release_details = get_release_details()
     release_details["name"]
-  end
-  
-  # Parse the manifest to determine what kind of package this is
-  def get_release_version
-    release_details = get_release_details()
-    release_details["version"]
   end
   
   def advanced_mode?

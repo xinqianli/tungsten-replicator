@@ -1,0 +1,97 @@
+#!/bin/sh
+# Tungsten Replicator 1.0.3
+# (c) 2009 Continuent, Inc.  All rights reserved. 
+#
+# Replicator *nix control script
+#
+# Environmental variables accepted by this script.  All variables are optional
+# and are replaced by reasonable defaults if not specificed explicitly. 
+#   JAVA_HOME - Java release directory
+#   JVM_OPTIONS - Java VM options (defaults to -Xmx=256m)
+#   REPLICATOR_LOG_DIR - Replicator log directory (defaults to $RPHOME/log)
+#   REPLICATOR_PROPERTIES_FILE - Location of replicator properties file
+#   REPLICATOR_RMI_PORT - Replicator RMI port
+
+
+# Replicator manager class.
+RP_MGR_NAME=com.continuent.tungsten.replicator.management.ReplicationServiceManager
+
+RPHOME=${OPENSHIFT_TUNGSTEN_DIR}/opt/continuent/tungsten/tungsten-replicator
+
+PID=`ps aux | grep OpenReplicatorManager | grep -v grep | awk '{print $2}'`
+
+# Make sure we don't have a runnint replicator. 
+if [ "$PID" != "" ]; then
+  echo "Tungsten replicator is currently running"
+  exit 1
+fi
+
+
+# Add jars from all directories to class path.
+for jar in $RPHOME/lib/*.jar $RPHOME/lib/lib-ext/*.jar; do
+  if [ -z "$CP" ]; then
+    CP=$jar
+  else
+    CP=$CP:$jar
+  fi
+done
+
+# Add configuration directory to class path.
+CP=$CP:$RPHOME/conf
+
+# Set default for JVM_OPTIONS. 
+if [ -z "$JVM_OPTIONS" ]; then
+  JVM_OPTIONS="-Xmx256m"
+fi
+
+# Find Java.
+if [ -z "$JAVA_HOME" ]; then
+  JAVA=`which java`
+else
+  JAVA=$JAVA_HOME/bin/java
+fi
+if [ ! -x "$JAVA" ]; then
+  echo "Cannot find java command.  Please set the JAVA_HOME environment"
+  echo "variable or add java to the execution path."
+  exit 1
+fi
+
+# Set log directory.
+if [ -z "$REPLICATOR_LOG_DIR" ]; then
+  REPLICATOR_LOG_DIR=$RPHOME/log
+fi
+if [ ! -d "$REPLICATOR_LOG_DIR" ]; then
+  echo "Cannot find replicator log directory: $REPLICATOR_LOG_DIR"
+  exit 1
+fi
+JVM_OPTIONS="${JVM_OPTIONS} -Dreplicator.log.dir=$REPLICATOR_LOG_DIR"
+
+# Define replicator properties file. 
+if [ ! -z "$REPLICATOR_PROPERTIES_FILE" ]; then
+  if [ ! -f "$REPLICATOR_PROPERTIES_FILE" ]; then
+    echo "Replicator properties file missing: $REPLICATOR_PROPERTIES_FILE"
+    exit 1
+  else
+    JVM_OPTIONS="${JVM_OPTIONS} -Dreplicator.properties=$REPLICATOR_PROPERTIES_FILE"
+  fi
+fi
+
+# Set RMI port.
+#if [ ! -z "$REPLICATOR_RMI_PORT" ]; then
+#  JVM_OPTIONS="${JVM_OPTIONS} -Dreplicator.rmi_port=$REPLICATOR_RMI_PORT"
+#fi
+
+# Uncomment to debug replicator VM. 
+#JVM_OPTIONS="${JVM_OPTIONS} -enableassertions -Xdebug -Xnoagent -Djava.compiler=none -Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=${OPENSHIFT_TUNGSTEN_IP}:${OPENSHIFT_TUNGSTEN_DEBUG_PORT}"
+
+# Set JMX remote debugging. 
+if [ -f $RPHOME/conf/jmx.properties ]; then
+  JMX_OPTIONS="-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=10001 -Dcom.sun.management.config.file=$RPHOME/conf/jmx.properties"
+fi
+
+# Start nohup-ed Java process. 
+nohup $JAVA -cp $CP $JMX_OPTIONS -Dreplicator.home.dir=$RPHOME $JVM_OPTIONS $RP_MGR_NAME $* >> $REPLICATOR_LOG_DIR/trepsvc.log 2>&1 &
+
+# Fill out PID file and print message. 
+PID=$!
+echo "Replicator process started [PID=$PID]"

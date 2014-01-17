@@ -165,7 +165,7 @@ public class InMemoryTransactionalQueue implements Store
      */
     public long getMinStoredSeqno()
     {
-        return -1;
+        return 0;
     }
 
     /**

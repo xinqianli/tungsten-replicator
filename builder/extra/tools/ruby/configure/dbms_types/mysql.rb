@@ -3,7 +3,6 @@ require 'tempfile'
 DBMS_MYSQL = "mysql"
 
 # MySQL-specific parameters
-MYSQL_DRIVER = "mysql_driver"
 REPL_MYSQL_DATADIR = "repl_datasource_mysql_data_directory"
 REPL_MYSQL_IBDATADIR = "repl_datasource_mysql_ibdata_directory"
 REPL_MYSQL_IBLOGDIR = "repl_datasource_mysql_iblog_directory"
@@ -200,25 +199,6 @@ end
 #
 # Prompts
 #
-
-class MySQLDriver < ConfigurePrompt
-  include ClusterHostPrompt
-  
-  def initialize
-    pv = PropertyValidator.new("^mysql|drizzle|mariadb$", 
-      "Value must be mysql, drizzle or mariadb")
-      
-    super(MYSQL_DRIVER, "MySQL Driver Vendor", pv, "mysql")
-  end
-  
-  def get_template_value(transform_values_method)
-    if get_value() == "drizzle"
-      "mysql:thin"
-    else
-      "mysql"
-    end
-  end
-end
 
 class MySQLConfigurePrompt < ConfigurePrompt
   def get_default_value
@@ -1023,24 +1003,20 @@ module ConfigureDeploymentStepMySQL
   end
 end
 
-#
-# Removed check that prevents installation using MySQL 5.6 servers
-# Starting with Tungsten-Replicator 2.1.1-101, MySQL 5.6 is fully supported
-#
-#class MySQLCheckSumCheck < ConfigureValidationCheck
-#  include ReplicationServiceValidationCheck
-#  include MySQLApplierCheck
-#  include NotPrefetchCheck
-#  
-#  def set_vars
-#    @title = "MySQL 5.6 binlog Checksum Check"
-#  end
-#  
-#  def validate
-#    info("Checking that MySQL Binlog Checksum is not enabled")
-#    checkSum = get_applier_datasource.get_value("show variables like 'binlog_checksum'", "Value")
-#    if (checkSum == 'CRC32') 
-#      error("This instance is running with BinLog checksum enabled which is not yet supported")
-#    end
-#  end
-#end
+class MySQLCheckSumCheck < ConfigureValidationCheck
+  include ReplicationServiceValidationCheck
+  include MySQLApplierCheck
+  include NotPrefetchCheck
+  
+  def set_vars
+    @title = "MySQL 5.6 binlog Checksum Check"
+  end
+  
+  def validate
+    info("Checking that MySQL Binlog Checksum is not enabled")
+    checkSum = get_applier_datasource.get_value("show variables like 'binlog_checksum'", "Value")
+    if (checkSum == 'CRC32') 
+      error("This instance is running with BinLog checksum enabled which is not yet supported")
+    end
+  end
+end

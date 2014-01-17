@@ -11,9 +11,7 @@ DEPLOYMENT_HOST = "deployment_host"
 DEPLOYMENT_DATASERVICE = "deployment_dataservice"
 DEPLOYMENT_SERVICE = "service_name"
 HOSTS = "hosts"
-DATASERVICES = "dataservices"
 DATASOURCES = "datasources"
-MANAGERS = "managers"
 REPL_SERVICES = "repl_services"
 CONNECTORS = "connectors"
 CURRENT_RELEASE_DIRECTORY = "tungsten"
@@ -62,9 +60,6 @@ class RemoteCommandError < CommandError
     
     "Failed: #{command}, RC: #{rc}, Result: #{result}, #{errors}"
   end
-end
-
-class IgnoreError < StandardError
 end
 
 # Disable guessing by the OptionParser
@@ -117,7 +112,7 @@ module JSON
             depth = state.depth += 1
             first = true
             indent = !state.object_nl.empty?
-            keys().sort{ |a, b| a.to_s() <=> b.to_s() }.each{|key|
+            keys().sort().each{|key|
               value = self[key]
               json = value.to_json(state)
               if json == ""

@@ -29,9 +29,6 @@ done
 
 # Add configuration directory to class path. 
 CP=$CP:$RPHOME/conf
-# Add cluster-home/lib to class path
-CP=$CP:$CLUSTER_HOME/lib/*
-
 
 # Find Java.
 if [ -z "$JAVA_HOME" ]; then
@@ -58,6 +55,21 @@ JVM_OPTIONS="${JVM_OPTIONS} -Dreplicator.log.dir=$REPLICATOR_LOG_DIR"
 # Set RMI port. 
 if [ ! -z "$REPLICATOR_RMI_PORT" ]; then
   JVM_OPTIONS="${JVM_OPTIONS} -Dreplicator.rmi_port=$REPLICATOR_RMI_PORT"
+fi
+
+# Set RMI host. 
+if [ ! -z "$REPLICATOR_RMI_HOST" ]; then
+  JVM_OPTIONS="${JVM_OPTIONS} -Dreplicator.rmi_host=$REPLICATOR_RMI_HOST"
+fi
+
+# Set RMI port. 
+if [ ! -z "$TUNGSTEN_REPLICATOR_RMI_PORT" ]; then
+  JVM_OPTIONS="${JVM_OPTIONS} -Dreplicator.rmi_port=$TUNGSTEN_REPLICATOR_RMI_PORT"
+fi
+
+# Set RMI host. 
+if [ ! -z "$TUNGSTEN_REPLICATOR_RMI_HOST" ]; then
+  JVM_OPTIONS="${JVM_OPTIONS} -Dreplicator.rmi_host=$TUNGSTEN_REPLICATOR_RMI_HOST"
 fi
 
 # Set cluster.home

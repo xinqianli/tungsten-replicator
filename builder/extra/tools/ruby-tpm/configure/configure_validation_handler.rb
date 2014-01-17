@@ -178,7 +178,6 @@ class ConfigureValidationHandler
   # Handle the remote side of the validate function
   def validate_config(config)
     @config.import(config)
-    Configurator.instance.command.build_topologies(@config)
     
     begin
       @deployment_checks.each{
@@ -262,7 +261,6 @@ class ConfigureValidationHandler
   # Handle the remote side of the validate function
   def validate_commit_config(config)
     @config.import(config)
-    Configurator.instance.command.build_topologies(@config)
     
     begin
       @commit_checks.each{
@@ -348,7 +346,7 @@ class ConfigureValidationHandler
   end
   
   def get_message_hostname
-    @config.getProperty(DEPLOYMENT_HOST)
+    @config.getProperty(HOST)
   end
   
   def get_message_host_key

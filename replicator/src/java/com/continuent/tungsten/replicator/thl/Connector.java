@@ -24,13 +24,14 @@ package com.continuent.tungsten.replicator.thl;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.channels.SocketChannel;
 
 import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.common.config.TungstenProperties;
-import com.continuent.tungsten.common.sockets.ClientSocketWrapper;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.event.ReplDBMSEvent;
 import com.continuent.tungsten.replicator.event.ReplEvent;
@@ -45,32 +46,30 @@ import com.continuent.tungsten.replicator.plugin.ReplicatorPlugin;
  */
 public class Connector implements ReplicatorPlugin
 {
-    private static Logger       logger          = Logger.getLogger(Connector.class);
+    private static Logger      logger          = Logger.getLogger(Connector.class);
 
-    protected PluginContext     pluginContext   = null;
-    protected String            host            = null;
-    protected int               port            = 2112;
-    private ClientSocketWrapper clientSocket;
-    private long                minSeqNo        = -1;
-    private long                maxSeqNo        = -1;
-    private Protocol            protocol        = null;
-    private TungstenProperties  serverCapabilities;
-    protected boolean           useSSL;
+    protected PluginContext    pluginContext   = null;
+    protected String           host            = null;
+    protected int              port            = 2112;
+    private SocketChannel      channel         = null;
+    private long               minSeqNo        = -1;
+    private long               maxSeqNo        = -1;
+    private Protocol           protocol        = null;
+    private TungstenProperties serverCapabilities;
 
-    protected int               resetPeriod;
-    protected long              lastSeqno;
-    protected long              lastEpochNumber;
-    protected int               heartbeatMillis = 3000;
-    protected String            lastEventId;
+    protected int              resetPeriod;
+    protected long             lastSeqno;
+    protected long             lastEpochNumber;
+    protected int              heartbeatMillis = 3000;
+    protected String           lastEventId;
 
-    private String              remoteURI       = null;
+    private String             remoteURI       = null;
 
     // Marked true to show this connector has been closed.
-    boolean                     closed;
+    boolean                    closed;
 
     /**
-     * Creates a new instance. This is required so the connector can be
-     * instantiated as a replicator plugin.
+     * Creates a new <code>Connector</code> object
      */
     public Connector()
     {
@@ -89,11 +88,21 @@ public class Connector implements ReplicatorPlugin
             throws ReplicatorException
     {
         this.pluginContext = context;
-        this.remoteURI = remoteURI;
         this.lastSeqno = lastSeqno;
         this.lastEpochNumber = lastEpochNumber;
         this.heartbeatMillis = heartbeatMillis;
         this.resetPeriod = resetPeriod;
+        try
+        {
+            URI uri = new URI(remoteURI);
+            this.host = uri.getHost();
+            if ((this.port = uri.getPort()) == -1)
+                this.port = 2112;
+        }
+        catch (URISyntaxException e)
+        {
+            throw new THLException(e.getMessage());
+        }
     }
 
     /**
@@ -105,11 +114,12 @@ public class Connector implements ReplicatorPlugin
     public void connect() throws ReplicatorException, IOException
     {
         if (logger.isDebugEnabled())
-            logger.debug("Connecting to " + host + ":" + port + " useSSL="
-                    + useSSL);
+            logger.debug("Connecting to " + host + ":" + port);
         try
         {
-            // Create the socket and connect with a relatively short timeout.
+            // Create the socket and connect with a relatively short timeout. 
+            channel = SocketChannel.open();
+            Socket socket = channel.socket();
             InetSocketAddress address = new InetSocketAddress(host, port);
             if (address.isUnresolved())
             {
@@ -117,15 +127,7 @@ public class Connector implements ReplicatorPlugin
                         "THL connection failure; cannot resolve address: host="
                                 + host + " port=" + port);
             }
-            clientSocket = new ClientSocketWrapper();
-            clientSocket.setAddress(address);
-            clientSocket.setUseSSL(useSSL);
-            clientSocket.setConnectTimeout(heartbeatMillis);
-            // Timeout at 10 times the heartbeat interval. This is longer than
-            // the connect timeout by design so we don't time out if the server
-            // is busy.
-            clientSocket.setReadTimeout(heartbeatMillis * 10);
-            clientSocket.connect();
+            socket.connect(address, heartbeatMillis);
         }
         catch (IllegalArgumentException e)
         {
@@ -134,8 +136,16 @@ public class Connector implements ReplicatorPlugin
                             + " port=" + port);
         }
 
+        // Disable Nagle's algorithm
+        channel.socket().setTcpNoDelay(true);
+        // Enable TCP keepalive
+        channel.socket().setKeepAlive(true);
+        // Timeout at 10 times the heartbeat interval. This is longer than the
+        // connect timeout by design so we don't time out if the server is busy.
+        channel.socket().setSoTimeout(heartbeatMillis * 10);
+
         // Perform handshake with server.
-        protocol = new Protocol(pluginContext, clientSocket, resetPeriod);
+        protocol = new Protocol(pluginContext, channel, resetPeriod);
         SeqNoRange seqNoRange = protocol.clientHandshake(lastEpochNumber,
                 lastSeqno, heartbeatMillis, lastEventId);
 
@@ -153,8 +163,18 @@ public class Connector implements ReplicatorPlugin
     {
         if (!closed)
         {
-            clientSocket.close();
-            closed = true;
+            try
+            {
+                channel.close();
+            }
+            catch (IOException e)
+            {
+                logger.warn(e.getMessage());
+            }
+            finally
+            {
+                closed = true;
+            }
         }
     }
 
@@ -210,30 +230,18 @@ public class Connector implements ReplicatorPlugin
             InterruptedException
     {
         this.pluginContext = context;
+        URI uri = null;
         try
         {
-            URI uri = new URI(remoteURI);
-            String protocol = uri.getScheme();
-            if (THL.PLAINTEXT_URI_SCHEME.equals(protocol))
-            {
-                this.useSSL = false;
-            }
-            else if (THL.SSL_URI_SCHEME.equals(protocol))
-            {
-                this.useSSL = true;
-            }
-            else
-            {
-                throw new THLException("Unsupported scheme " + protocol);
-            }
-            this.host = uri.getHost();
-            if ((this.port = uri.getPort()) == -1)
-                this.port = 2112;
+            uri = new URI(remoteURI);
         }
         catch (URISyntaxException e)
         {
-            throw new THLException(e.getMessage(), e);
+            throw new THLException(e);
         }
+        this.host = uri.getHost();
+        if ((this.port = uri.getPort()) == -1)
+            this.port = 2112;
     }
 
     public void prepare(PluginContext context) throws ReplicatorException,
@@ -281,7 +289,7 @@ public class Connector implements ReplicatorPlugin
         this.remoteURI = connectUri;
     }
 
-    /** Sets the number of milliseconds between heartbeats. */
+    /** Returns the number of milliseconds between heartbeats. */
     public void setHeartbeatMillis(int heartbeatMillis)
     {
         this.heartbeatMillis = heartbeatMillis;

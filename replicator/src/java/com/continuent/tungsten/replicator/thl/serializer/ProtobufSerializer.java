@@ -1103,7 +1103,7 @@ public class ProtobufSerializer implements Serializer
         if (statement.hasQuery())
             statementData.setQuery(statement.getQuery());
         else if (statement.hasQueryBytes())
-            statementData.setQuery(statement.getQueryBytes().toByteArray());
+            statementData.setQuery(statement.getQueryAsBytes().toByteArray());
         else
             logger.warn("Logged statement did not contain any query");
 

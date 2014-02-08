@@ -1094,6 +1094,26 @@ class ReplicationServiceApplierConfig < ConfigurePrompt
   end
 end
 
+class ReplicationServiceApplierDatasourceConfig < ConfigurePrompt
+  include ReplicationServicePrompt
+  include ConstantValueModule
+  
+  def initialize
+    super(REPL_SVC_APPLIER_DATASOURCE_CONFIG, "Replication service applier datasource config properties")
+  end
+  
+  def get_template_value(transform_values_method)
+    template = @config.getProperty(PREPARE_DIRECTORY) + "/" + 
+      get_applier_datasource().get_datasource_template()
+    
+    transformer = Transformer.new(template)
+    transformer.set_fixed_properties(@config.getProperty(get_member_key(FIXED_PROPERTY_STRINGS)))
+    transformer.transform_values(transform_values_method)
+    
+    return transformer.to_s
+  end
+end
+
 class ReplicationServiceExtractorConfig < ConfigurePrompt
   include ReplicationServicePrompt
   include ConstantValueModule

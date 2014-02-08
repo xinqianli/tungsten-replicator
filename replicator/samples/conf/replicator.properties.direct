@@ -383,6 +383,27 @@ replicator.service.channel-assignment.url=@{APPLIER.REPL_DBTHLURL}
 replicator.service.channel-assignment.channels=${replicator.global.apply.channels}
 replicator.service.channel-assignment.reconnectTimeoutInSeconds=60
 
+##########################
+# DATA SOURCE MANAGEMENT #
+##########################
+
+# Data sources encapsulate connections and catalog data for DBMS types
+# ranging from relational DBMS to file systems.
+replicator.service.datasource=com.continuent.tungsten.replicator.datasource.DataSourceService
+
+# Default service for head of pipeline.
+replicator.datasource.source=com.continuent.tungsten.replicator.datasource.DummyDatasource
+
+# Default service for tail of pipeline.
+replicator.datasource.sink=com.continuent.tungsten.replicator.datasource.SqlDataSource
+replicator.datasource.sink=com.continuent.tungsten.replicator.datasource.SqlDataSource
+replicator.datasource.sink.host=logos1
+replicator.datasource.sink.port=3306
+replicator.datasource.sink.user=tungsten
+replicator.datasource.sink.password=secret
+replicator.datasource.sink.url=jdbc:mysql:thin://${replicator.datasource.sink.host}:${replicator.datasource.sink.port}/${replicator.schema}?createDB=true
+
+
 ################################
 # BACKUP/RESTORE CONFIGURATION #
 ################################

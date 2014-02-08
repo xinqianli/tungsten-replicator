@@ -23,9 +23,6 @@
 package com.continuent.tungsten.replicator.extractor.parallel;
 
 import java.io.IOException;
-import java.math.BigDecimal;
-import java.math.BigInteger;
-import java.math.RoundingMode;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -56,14 +53,14 @@ public class ChunksGeneratorThread extends Thread
     private class MinMax
     {
 
-        private Number min;
+        private long min;
 
         /**
          * Returns the min value.
          * 
          * @return Returns the min.
          */
-        protected Number getMin()
+        protected long getMin()
         {
             return min;
         }
@@ -73,13 +70,13 @@ public class ChunksGeneratorThread extends Thread
          * 
          * @return Returns the max.
          */
-        protected Number getMax()
+        protected long getMax()
         {
             return max;
         }
 
-        private Number max;
-        private long   count;
+        private long max;
+        private long count;
 
         /**
          * Returns the count value.
@@ -91,16 +88,11 @@ public class ChunksGeneratorThread extends Thread
             return count;
         }
 
-        public MinMax(Number min, Number max, long count)
+        public MinMax(long min, long max, long count)
         {
             this.min = min;
             this.max = max;
             this.count = count;
-        }
-
-        public boolean isDecimal()
-        {
-            return !(this.min instanceof Long);
         }
 
     }
@@ -110,7 +102,7 @@ public class ChunksGeneratorThread extends Thread
     private String               user;
     private String               url;
     private String               password;
-    private BlockingQueue<NumericChunk> chunks;
+    private BlockingQueue<Chunk> chunks;
     private String               chunkDefFile;
     private ChunkDefinitions     chunkDefinition;
     private int                  extractChannels;
@@ -126,7 +118,7 @@ public class ChunksGeneratorThread extends Thread
      * @param chunkDefinitionFile
      */
     public ChunksGeneratorThread(String user, String url, String password,
-            int extractChannels, BlockingQueue<NumericChunk> chunks,
+            int extractChannels, BlockingQueue<Chunk> chunks,
             String chunkDefinitionFile)
     {
         this.setName("ChunkGeneratorThread");
@@ -177,7 +169,6 @@ public class ChunksGeneratorThread extends Thread
         // Check whether we have to use a chunk definition file
         if (chunkDefFile != null)
         {
-            logger.info("Using definition from file " + chunkDefFile);
             chunkDefinition = new ChunkDefinitions(chunkDefFile);
             try
             {
@@ -266,7 +257,7 @@ public class ChunksGeneratorThread extends Thread
             logger.info("Posting job complete request " + i);
             try
             {
-                chunks.put(new NumericChunk());
+                chunks.put(new Chunk());
             }
             catch (InterruptedException e)
             {
@@ -322,7 +313,6 @@ public class ChunksGeneratorThread extends Thread
     private void generateChunksForTable(Table table, long tableChunkSize,
             String[] columns) throws ReplicatorException, InterruptedException
     {
-
         long chunkSize;
         if (tableChunkSize < 0)
         {
@@ -332,7 +322,7 @@ public class ChunksGeneratorThread extends Thread
         else if (tableChunkSize == 0)
         {
             // No chunks for this table (all table at once)
-            chunks.put(new NumericChunk(table, columns));
+            chunks.put(new Chunk(table, columns));
             return;
         }
         else
@@ -345,7 +335,7 @@ public class ChunksGeneratorThread extends Thread
                 + table.getName());
 
         // Retrieve PK range
-        MinMax minmax = retrieveMinMaxCountPK(connection, table);
+        MinMax minmax = retrieveMaxMinCountPK(connection, table);
 
         if (minmax != null)
         {
@@ -355,69 +345,26 @@ public class ChunksGeneratorThread extends Thread
 
             if (minmax.getCount() <= chunkSize)
                 // Get the whole table at once
-                chunks.put(new NumericChunk(table, columns));
+                chunks.put(new Chunk(table, columns));
             else
             {
                 // Share the joy among threads,
-                // if primary key is evenly distributed
-                if (!minmax.isDecimal())
+                // if primary key is evenly
+                // distributed
+                long blocksize = minmax.getCount() % chunkSize;
+
+                long start = minmax.getMin();
+                long end;
+                do
                 {
-                    long gap = (Long) minmax.getMax() - (Long) minmax.getMin();
-                    long blockSize = chunkSize * gap / minmax.getCount();
-
-                    long nbBlocks = gap / blockSize;
-                    if (gap % blockSize > 0)
-                        nbBlocks++;
-
-                    long start = (Long) minmax.getMin() - 1;
-                    long end;
-                    do
-                    {
-                        end = start + blockSize;
-                        if (end > (Long) minmax.getMax())
-                            end = (Long) minmax.getMax();
-                        NumericChunk e = new NumericChunk(table, start, end, columns,
-                                nbBlocks);
-                        chunks.put(e);
-                        start = end;
-                    }
-                    while (start < (Long) minmax.getMax());
-
+                    end = start + blocksize;
+                    if (end > minmax.getMax())
+                        end = minmax.getMax();
+                    Chunk e = new Chunk(table, start, end, columns);
+                    chunks.put(e);
+                    start = end + 1;
                 }
-                else
-                {
-                    BigInteger gap = (((BigDecimal) minmax.getMax())
-                            .subtract((BigDecimal) minmax.getMin())).setScale(
-                            0, RoundingMode.CEILING).toBigInteger();
-
-                    BigInteger blockSize = gap.multiply(
-                            BigInteger.valueOf(chunkSize)).divide(
-                            BigInteger.valueOf(minmax.getCount()));
-                    long nbBlocks = gap.divide(blockSize).longValue();
-                    if (!gap.remainder(blockSize).equals(BigInteger.ZERO))
-                        nbBlocks++;
-
-                    BigDecimal start = ((BigDecimal) minmax.getMin()).setScale(
-                            0, RoundingMode.FLOOR);
-                    BigDecimal end;
-                    do
-                    {
-                        end = start.add(new BigDecimal(blockSize));
-                        if (end.compareTo((BigDecimal) minmax.getMax()) == 1)
-                            end = (BigDecimal) minmax.getMax();
-
-                        end = end.setScale(0, RoundingMode.CEILING);
-
-                        NumericChunk e = new NumericChunk(table, start.toBigInteger(),
-                                end.toBigInteger(), columns, nbBlocks);
-                        chunks.put(e);
-                        start = end;
-                    }
-                    while (start.compareTo(((BigDecimal) minmax.getMax())
-                            .setScale(0, RoundingMode.CEILING)) == -1);
-
-                }
-
+                while (start < minmax.getMax());
             }
         }
         else
@@ -425,7 +372,7 @@ public class ChunksGeneratorThread extends Thread
             // table is empty or does not have a
             // good candidate as a PK for chunking.
             // Fall back to limit method
-            chunks.put(new NumericChunk(table, columns));
+            chunks.put(new Chunk(table, columns));
         }
     }
 
@@ -433,7 +380,7 @@ public class ChunksGeneratorThread extends Thread
      * Retrieve maximum or minimum value of a table's primary key. Table must
      * have a single-column numeric key for this to work correctly.
      */
-    private MinMax retrieveMinMaxCountPK(Database conn, Table table)
+    private MinMax retrieveMaxMinCountPK(Database conn, Table table)
             throws ReplicatorException
     {
         if (table.getPrimaryKey() == null)
@@ -454,11 +401,7 @@ public class ChunksGeneratorThread extends Thread
 
             if (!(type == Types.BIGINT || type == Types.INTEGER
                     || type == Types.SMALLINT || type == Types.DECIMAL))
-            {
-                logger.warn(table.getName()
-                        + " - PK is not a supported numeric datatype ");
                 return null;
-            }
         }
 
         String pkName = table.getPrimaryKey().getColumns().get(0).getName();
@@ -479,13 +422,8 @@ public class ChunksGeneratorThread extends Thread
                 Object max = rs.getObject(2);
                 if (min instanceof Long && max instanceof Long)
                 {
-                    return new MinMax(((Long) min), ((Long) max), rs.getLong(3));
-
-                }
-                else if (min instanceof BigDecimal && max instanceof BigDecimal)
-                {
-                    return new MinMax(((BigDecimal) min), ((BigDecimal) max),
-                            rs.getLong(3));
+                    return new MinMax(((Long) min).longValue(),
+                            ((Long) max).longValue(), rs.getLong(3));
 
                 }
                 return null;

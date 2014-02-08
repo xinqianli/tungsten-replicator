@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2013 Continuent Inc.
+ * Copyright (C) 2013-2014 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -23,30 +23,39 @@
 package com.continuent.tungsten.replicator.applier.batch;
 
 import com.continuent.tungsten.replicator.ReplicatorException;
-import com.continuent.tungsten.replicator.database.Database;
+import com.continuent.tungsten.replicator.datasource.UniversalConnection;
 import com.continuent.tungsten.replicator.plugin.ReplicatorPlugin;
 
 /**
- * Denotes a class capable of executing a batch load script.  This interface
- * conforms to conventions for replicator plugins.  
+ * Denotes a class capable of executing a batch load script. This interface
+ * conforms to conventions for replicator plugins.
  */
 public interface ScriptExecutor extends ReplicatorPlugin
 {
-    /** Sets the DBMS connection. */
-    public abstract void setConnection(Database connection);
+    /** Sets the data source connection. */
+    public void setConnection(UniversalConnection connection);
 
     /** Sets the script name. */
-    public abstract void setScript(String script);
-
-    /** If set to true, show commands as they execute. */
-    public abstract void setShowCommands(boolean showCommands);
+    public void setScript(String script);
 
     /**
-     * Executes the script for a specific table.
+     * Register a method name. This must be called prior to invoking any
+     * individual script method.
      * 
-     * @param info Information about the table to be loaded and source CSV file
-     * @throws ReplicatorException Thrown if load operation fails
+     * @param method Name of the method in the script
+     * @return True if the method is found and registered, otherwise false
+     * @throws ReplicatorException Thrown if registration fails
      */
-    public abstract void execute(CsvInfo info) throws ReplicatorException;
+    public boolean register(String method) throws ReplicatorException;
 
+    /**
+     * Executes a registered script method including a single optional argument.
+     * 
+     * @param method Name of the method in the script
+     * @param argument Argument to pass in during method invocation
+     * @return An object or null if the method does not return a value
+     * @throws ReplicatorException Thrown if execute operation fails
+     */
+    public Object execute(String method, Object argument)
+            throws ReplicatorException;
 }

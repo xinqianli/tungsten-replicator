@@ -618,8 +618,13 @@ public class EnumToStringFilter implements Filter
                     // Iterate through all rows in the event and transform each.
                     for (int row = 0; row < columnValues.size(); row++)
                     {
-                        // ColumnVal keyValue = keyValues.get(row).get(k);
-                        ColumnVal colValue = columnValues.get(row).get(c);
+                        // Fetch the column value.  Note that rows may not be 
+                        // complete. 
+                        List<ColumnVal> colValues = columnValues.get(row);
+                        if (colValues.size() <= c)
+                            continue;
+                        ColumnVal colValue = colValues.get(c);
+
                         // It must be integer at this point.
                         if (colValue.getValue() != null)
                         {

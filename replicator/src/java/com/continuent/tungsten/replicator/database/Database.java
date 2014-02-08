@@ -36,6 +36,7 @@ import com.continuent.tungsten.common.csv.CsvWriter;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.consistency.ConsistencyCheck;
 import com.continuent.tungsten.replicator.consistency.ConsistencyException;
+import com.continuent.tungsten.replicator.datasource.UniversalConnection;
 import com.continuent.tungsten.replicator.dbms.OneRowChange;
 
 /**
@@ -46,7 +47,7 @@ import com.continuent.tungsten.replicator.dbms.OneRowChange;
  * @author <a href="mailto:scott.martin@continuent.com">Scott Martin</a>
  * @version 1.0
  */
-public interface Database
+public interface Database extends UniversalConnection
 {
     /** String to denote MySQL DBMS dialect in metadata. */
     public static String MYSQL      = "mysql";
@@ -59,6 +60,27 @@ public interface Database
 
     /** String to denote PostgreSQL dialect in metadata. */
     public static String UNKNOWN    = "unknown";
+
+    // START UNIVERSALCONNECTOR API.
+    /**
+     * Commit the current transaction.
+     */
+    @Override
+    public void commit() throws SQLException;
+
+    /**
+     * Rollback the current transaction.
+     */
+    @Override
+    public void rollback() throws SQLException;
+
+    /**
+     * Toggles autocommit by calling Connection.setAutocommit().
+     */
+    @Override
+    public void setAutoCommit(boolean autoCommit) throws SQLException;
+
+    // END UNIVERSALCONNECTOR API.
 
     /** Returns the type of DBMS behind the interface */
     public DBMS getType();
@@ -376,21 +398,6 @@ public interface Database
     public Statement createStatement() throws SQLException;
 
     /**
-     * Commit the current transaction.
-     */
-    public void commit() throws SQLException;
-
-    /**
-     * Rollback the current transaction.
-     */
-    public void rollback() throws SQLException;
-
-    /**
-     * Toggles autocommit by calling Connection.setAutocommit().
-     */
-    public void setAutoCommit(boolean autoCommit) throws SQLException;
-
-    /**
      * Return a place holder in a prepared statement for a column of type
      * ColumnSpec. Typically "?" as is INSERT INTO FOO VALUES(?)
      */
@@ -605,9 +612,11 @@ public interface Database
     /**
      * dropTungstenCatalog removes Tungsten catalog.
      * 
-     * @param schemaName The schema name where Tungsten catalog is stored 
-     * @param tungstenTableType The type of table used to store Tungsten metadata
-     * @param serviceName The service name for which the catalog has to be dropped
+     * @param schemaName The schema name where Tungsten catalog is stored
+     * @param tungstenTableType The type of table used to store Tungsten
+     *            metadata
+     * @param serviceName The service name for which the catalog has to be
+     *            dropped
      * @throws SQLException when an error occurs
      */
     public void dropTungstenCatalog(String schemaName,

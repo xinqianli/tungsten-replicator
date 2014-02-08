@@ -870,7 +870,7 @@ public class OracleDatabase extends AbstractDatabase
     /**
      * {@inheritDoc}
      * 
-     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#dropTungstenCatalog(String, String, String)
+     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#dropTungstenCatalog(java.lang.String)
      */
     @Override
     public void dropTungstenCatalog(String schemaName,

@@ -2,7 +2,6 @@ class InstallCommand
   include ConfigureCommand
   include ResetConfigPackageModule
   include ClusterCommandModule
-  include ProvisionNewSlavesPackageModule
   
   def output_command_usage()
     super()

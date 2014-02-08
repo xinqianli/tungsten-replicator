@@ -116,6 +116,8 @@ public class Service_Definition extends Service
     /**
      * Sets the name of the Service.
      * Used for Composite DataService only
+     * 
+     * @param name the name of the Composite DataService
      */
     public HashMap<String, DataService_Definition> getListDataServiceDefinition()
     {

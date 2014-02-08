@@ -1214,7 +1214,7 @@ public class ReplicatorRuntime implements PluginContext
         catch (Throwable t)
         {
             String message = "Unable to configure plugin: class name="
-                    + pluginClassName;
+                    + pluginClassName + " message=[" + t.getMessage() + "]";
 
             logger.error(message, t);
             throw new ReplicatorException(message, t);
@@ -1244,7 +1244,7 @@ public class ReplicatorRuntime implements PluginContext
         catch (Throwable t)
         {
             String message = "Unable to prepare plugin: class name="
-                    + pluginClassName;
+                    + pluginClassName + " message=[" + t.getMessage() + "]";
 
             logger.error(message, t);
             throw new ReplicatorException(message, t);

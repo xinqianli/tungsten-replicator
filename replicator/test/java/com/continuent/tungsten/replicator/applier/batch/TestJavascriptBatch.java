@@ -1,6 +1,6 @@
 /**
  * Tungsten: An Application Server for uni/cluster.
- * Copyright (C) 2012 Continuent Inc.
+ * Copyright (C) 2012-2014 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -101,8 +101,12 @@ public class TestJavascriptBatch
     @Test
     public void testSimpleScript() throws Exception
     {
-        String script = "function apply(csvinfo) { }";
-        execute("testSimpleScript", script);
+        String script = "function echo(argument) { return argument}";
+        Object value = execute("testSimpleScript", script, "echo", "hello");
+        Assert.assertNotNull("Expect a return value", value);
+        Assert.assertTrue("Return value should be string",
+                (value instanceof String));
+        Assert.assertEquals("Checking echoed value", "hello", (String) value);
     }
 
     /**
@@ -111,8 +115,8 @@ public class TestJavascriptBatch
     @Test
     public void testExecOSCommand() throws Exception
     {
-        String script = "function apply(csvinfo) { runtime.exec('echo hello'); }";
-        execute("testExecOSCommand", script);
+        String script = "function aCommand(arg) { runtime.exec('echo hello ' + arg); }";
+        execute("testExecOSCommand", script, "aCommand", "bob");
     }
 
     /**
@@ -124,7 +128,7 @@ public class TestJavascriptBatch
         String script = "function apply(csvinfo) { this is not javascript!!! }";
         try
         {
-            execute("testSyntaxError", script);
+            execute("testSyntaxError", script, "apply", new Object());
             throw new Exception("Able to execute script with syntax error: "
                     + script);
         }
@@ -140,11 +144,11 @@ public class TestJavascriptBatch
     @Test
     public void testBadSQL() throws Exception
     {
-        String script = "function apply(csvinfo) { sql.execute('bad sql'); }";
+        String script = "function doit(csvinfo) { sql.execute('bad sql'); }";
         boolean failed = false;
         try
         {
-            execute("testBadSQL", script);
+            execute("testBadSQL", script, "doit", "some input");
         }
         catch (Exception e)
         {
@@ -154,25 +158,26 @@ public class TestJavascriptBatch
         Assert.assertTrue("Query should fail", failed);
     }
 
-    // Create context and execute script.
-    private void execute(String name, String script) throws Exception
+    // Create context and execute method on script.
+    private Object execute(String name, String script, String method,
+            Object argument) throws Exception
     {
         File scriptFile = writeScript(name, script);
         Database db = getDatabase();
         JavascriptExecutor exec = new JavascriptExecutor();
         exec.setConnection(db);
         exec.setScript(scriptFile.getAbsolutePath());
-        exec.setShowCommands(false);
         exec.prepare(null);
-        exec.execute(null);
+        Object value = exec.execute(method, argument);
         exec.release(null);
         db.close();
+        return value;
     }
 
     // Write script.
     public File writeScript(String name, String script) throws IOException
     {
-        File testDir = new File("testJavaScriptBatch");
+        File testDir = new File("testJavascriptBatch");
         testDir.mkdirs();
         File scriptFile = new File(testDir, name);
         FileWriter fw = new FileWriter(scriptFile);

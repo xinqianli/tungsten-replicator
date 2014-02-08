@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2011-12 Continuent Inc.
+ * Copyright (C) 2011-2014 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -24,11 +24,14 @@ package com.continuent.tungsten.replicator.applier.batch;
 
 import java.io.File;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 
 import com.continuent.tungsten.common.csv.CsvWriter;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.database.Column;
+import com.continuent.tungsten.replicator.database.Key;
 import com.continuent.tungsten.replicator.database.Table;
 
 /**
@@ -37,34 +40,36 @@ import com.continuent.tungsten.replicator.database.Table;
  */
 public class CsvInfo
 {
-    // Primary key of the table.
-    protected String stagePkeyColumn;
+    // If true, primary key must be present.
+    protected boolean requirePrimaryKey;
 
     // Struct fields.
-    public String    schema;
-    public String    table;
-    public Table     baseTableMetadata;
-    public Table     stageTableMetadata;
-    public File      file;
-    public CsvWriter writer;
+    public String     schema;
+    public String     table;
+    public Table      baseTableMetadata;
+    public Table      stageTableMetadata;
+    public File       file;
+    public CsvWriter  writer;
+    public long       startSeqno = -1;
+    public long       endSeqno   = -1;
 
     /**
      * Instantiates a new instance.
      * 
      * @param stagePkeyColumn Name of the primary key column
      */
-    public CsvInfo(String stagePkeyColumn)
+    public CsvInfo(boolean requirePrimaryKey)
     {
-        this.stagePkeyColumn = stagePkeyColumn;
+        this.requirePrimaryKey = requirePrimaryKey;
     }
 
     /**
      * Returns SQL substitution parameters for this CSV file.
      */
-    public Map<String, String> getSqlParameters() throws ReplicatorException
+    public Map<String, Object> getSqlParameters() throws ReplicatorException
     {
         // Generate data for base and staging tables.
-        String pkey = getPKColumn();
+        List<String> pkey = getPKColumns();
         String basePkey = baseTableMetadata.getName() + "." + pkey;
         String stagePkey = stageTableMetadata.getName() + "." + pkey;
         StringBuffer colNames = new StringBuffer();
@@ -76,15 +81,13 @@ public class CsvInfo
         }
 
         // Create map containing parameters.
-        Map<String, String> parameters = new HashMap<String, String>();
+        Map<String, Object> parameters = new HashMap<String, Object>();
         parameters.put("%%CSV_FILE%%", file.getAbsolutePath());
         parameters
                 .put("%%BASE_TABLE%%", baseTableMetadata.fullyQualifiedName());
         parameters.put("%%BASE_COLUMNS%%", colNames.toString());
-        parameters.put("%%STAGE_TABLE%%",
-                stageTableMetadata.getName());
-        parameters.put("%%STAGE_SCHEMA%%",
-                stageTableMetadata.getSchema());
+        parameters.put("%%STAGE_TABLE%%", stageTableMetadata.getName());
+        parameters.put("%%STAGE_SCHEMA%%", stageTableMetadata.getSchema());
         parameters.put("%%STAGE_TABLE_FQN%%",
                 stageTableMetadata.fullyQualifiedName());
         parameters.put("%%PKEY%%", pkey);
@@ -96,41 +99,39 @@ public class CsvInfo
     }
 
     /**
-     * Determines primary key name for the given CsvInfo object. If underlying
-     * meta data table contains a primary key, it is used. If not, user's
-     * configured default one is taken.<br/>
-     * Currently, only single-column primary keys are supported.
+     * Determines primary key names for the given CsvInfo object. If underlying
+     * metadata table contains a primary key, it is used.
      * 
-     * @return Primary key column name.
+     * @return Primary key column names.
      * @throws ReplicatorException Thrown if primary key cannot be found
      */
-    public String getPKColumn() throws ReplicatorException
+    public List<String> getPKColumns() throws ReplicatorException
     {
-        String pkey = stagePkeyColumn;
+        LinkedList<String> primaryKeyColumns = new LinkedList<String>();
 
         // If THL event contains PK, use it.
         if (baseTableMetadata.getPrimaryKey() != null
-                && baseTableMetadata.getPrimaryKey().getColumns() != null
-                && baseTableMetadata.getPrimaryKey().getColumns().size() > 0
-                && baseTableMetadata.getPrimaryKey().getColumns().get(0)
-                        .getName() != null
-                && !baseTableMetadata.getPrimaryKey().getColumns().get(0)
-                        .getName().equals(""))
+                && baseTableMetadata.getPrimaryKey().getColumns() != null)
         {
-            pkey = baseTableMetadata.getPrimaryKey().getColumns().get(0)
-                    .getName();
+            Key pkey = baseTableMetadata.getPrimaryKey();
+            for (Column pkCol : pkey.getColumns())
+            {
+                String name = pkCol.getName();
+                if (name != null && !"".equals(name))
+                    primaryKeyColumns.add(name);
+            }
         }
 
         // If the primary key is still null that means we don't have a key
         // from metadata and nothing was set in the configuration properties.
-        if (pkey == null)
+        if (primaryKeyColumns.size() == 0 && this.requirePrimaryKey)
         {
             String msg = String
-                    .format("Unable to find a primary key for %s and there is no default from property stagePkeyColumn",
+                    .format("Unable to find a primary key for %s and primary keys are required",
                             baseTableMetadata.fullyQualifiedName());
             throw new ReplicatorException(msg);
         }
 
-        return pkey;
+        return primaryKeyColumns;
     }
 }

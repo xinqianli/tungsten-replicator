@@ -142,15 +142,6 @@ class TungstenUtil
     end
   end
   
-  def set_log_path(path)
-    TU.mkdir_if_absent(File.dirname(path))
-    old_log = @log
-    old_log.rewind()
-    
-    @log = File.open(path, "w")
-    @log.puts(old_log.read())
-  end
-  
   def reset_errors
     @num_errors = 0
   end

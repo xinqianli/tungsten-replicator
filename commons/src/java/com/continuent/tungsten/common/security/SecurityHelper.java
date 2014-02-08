@@ -171,6 +171,7 @@ public class SecurityHelper
      * 
      * @param propertiesFileLocation Location of the security.properties file.
      *            If set to null, will try to locate default file.
+     * @param authUsage
      * @return AuthenticationInfo
      * @throws ConfigurationException
      * @throws ReplicatorException

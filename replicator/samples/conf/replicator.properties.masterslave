@@ -1,6 +1,6 @@
-#################################
-# REPLICATOR.PROPERTIES.DIRECT  #
-#################################
+#####################################
+# REPLICATOR.PROPERTIES.MASTERSLAVE #
+#####################################
 #
 # This file contains properties for MySQL replication.
 #
@@ -192,7 +192,7 @@ replicator.stage.q-to-thl.blockCommitRowCount=${replicator.global.buffer.size}
 # extract from local THL to queue; apply from queue to DBMS.
 replicator.pipeline.slave=remote-to-thl,thl-to-q,q-to-dbms
 replicator.pipeline.slave.stores=thl,parallel-queue
-replicator.pipeline.slave.services=channel-assignment
+replicator.pipeline.slave.services=datasource,channel-assignment
 replicator.pipeline.slave.syncTHLWithExtractor=false
 
 replicator.stage.remote-to-thl=com.continuent.tungsten.replicator.pipeline.SingleThreadStageTask
@@ -218,7 +218,7 @@ replicator.stage.q-to-dbms.blockCommitInterval=@{REPL_SVC_APPLIER_BLOCK_COMMIT_I
 # replicator with role 'relay'
 replicator.pipeline.relay=remote-to-thl,thl-to-q,q-to-dbms
 replicator.pipeline.relay.stores=thl,parallel-queue
-replicator.pipeline.relay.services=channel-assignment
+replicator.pipeline.relay.services=datasource,channel-assignment
 replicator.pipeline.relay.syncTHLWithExtractor=false
 
 #################################
@@ -425,6 +425,27 @@ replicator.service.channel-assignment=com.continuent.tungsten.replicator.channel
 replicator.service.channel-assignment.url=@{APPLIER.REPL_DBTHLURL}
 replicator.service.channel-assignment.channels=${replicator.global.apply.channels}
 replicator.service.channel-assignment.reconnectTimeoutInSeconds=60
+
+##########################
+# DATA SOURCE MANAGEMENT #
+##########################
+
+# Data sources encapsulate connections and catalog data for DBMS types
+# ranging from relational DBMS to file systems. 
+replicator.service.datasource=com.continuent.tungsten.replicator.datasource.DataSourceService
+
+# Default service for head of pipeline. 
+replicator.datasource.source=com.continuent.tungsten.replicator.datasource.DummyDatasource
+
+# Default service for tail of pipeline. 
+replicator.datasource.sink=com.continuent.tungsten.replicator.datasource.SqlDataSource
+replicator.datasource.sink=com.continuent.tungsten.replicator.datasource.SqlDataSource
+replicator.datasource.sink.host=logos1
+replicator.datasource.sink.port=3306
+replicator.datasource.sink.user=tungsten
+replicator.datasource.sink.password=secret
+replicator.datasource.sink.schema=${replicator.schema}
+replicator.datasource.sink.url=jdbc:mysql:thin://${replicator.datasource.sink.host}:${replicator.datasource.sink.port}/${replicator.schema}?createDB=true
 
 ################################
 # BACKUP/RESTORE CONFIGURATION #

@@ -1,6 +1,6 @@
-#################################
-# REPLICATOR.PROPERTIES.DIRECT  #
-#################################
+########################################
+# REPLICATOR.PROPERTIES.SLAVE-PREFETCH #
+########################################
 #
 # This file contains properties for MySQL replication.
 #

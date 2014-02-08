@@ -1,0 +1,66 @@
+### Define list of HiveQL reserved words to avoid. 
+#set ( $reservedWordsHiveQL = ["LOCATION", "TRUE", "FALSE", "ALL", "AND", "OR", "NOT", "LIKE", "ASC", "DESC", "ORDER", "BY", "GROUP", "WHERE", "FROM", "AS", "SELECT", "DISTINCT", "INSERT", "OVERWRITE", "OUTER", "JOIN", "LEFT", "RIGHT", "FULL", "ON", "PARTITION", "PARTITIONS", "TABLE", "TABLES", "TBLPROPERTIES", "SHOW", "MSCK", "DIRECTORY", "LOCAL", "TRANSFORM", "USING", "CLUSTER", "DISTRIBUTE", "SORT", "UNION", "LOAD", "DATA", "INPATH", "IS", "NULL", "CREATE", "EXTERNAL", "ALTER", "DESCRIBE", "DROP", "REANME", "TO", "COMMENT", "BOOLEAN", "TINYINT", "SMALLINT", "INT", "BIGINT", "FLOAT", "DOUBLE", "DATE", "DATETIME", "TIMESTAMP", "STRING", "BINARY", "ARRAY", "MAP", "REDUCE", "PARTITIONED", "CLUSTERED", "SORTED", "INTO", "BUCKETS", "ROW", "FORMAT", "DELIMITED", "FIELDS", "TERMINATED", "COLLECTION", "ITEMS", "KEYS", "LINES", "STORED", "SEQUENCEFILE", "TEXTFILE", "INPUTFORMAT", "OUTPUTFORMAT", "LOCATION", "TABLESAMPLE", "BUCKET", "OUT", "OF", "CAST", "ADD", "REPLACE", "COLUMNS", "RLIKE", "REGEXP", "TEMPORARY", "FUNCTION", "EXPLAIN", "EXTENDED", "SERDE", "WITH", "SERDEPROPERTIES", "LIMIT", "SET", "TBLPROPERTIES", "READ"] )
+###
+#foreach ( $col in $table.getAllColumns() )
+## Print leading comma if necessary.
+#if ( !$firstcol )
+  #set ( $firstcol = true )
+#else
+,
+#end
+## Print column name. 
+#if ( $reservedWordsHiveQL.contains($col.getName().toUpperCase()) )
+#set ( $colReserved = true )
+  $col.getName()_ ##
+#else
+  $col.getName() ##
+#end
+### Add datatype specification. 
+#if ( $col.getTypeDescription().contains("DATETIME"))
+TIMESTAMP##
+#elseif ( $col.getTypeDescription().contains("TIMESTAMP") )
+TIMESTAMP##
+#elseif ( $col.getTypeDescription().contains("DATE") )
+TIMESTAMP##
+#elseif ( $col.getTypeDescription().contains("YEAR") )
+INT##
+#elseif ( $col.getTypeDescription().contains("TIME") )
+STRING##
+#elseif ( $col.getTypeDescription().startsWith("TINYINT") )
+TINYINT##
+#elseif ( $col.getTypeDescription().startsWith("SMALLINT") )
+SMALLINT##
+#elseif ( $col.getTypeDescription().startsWith("MEDIUMINT") )
+INT##
+#elseif ( $col.getTypeDescription().startsWith("INT") )
+INT##
+#elseif ( $col.getTypeDescription().startsWith("BIGINT") )
+BIGINT##
+#elseif ( $col.getTypeDescription().startsWith("DECIMAL(") )
+STRING##
+#elseif ( $col.getTypeDescription().startsWith("VARCHAR") )
+STRING##
+#elseif ( $col.getTypeDescription().startsWith("CHAR") )
+STRING##
+#elseif ( $col.getTypeDescription().startsWith("BINARY") )
+BINARY##
+#elseif ( $col.getTypeDescription().startsWith("VARBINARY") )
+BINARY##
+#elseif ( $col.getTypeDescription().contains("TEXT") )
+STRING## 
+#elseif ( $col.getTypeDescription().contains("BLOB") )
+BINARY## 
+#elseif ( $col.getTypeDescription().startsWith("FLOAT") )
+FLOAT##
+#elseif ( $col.getTypeDescription().startsWith("DOUBLE") )
+DOUBLE##
+#elseif ( $col.getTypeDescription().startsWith("ENUM") )
+STRING##
+#elseif ( $col.getTypeDescription().startsWith("SET") )
+STRING##
+#elseif ( $col.getTypeDescription().startsWith("BIT") )
+STRING##
+#else
+$col.getTypeDescription() /* ERROR: unrecognized (type=$col.getType(), length=$col.getLength()) */##
+#end ## End of if-then-then...-else.
+#end ## End of column loop. 

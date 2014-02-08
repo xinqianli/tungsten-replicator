@@ -66,12 +66,12 @@ public class ParallelExtractorThread extends Thread
     private Database                      connection = null;
     private boolean                       cancelled  = false;
     private ArrayBlockingQueue<DBMSEvent> queue;
-    private ArrayBlockingQueue<NumericChunk>     chunks;
+    private ArrayBlockingQueue<Chunk>     chunks;
 
-    private int                           rowCount   = 10000;
+    private int                           rowCount   = 200;
 
     public ParallelExtractorThread(String url, String user, String password,
-            ArrayBlockingQueue<NumericChunk> chunks,
+            ArrayBlockingQueue<Chunk> chunks,
             ArrayBlockingQueue<DBMSEvent> queue)
     {
         this.user = user;
@@ -130,6 +130,7 @@ public class ParallelExtractorThread extends Thread
         try
         {
             stmt = connection.createStatement();
+            stmt.setFetchSize(rowCount);
         }
         catch (SQLException e1)
         {
@@ -139,7 +140,7 @@ public class ParallelExtractorThread extends Thread
         while (!cancelled)
         {
             // 1. get a table to process
-            NumericChunk chunk;
+            Chunk chunk;
             try
             {
                 chunk = chunks.take();
@@ -184,6 +185,11 @@ public class ParallelExtractorThread extends Thread
                     if (rs.next())
                     {
                         RowChangeData rowChangeData = new RowChangeData();
+                        // StatementData stmtData = new StatementData(
+                        // "TRUNCATE TABLE "
+                        // + chunk.getTable().getSchema() + "."
+                        // + chunk.getTable().getName());
+                        // dataArray.add(stmtData);
                         dataArray.add(rowChangeData);
 
                         int rowIndex = 0;
@@ -305,17 +311,10 @@ public class ParallelExtractorThread extends Thread
                                 eventSent = true;
                                 try
                                 {
-                                    DBMSEvent ev = new DBMSEvent(
-                                            "PROVISIONNING", dataArray,
-                                            new Timestamp(
-                                                    System.currentTimeMillis()));
-                                    ev.addMetadataOption("schema", chunk
-                                            .getTable().getSchema());
-                                    ev.addMetadataOption("table", chunk
-                                            .getTable().getName());
-                                    ev.addMetadataOption("nbBlocks",
-                                            String.valueOf(chunk.getNbBlocks()));
-                                    queue.put(ev);
+                                    // TODO: what should be the event id ?
+                                    queue.put(new DBMSEvent("PROVISIONNING",
+                                            dataArray, new Timestamp(System
+                                                    .currentTimeMillis())));
                                 }
                                 catch (InterruptedException e)
                                 {
@@ -339,16 +338,9 @@ public class ParallelExtractorThread extends Thread
 
                             {
                                 // TODO: what should be the event id ?
-                                DBMSEvent ev = new DBMSEvent("PROVISIONNING",
-                                        dataArray, new Timestamp(
-                                                System.currentTimeMillis()));
-                                ev.addMetadataOption("schema", chunk.getTable()
-                                        .getSchema());
-                                ev.addMetadataOption("table", chunk.getTable()
-                                        .getName());
-                                ev.addMetadataOption("nbBlocks",
-                                        String.valueOf(chunk.getNbBlocks()));
-                                queue.put(ev);
+                                queue.put(new DBMSEvent("PROVISIONNING",
+                                        dataArray, new Timestamp(System
+                                                .currentTimeMillis())));
                             }
                             catch (InterruptedException e)
                             {
@@ -391,7 +383,7 @@ public class ParallelExtractorThread extends Thread
      * @param allColumns
      * @return
      */
-    protected String buildSQLStatement(NumericChunk chunk)
+    protected String buildSQLStatement(Chunk chunk)
     {
         StringBuffer sql = new StringBuffer();
 
@@ -436,7 +428,7 @@ public class ParallelExtractorThread extends Thread
 
             sql.append(" WHERE ");
             sql.append(pkName);
-            sql.append(" > ");
+            sql.append(" >= ");
             sql.append(chunk.getFrom());
             sql.append(" AND ");
             sql.append(pkName);

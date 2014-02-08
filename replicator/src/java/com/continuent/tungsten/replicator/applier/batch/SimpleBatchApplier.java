@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2011-13 Continuent Inc.
+ * Copyright (C) 2011-2014 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -24,19 +24,14 @@ package com.continuent.tungsten.replicator.applier.batch;
 
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.nio.charset.Charset;
-import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -55,12 +50,14 @@ import com.continuent.tungsten.replicator.applier.RawApplier;
 import com.continuent.tungsten.replicator.consistency.ConsistencyException;
 import com.continuent.tungsten.replicator.consistency.ConsistencyTable;
 import com.continuent.tungsten.replicator.database.Column;
-import com.continuent.tungsten.replicator.database.Database;
-import com.continuent.tungsten.replicator.database.DatabaseFactory;
 import com.continuent.tungsten.replicator.database.Key;
-import com.continuent.tungsten.replicator.database.SqlScriptGenerator;
 import com.continuent.tungsten.replicator.database.Table;
 import com.continuent.tungsten.replicator.database.TableMetadataCache;
+import com.continuent.tungsten.replicator.datasource.CommitSeqno;
+import com.continuent.tungsten.replicator.datasource.CommitSeqnoAccessor;
+import com.continuent.tungsten.replicator.datasource.DataSourceService;
+import com.continuent.tungsten.replicator.datasource.UniversalConnection;
+import com.continuent.tungsten.replicator.datasource.UniversalDataSource;
 import com.continuent.tungsten.replicator.dbms.DBMSData;
 import com.continuent.tungsten.replicator.dbms.LoadDataFileFragment;
 import com.continuent.tungsten.replicator.dbms.OneRowChange;
@@ -76,7 +73,6 @@ import com.continuent.tungsten.replicator.event.ReplOptionParams;
 import com.continuent.tungsten.replicator.extractor.mysql.SerialBlob;
 import com.continuent.tungsten.replicator.heartbeat.HeartbeatTable;
 import com.continuent.tungsten.replicator.plugin.PluginContext;
-import com.continuent.tungsten.replicator.thl.CommitSeqnoTable;
 
 /**
  * Implements an applier that bulk loads data into a SQL database via CSV files.
@@ -102,22 +98,20 @@ public class SimpleBatchApplier implements RawApplier
     private int                         taskId;
 
     // Properties.
-    protected String                    driver;
-    protected String                    url;
-    protected String                    user;
-    protected String                    password;
+    protected String                    dataSource;
     protected String                    stageDirectory;
-    protected String                    startupScript;
-    protected String                    stageMergeScript;
+    protected String                    loadScript;
     protected String                    stageSchemaPrefix;
     protected String                    stageTablePrefix;
     protected String                    stageColumnPrefix    = "tungsten_";
-    protected String                    stagePkeyColumn;
+    protected boolean                   requirePrimaryKey;
     protected boolean                   cleanUpFiles         = true;
     protected String                    charset              = "UTF-8";
     protected String                    timezone             = "GMT-0:00";
-    protected LoadMismatch              onLoadMismatch       = LoadMismatch.fail;
     protected boolean                   showCommands;
+
+    // Replication context
+    PluginContext                       context;
 
     // Load file directory for this task.
     private File                        stageDir;
@@ -129,10 +123,15 @@ public class SimpleBatchApplier implements RawApplier
     private Map<String, CsvInfo>        openCsvFiles         = new TreeMap<String, CsvInfo>();
 
     // Script executor.
-    private ScriptExecutor              scriptExec;
+    private ScriptExecutor              loadScriptExec;
+    private boolean                     hasBeginMethod;
+    private boolean                     hasCommitMethod;
 
     // Latest event.
     private ReplDBMSHeader              latestHeader;
+
+    // First sequence number in current transaction.
+    private long                        startSeqno           = -1;
 
     // Table metadata for base tables.
     private TableMetadataCache          fullMetadataCache;
@@ -141,47 +140,28 @@ public class SimpleBatchApplier implements RawApplier
     protected String                    metadataSchema       = null;
     protected String                    consistencyTable     = null;
     protected String                    consistencySelect    = null;
-    protected Database                  conn                 = null;
-    protected Statement                 statement            = null;
     protected Pattern                   ignoreSessionPattern = null;
 
-    // Catalog tables.
-    protected CommitSeqnoTable          commitSeqnoTable     = null;
+    // Catalog.
+    protected UniversalDataSource       dataSourceImpl       = null;
+    protected UniversalConnection       conn                 = null;
+    protected CommitSeqnoAccessor       commitSeqnoAccessor  = null;
+
+    // Old catalog tables.
     protected HeartbeatTable            heartbeatTable       = null;
 
     // Data formatter.
     protected volatile SimpleDateFormat dateFormatter;
 
-    public void setDriver(String driver)
+    public void setDataSource(String dataSource)
     {
-        this.driver = driver;
+        this.dataSource = dataSource;
     }
 
-    public void setUrl(String url)
+    /** Set the name of the load script. */
+    public void setLoadScript(String loadScript)
     {
-        this.url = url;
-    }
-
-    public void setUser(String user)
-    {
-        this.user = user;
-    }
-
-    public void setPassword(String password)
-    {
-        this.password = password;
-    }
-
-    /** Set the name of the connect script. */
-    public void setStartupScript(String startupScript)
-    {
-        this.startupScript = startupScript;
-    }
-
-    /** Set the name of the merge script. */
-    public void setStageMergeScript(String stageMergeScript)
-    {
-        this.stageMergeScript = stageMergeScript;
+        this.loadScript = loadScript;
     }
 
     /** Set the schema prefix for staging tables. */
@@ -195,10 +175,10 @@ public class SimpleBatchApplier implements RawApplier
         this.stageTablePrefix = stageTablePrefix;
     }
 
-    /** Set the default name of the staging table primary key. */
-    public void setStagePkeyColumn(String stagePkeyColumn)
+    /** If true, table data must have primary key(s). */
+    public void setRequirePrimaryKey(boolean requirePrimaryKey)
     {
-        this.stagePkeyColumn = stagePkeyColumn;
+        this.requirePrimaryKey = requirePrimaryKey;
     }
 
     /** Set the prefix for staging table columns. */
@@ -231,12 +211,6 @@ public class SimpleBatchApplier implements RawApplier
         this.timezone = timezone;
     }
 
-    /** Sets the proper handling of a load mismatch. */
-    public void setOnLoadMismatch(String onLoadMismatchString)
-    {
-        this.onLoadMismatch = LoadMismatch.valueOf(onLoadMismatchString);
-    }
-
     /** If true, show commands in the log when loading batches. */
     public void setShowCommands(boolean showCommands)
     {
@@ -259,6 +233,10 @@ public class SimpleBatchApplier implements RawApplier
         long seqno = header.getSeqno();
         ArrayList<DBMSData> dbmsDataValues = event.getData();
 
+        // Update the starting sequence number in the range.
+        if (startSeqno < 0)
+            startSeqno = seqno;
+
         // Apply heartbeat directly, skipping batch loading.
         String hbName = event
                 .getMetadataOptionValue(ReplOptionParams.HEARTBEAT);
@@ -266,16 +244,20 @@ public class SimpleBatchApplier implements RawApplier
         {
             try
             {
-                heartbeatTable.applyHeartbeat(conn, event.getSourceTstamp(),
-                        hbName);
-                heartbeatTable.completeHeartbeat(conn, header.getSeqno(),
-                        event.getEventId());
+                // heartbeatTable.applyHeartbeat(conn, event.getSourceTstamp(),
+                // hbName);
+                // heartbeatTable.completeHeartbeat(conn, header.getSeqno(),
+                // event.getEventId());
                 if (doCommit)
                 {
                     conn.commit();
                 }
             }
-            catch (SQLException e)
+            catch (ReplicatorException e)
+            {
+                throw e;
+            }
+            catch (Exception e)
             {
                 throw new ReplicatorException("Error updating heartbeat table",
                         e);
@@ -419,6 +401,15 @@ public class SimpleBatchApplier implements RawApplier
             return;
         }
 
+        // Make sure we have set the starting sequence number in the transaction
+        // batch.
+        if (startSeqno < 0)
+            startSeqno = latestHeader.getSeqno();
+
+        // Invoke being method on load script to show transaction is starting.
+        if (hasBeginMethod)
+            loadScriptExec.execute("begin", null);
+
         // Flush open CSV files now so that data become visible in case we
         // abort.
         for (CsvInfo info : openCsvFiles.values())
@@ -426,12 +417,16 @@ public class SimpleBatchApplier implements RawApplier
             flush(info);
         }
 
-        // Load each open CSV file.
+        // Load each open CSV file. We update the seqno of this commit in
+        // CsvInfo as that helps the batch load scripts generate unique file
+        // names that associate easily with the trep_commit_seqno position.
         int loadCount = 0;
+        long endSeqno = latestHeader.getSeqno();
         for (CsvInfo info : openCsvFiles.values())
         {
-            clearStageTable(info);
-            scriptExec.execute(info);
+            info.startSeqno = startSeqno;
+            info.endSeqno = endSeqno;
+            loadScriptExec.execute("apply", info);
             loadCount++;
         }
 
@@ -439,31 +434,29 @@ public class SimpleBatchApplier implements RawApplier
         if (loadCount != openCsvFiles.size())
         {
             throw new ReplicatorException(
-                    "Load file counts do not match total: insert+delete="
+                    "Load file counts do not match total: loadCount="
                             + loadCount + " total=" + openCsvFiles.size());
         }
 
         // Update trep_commit_seqno.
-        try
-        {
-            commitSeqnoTable
-                    .updateLastCommitSeqno(taskId, this.latestHeader, 0);
-        }
-        catch (SQLException e)
-        {
-            throw new ReplicatorException("Unable to update commit position", e);
-        }
+        commitSeqnoAccessor.updateLastCommitSeqno(this.latestHeader, 0);
 
-        // SQL commit here.
+        // Commit on data source.
         try
         {
+            if (hasCommitMethod)
+                loadScriptExec.execute("commit", null);
             conn.commit();
             conn.setAutoCommit(false);
         }
-        catch (SQLException e)
+        catch (Exception e)
         {
             throw new ReplicatorException("Unable to commit transaction", e);
         }
+
+        // Clear the starting sequence number in anticipation of the next
+        // transaction.
+        startSeqno = -1;
 
         // Clear the CSV file cache.
         openCsvFiles.clear();
@@ -498,7 +491,7 @@ public class SimpleBatchApplier implements RawApplier
         {
             rollbackTransaction();
         }
-        catch (SQLException e)
+        catch (Exception e)
         {
             logger.info("Unable to roll back transaction");
             if (logger.isDebugEnabled())
@@ -544,14 +537,15 @@ public class SimpleBatchApplier implements RawApplier
     public void configure(PluginContext context) throws ReplicatorException,
             InterruptedException
     {
+        // Store the context for future reference.
+        this.context = context;
+
         // Ensure basic properties are not null.
-        assertNotNull(url, "url");
-        assertNotNull(user, "user");
-        assertNotNull(password, "password");
+        assertNotNull(dataSource, "dataSource");
         assertNotNull(stageDirectory, "stageDirectory");
         assertNotNull(stageTablePrefix, "stageTablePrefix");
         assertNotNull(stageColumnPrefix, "stageRowIdColumn");
-        assertNotNull(stageMergeScript, "stageMergeScript");
+        assertNotNull(loadScript, "loadScript");
 
         // Get metadata schema.
         metadataSchema = context.getReplicatorSchemaName();
@@ -618,155 +612,63 @@ public class SimpleBatchApplier implements RawApplier
         // Initialize table metadata cache.
         fullMetadataCache = new TableMetadataCache(5000);
 
-        // Connect to DBMS.
+        // Connect to data source.
+        DataSourceService datasourceService = (DataSourceService) context
+                .getService("datasource");
+        if (datasourceService == null)
+        {
+            throw new ReplicatorException(
+                    "Unable to locate service for data source configuration; "
+                            + "check replicator configuration files: service name=datasource");
+        }
+        dataSourceImpl = datasourceService.find(dataSource);
+        conn = dataSourceImpl.getConnection();
+
+        // Prepare accessor(s) to data.
+        CommitSeqno commitSeqno = dataSourceImpl.getCommitSeqno();
+        commitSeqnoAccessor = commitSeqno.createAccessor(taskId, conn);
+
+        // Fetch the last event.
+        latestHeader = commitSeqnoAccessor.lastCommitSeqno();
+
+        // Ensure we are not in auto-commit mode.
         try
         {
-            // Load driver if provided.
-            if (driver != null)
-            {
-                try
-                {
-                    Class.forName(driver);
-                }
-                catch (Exception e)
-                {
-                    throw new ReplicatorException("Unable to load driver: "
-                            + driver, e);
-                }
-            }
-
-            // Create the database.
-            if (!context.isPrivilegedSlaveUpdate())
-            {
-                logger.info("Assuming non-privileged JDBC login for apply");
-            }
-            conn = DatabaseFactory.createDatabase(url, user, password,
-                    context.isPrivilegedSlaveUpdate());
-            conn.connect(false);
-            statement = conn.createStatement();
-
-            // Get the table type. For MySQL databases this is important.
-            String tableType = context.getTungstenTableType();
-
-            // Set up heartbeat table.
-            heartbeatTable = new HeartbeatTable(
-                    context.getReplicatorSchemaName(), tableType);
-            heartbeatTable.initializeHeartbeatTable(conn);
-
-            // Create consistency table
-            Table consistency = ConsistencyTable
-                    .getConsistencyTableDefinition(metadataSchema);
-            conn.createTable(consistency, false, tableType);
-
-            // Set up commit seqno table and fetch the last processed event.
-            commitSeqnoTable = new CommitSeqnoTable(conn,
-                    context.getReplicatorSchemaName(), tableType, false);
-            commitSeqnoTable.prepare(taskId);
-            latestHeader = commitSeqnoTable.lastCommitSeqno(taskId);
-
-            // Ensure we are not in auto-commit mode.
             conn.setAutoCommit(false);
-
         }
-        catch (SQLException e)
+        catch (Exception e)
         {
-            String message = String.format("Failed using url=%s, user=%s", url,
-                    user);
-            throw new ReplicatorException(message, e);
+            throw new ReplicatorException(
+                    "Unable to start transaction: message=" + e.getMessage(), e);
         }
 
-        // If a start-up script is present, execute that now.
-        if (startupScript != null)
-        {
-            // Parse script.
-            SqlScriptGenerator generator = initializeGenerator(this.startupScript);
-            List<String> startCommands = generator
-                    .getParameterizedScript(new HashMap<String, String>());
+        // Initialize load script.
+        loadScriptExec = createScriptExecutor(loadScript);
+        hasBeginMethod = loadScriptExec.register("begin");
+        hasCommitMethod = loadScriptExec.register("commit");
+    }
 
-            // Execute commands.
-            for (String startCommand : startCommands)
-            {
-                if (logger.isDebugEnabled())
-                {
-                    logger.debug("Executing start command: " + startCommand);
-                }
-                try
-                {
-                    long start = System.currentTimeMillis();
-                    statement.execute(startCommand);
-                    double interval = (System.currentTimeMillis() - start) / 1000.0;
-                    if (logger.isDebugEnabled())
-                    {
-                        logger.debug("Execution completed: duration="
-                                + interval + "s");
-                    }
-                }
-                catch (SQLException e)
-                {
-                    ReplicatorException re = new ReplicatorException(
-                            "Unable to execute load command", e);
-                    re.setExtraData(startCommand);
-                    throw re;
-                }
-            }
-        }
-
-        // Initialize script for merge operations.
-        if (stageMergeScript.toLowerCase().endsWith(".sql"))
-            scriptExec = new NativeScriptExecutor();
-        else if (stageMergeScript.toLowerCase().endsWith(".js"))
-            scriptExec = new JavascriptExecutor();
+    /**
+     * Creates a script executor for a particular script.
+     */
+    private ScriptExecutor createScriptExecutor(String script)
+            throws ReplicatorException, InterruptedException
+    {
+        ScriptExecutor exec;
+        if (script.toLowerCase().endsWith(".js"))
+            exec = new JavascriptExecutor();
         else
         {
             throw new ReplicatorException(
-                    "Unrecognized batch script suffix; only .js and .sql are supported: "
-                            + stageMergeScript);
+                    "Unrecognized batch script suffix; only .js is supported: "
+                            + script);
         }
 
         // Set parameters and prepare.
-        scriptExec.setConnection(conn);
-        scriptExec.setScript(stageMergeScript);
-        scriptExec.setShowCommands(showCommands);
-        scriptExec.prepare(context);
-    }
-
-    // Initializes a SqlScriptGenerator.
-    public static SqlScriptGenerator initializeGenerator(String script)
-            throws ReplicatorException
-    {
-        FileReader fileReader = null;
-        SqlScriptGenerator generator = new SqlScriptGenerator();
-        try
-        {
-            File loadScriptFile = new File(script);
-            fileReader = new FileReader(loadScriptFile);
-            generator.load(fileReader);
-        }
-        catch (FileNotFoundException e)
-        {
-            throw new ReplicatorException("Unable to open load script file: "
-                    + script);
-        }
-        catch (IOException e)
-        {
-            throw new ReplicatorException("Unable to read load script file: "
-                    + script, e);
-        }
-        finally
-        {
-            if (fileReader != null)
-            {
-                try
-                {
-                    fileReader.close();
-                }
-                catch (IOException e)
-                {
-                }
-            }
-        }
-
-        return generator;
+        exec.setConnection(conn);
+        exec.setScript(script);
+        exec.prepare(context);
+        return exec;
     }
 
     /**
@@ -901,7 +803,7 @@ public class SimpleBatchApplier implements RawApplier
                 }
 
                 // Create and cache writer information.
-                info = new CsvInfo(this.stagePkeyColumn);
+                info = new CsvInfo(this.requirePrimaryKey);
                 info.schema = tableMetadata.getSchema();
                 info.table = tableMetadata.getName();
                 info.baseTableMetadata = tableMetadata;
@@ -1010,39 +912,6 @@ public class SimpleBatchApplier implements RawApplier
         {
             throw new ReplicatorException("Unable to close CSV file: "
                     + info.file.getAbsolutePath());
-        }
-    }
-
-    // Load an open CSV file.
-    protected void clearStageTable(CsvInfo info) throws ReplicatorException
-    {
-        Table table = info.stageTableMetadata;
-        if (logger.isDebugEnabled())
-        {
-            logger.debug("Clearing stage table: " + table.fullyQualifiedName());
-        }
-
-        // Generate and submit SQL command.
-        String delete = "DELETE FROM " + table.fullyQualifiedName();
-        if (logger.isDebugEnabled())
-        {
-            logger.debug("Executing delete command: " + delete);
-        }
-        try
-        {
-            int rowsLoaded = statement.executeUpdate(delete);
-            if (logger.isDebugEnabled())
-            {
-                logger.debug("Rows deleted: " + rowsLoaded);
-            }
-        }
-        catch (SQLException e)
-        {
-            ReplicatorException re = new ReplicatorException(
-                    "Unable to delete data from stage table: "
-                            + table.fullyQualifiedName(), e);
-            re.setExtraData(delete);
-            throw re;
         }
     }
 
@@ -1224,16 +1093,11 @@ public class SimpleBatchApplier implements RawApplier
     }
 
     // Rolls back the current transaction.
-    private void rollbackTransaction() throws SQLException
+    private void rollbackTransaction() throws Exception
     {
         try
         {
             conn.rollback();
-        }
-        catch (SQLException e)
-        {
-            logger.error("Failed to rollback : " + e);
-            throw e;
         }
         finally
         {

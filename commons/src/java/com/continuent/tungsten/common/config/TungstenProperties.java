@@ -1640,10 +1640,30 @@ public class TungstenProperties implements Serializable
             if (++propCount > 1)
                 builder.append("\n");
 
-            builder.append("  ").append(key).append("=")
-                    .append(orderedProps.get(key));
+            builder.append("  ").append(key).append("=");
+            Object value = orderedProps.get(key);
+            if (value instanceof String)
+            {
+                // Strings must properly escape control characters.
+                String valueAsString = (String) value;
+                for (int i = 0; i < valueAsString.length(); i++)
+                {
+                    char c = valueAsString.charAt(i);
+                    if (Character.isISOControl(c))
+                    {
+                        // Print Unicode escape sequence.
+                        int cAsInt = c;
+                        String escapedValue = String.format("\\u%04x", cAsInt);
+                        builder.append(escapedValue);
+                    }
+                    else
+                    {
+                        // Otherwise just print the character representation.
+                        builder.append(c);
+                    }
+                }
+            }
         }
-
         builder.append("\n}");
 
         return builder.toString();
@@ -1669,7 +1689,7 @@ public class TungstenProperties implements Serializable
             JsonMappingException, IOException
     {
         String json = null;
-        ObjectMapper mapper = new ObjectMapper();                               // Setup Jackson
+        ObjectMapper mapper = new ObjectMapper(); // Setup Jackson
         mapper.configure(Feature.INDENT_OUTPUT, true);
         mapper.configure(Feature.SORT_PROPERTIES_ALPHABETICALLY, true);
 

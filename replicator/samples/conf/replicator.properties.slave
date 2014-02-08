@@ -1,6 +1,6 @@
-#################################
-# REPLICATOR.PROPERTIES.DIRECT  #
-#################################
+###############################
+# REPLICATOR.PROPERTIES.SLAVE #
+###############################
 #
 # This file contains properties for MySQL replication.
 #
@@ -148,7 +148,7 @@ replicator.pipelines=slave
 # extract from local THL to queue; apply from queue to DBMS.
 replicator.pipeline.slave=remote-to-thl,thl-to-q,q-to-dbms
 replicator.pipeline.slave.stores=thl,parallel-queue
-replicator.pipeline.slave.services=channel-assignment
+replicator.pipeline.slave.services=datasource,channel-assignment
 replicator.pipeline.slave.syncTHLWithExtractor=false
 
 replicator.stage.remote-to-thl=com.continuent.tungsten.replicator.pipeline.SingleThreadStageTask
@@ -356,6 +356,19 @@ replicator.service.channel-assignment=com.continuent.tungsten.replicator.channel
 replicator.service.channel-assignment.url=@{APPLIER.REPL_DBTHLURL}
 replicator.service.channel-assignment.channels=${replicator.global.apply.channels}
 replicator.service.channel-assignment.reconnectTimeoutInSeconds=60
+
+##########################
+# DATA SOURCE MANAGEMENT #
+##########################
+
+# Data sources encapsulate connections and catalog data for DBMS types
+# ranging from relational DBMS to file systems.
+replicator.service.datasource=com.continuent.tungsten.replicator.datasource.DataSourceService
+
+# Data sources we know about. 
+replicator.datasources=applier
+
+@{REPL_SVC_APPLIER_DATASOURCE_CONFIG}
 
 ################################
 # BACKUP/RESTORE CONFIGURATION #

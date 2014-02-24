@@ -17,11 +17,11 @@
 #end
 ### Add datatype specification. 
 #if ( $col.getTypeDescription().contains("DATETIME"))
-TIMESTAMP##
+STRING##
 #elseif ( $col.getTypeDescription().contains("TIMESTAMP") )
 TIMESTAMP##
 #elseif ( $col.getTypeDescription().contains("DATE") )
-TIMESTAMP##
+STRING##
 #elseif ( $col.getTypeDescription().contains("YEAR") )
 INT##
 #elseif ( $col.getTypeDescription().contains("TIME") )
@@ -51,7 +51,7 @@ STRING##
 #elseif ( $col.getTypeDescription().contains("BLOB") )
 BINARY## 
 #elseif ( $col.getTypeDescription().startsWith("FLOAT") )
-FLOAT##
+DOUBLE##
 #elseif ( $col.getTypeDescription().startsWith("DOUBLE") )
 DOUBLE##
 #elseif ( $col.getTypeDescription().startsWith("ENUM") )

@@ -1,0 +1,51 @@
+#*
+  Tungsten Scale-Out Stack
+  Copyright (C) 2014 Continuent Inc.
+  Contact: tungsten@continuent.org
+
+  Initial developer(s): Robert Hodges, Linas Virbalas
+  Contributor(s):
+*##parse("includes/hive-reserved-words.vm")
+#if ( $first )
+{
+  "tables": [
+#else
+,
+#end
+## Start the table definition. 
+  {
+    "schema": "$table.getSchema()", 
+    "name": "$table.getName()",
+## Primary key.
+#if ( $table.getPrimaryKey() )
+    "keys": [##
+#foreach ( $key in $table.getPrimaryKey().getColumns() )
+"$key.getName()"##
+#if( $foreach.hasNext ),#end
+#end
+],
+#end
+    "columns": [
+#foreach ( $col in $table.getAllColumns() )
+      {"name": "##
+#if ( $reservedWordsHiveQL.contains($col.getName().toUpperCase()) )
+$col.getName()_##
+#else
+$col.getName()##
+#end
+", "type": "##
+#parse("includes/hive-column-types.vm")##
+"}##
+#if( $foreach.hasNext )
+,
+#end
+#end
+
+    ]
+  }##
+## Close bracket at last table. 
+#if ( $last )
+
+  ]
+}
+#end

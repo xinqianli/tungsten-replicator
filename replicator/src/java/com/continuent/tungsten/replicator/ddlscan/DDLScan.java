@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Linas Virbalas
- * Contributor(s): 
+ * Contributor(s): Robert Hodges
  */
 
 package com.continuent.tungsten.replicator.ddlscan;
@@ -27,13 +27,14 @@ import java.io.Writer;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Hashtable;
+import java.util.LinkedList;
 
-import org.apache.velocity.VelocityContext;
 import org.apache.velocity.Template;
+import org.apache.velocity.VelocityContext;
 import org.apache.velocity.app.VelocityEngine;
-import org.apache.velocity.exception.ResourceNotFoundException;
-import org.apache.velocity.exception.ParseErrorException;
 import org.apache.velocity.exception.MethodInvocationException;
+import org.apache.velocity.exception.ParseErrorException;
+import org.apache.velocity.exception.ResourceNotFoundException;
 import org.apache.velocity.runtime.RuntimeConstants;
 import org.apache.velocity.runtime.log.Log4JLogChute;
 
@@ -99,7 +100,7 @@ public class DDLScan
     {
         db = DatabaseFactory.createDatabase(url, user, pass);
         db.connect();
-        
+
         // Prepare reserved words lists.
         OracleDatabase oracle = new OracleDatabase();
         reservedWordsOracle = oracle.getReservedWords();
@@ -143,8 +144,7 @@ public class DDLScan
     /**
      * Compiles the given Velocity template file.
      */
-    public void parseTemplate(String templateFile)
-            throws ReplicatorException
+    public void parseTemplate(String templateFile) throws ReplicatorException
     {
         try
         {
@@ -160,7 +160,7 @@ public class DDLScan
             throw new ReplicatorException("Problem parsing the template", pee);
         }
     }
-    
+
     /**
      * Tries to load rename definitions file. It will be used for all subsequent
      * scan calls.
@@ -176,7 +176,7 @@ public class DDLScan
         renameDefinitions = new RenameDefinitions(definitionsFile);
         renameDefinitions.parseFile();
     }
-    
+
     /**
      * Stop using rename definitions file for future scan(...) calls.
      * 
@@ -207,7 +207,7 @@ public class DDLScan
     {
         // How many tables were actually matched?
         int tablesRendered = 0;
-        
+
         // Regular expression matcher for tables.
         TableMatcher tableMatcher = null;
         if (tablesToFind != null)
@@ -245,21 +245,43 @@ public class DDLScan
         context.put("reservedWordsMySQL", reservedWordsMySQL);
         context.put("velocity", velocity);
 
-        // Iterate through all available tables in the database.
+        // Develop list of tables to generate on.
+        LinkedList<Table> filteredTables = new LinkedList<Table>();
         for (Table table : tables)
         {
             // Is this table requested by the user?
             if (tableMatcher == null
                     || tableMatcher.match(table.getSchema(), table.getName()))
             {
-                // If requested, do the renaming.
-                rename(table);
-
-                // Velocity merge.
-                merge(context, table, writer);
-
-                tablesRendered++;
+                filteredTables.add(table);
             }
+        }
+
+        // Iterate through all available tables in the database.
+        int size = filteredTables.size();
+        for (int i = 0; i < size; i++)
+        {
+            Table table = filteredTables.get(i);
+
+            // If this is the first table, mark the context appropriately.
+            if (i == 0)
+                context.put("first", true);
+            else
+                context.put("first", false);
+
+            // Similarly for the last table mark the context accordingly.
+            if (i >= size - 1)
+                context.put("last", true);
+            else
+                context.put("last", false);
+
+            // If requested, do the renaming.
+            rename(table);
+
+            // Velocity merge.
+            merge(context, table, writer);
+
+            tablesRendered++;
         }
 
         // No tables have been found and/or matched.

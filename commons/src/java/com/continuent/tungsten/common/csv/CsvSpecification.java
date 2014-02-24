@@ -75,7 +75,7 @@ public class CsvSpecification
             spec.setFieldSeparator("\u0001");
             spec.setRecordSeparator("\n");
             spec.setEscape("\\");
-            spec.setEscapedChars("\u0001");
+            spec.setEscapedChars("\u0001\\");
             spec.setNullPolicy(NullPolicy.nullValue);
             spec.setNullValue("\\N");
             spec.setUseHeaders(false);

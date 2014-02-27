@@ -865,11 +865,20 @@ class LogSlaveUpdates < ConfigurePrompt
   end
 end
 
-class SlavePrivilegedUpdates < ConfigurePrompt
+class PrivilegedSlave < ConfigurePrompt
   include ReplicationServicePrompt
 
   def initialize
-    super(SLAVE_PRIVILEGED_UPDATES, "Does login for slave update have superuser privileges",
+    super(PRIVILEGED_SLAVE, "Does login for slave have superuser privileges",
+      PV_BOOLEAN, "true")
+  end
+end
+
+class PrivilegedMaster < ConfigurePrompt
+  include ReplicationServicePrompt
+
+  def initialize
+    super(PRIVILEGED_MASTER, "Does login for master have superuser privileges",
       PV_BOOLEAN, "true")
   end
 end

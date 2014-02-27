@@ -434,9 +434,9 @@ public class MySQLExtractor implements RawExtractor
             conn = DatabaseFactory.createDatabase(url, user, password, true);
             conn.connect();
             st = conn.createStatement();
-            if (flush)
+            if (flush && runtime.isPrivilegedMaster())
             {
-                logger.debug("Flushing logs");
+                logger.debug("Flushing logs for fast start");
                 st.executeUpdate("FLUSH LOGS");
             }
             logger.debug("Seeking head position in binlog");

@@ -121,15 +121,6 @@ public interface Database extends UniversalConnection
     public void connect() throws SQLException;
 
     /**
-     * Connects to the database. You must set the url, user, and password then
-     * do this.
-     * 
-     * @param binlog log connection updates.
-     * @throws SQLException
-     */
-    public void connect(boolean binlog) throws SQLException;
-
-    /**
      * Disconnects from the database. This is also accomplished by close().
      */
     public void disconnect();

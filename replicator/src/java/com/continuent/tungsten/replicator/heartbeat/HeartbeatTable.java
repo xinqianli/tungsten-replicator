@@ -220,7 +220,7 @@ public class HeartbeatTable
         try
         {
             db = DatabaseFactory.createDatabase(url, user, password);
-            db.connect(true);
+            db.connect();
             startHeartbeat(db, name);
         }
         finally

@@ -98,8 +98,7 @@ public class CatalogManager
         this.password = password;
         this.metadataSchema = metadataSchema;
         this.vendor = vendor;
-        this.privileged = runtime.isMaster()
-                || runtime.isPrivilegedSlaveUpdate();
+        this.privileged = runtime.isMaster() || runtime.isPrivilegedSlave();
     }
 
     /**
@@ -114,7 +113,7 @@ public class CatalogManager
             // Connect and log updates only if requested.
             Database conn = DatabaseFactory.createDatabase(url, user, password,
                     privileged, vendor);
-            conn.connect(runtime.logReplicatorUpdates());
+            conn.connect();
             return conn;
         }
         catch (SQLException e)
@@ -152,22 +151,32 @@ public class CatalogManager
                 conn.useDefaultSchema(metadataSchema);
             }
 
-            // Create tables, allowing schema changes to be logged if requested.
+            // Create tables, allowing schema changes to be logged if requested
+            // or if we do not have sufficient privileges to suppress logging.
             if (conn.supportsControlSessionLevelLogging())
             {
-                if (runtime.logReplicatorUpdates())
+                if (runtime.isMaster())
                 {
-                    logger.info("Logging schema creation");
+                    if (runtime.isPrivilegedMaster())
+                    {
+                        logger.info("Surpressing logging on privileged master");
+                        conn.controlSessionLevelLogging(true);
+                    }
+                }
+                else if (runtime.isPrivilegedSlave()
+                        && !runtime.logReplicatorUpdates())
+                {
+                    logger.info("Suppressing logging on privileged slave");
                     conn.controlSessionLevelLogging(false);
                 }
-                else
-                    conn.controlSessionLevelLogging(true);
             }
 
             // Create commit seqno table.
             commitSeqnoTable = new CommitSeqnoTable(conn, metadataSchema,
                     runtime.getTungstenTableType(),
                     runtime.nativeSlaveTakeover());
+            // Initializing will generate a row that will be replicated if
+            // logging is enabled.
             commitSeqnoTable.initializeTable(context.getChannels());
 
             // Create consistency table

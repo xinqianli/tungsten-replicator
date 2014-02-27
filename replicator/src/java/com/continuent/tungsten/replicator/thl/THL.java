@@ -128,7 +128,7 @@ public class THL implements Store
 
     // If true check log consistency with catalog when starting up.
     private boolean            logConsistencyCheck  = false;
-
+    
     /** Creates a store instance. */
     public THL()
     {

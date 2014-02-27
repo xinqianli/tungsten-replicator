@@ -206,7 +206,7 @@ public class PrefetchStore extends InMemoryQueueStore
         try
         {
             conn = DatabaseFactory.createDatabase(url, user, password);
-            conn.connect(true);
+            conn.connect();
 
             seqnoStatement = conn
                     .prepareStatement("select seqno, fragno, last_Frag, source_id, epoch_number, eventid, applied_latency from "

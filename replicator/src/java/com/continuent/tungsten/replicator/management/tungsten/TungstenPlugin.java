@@ -192,7 +192,7 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
                         .createDatabase(url, user, password, true);
                 // this is about the only place where we want logging the
                 // queries
-                conn.connect(true);
+                conn.connect();
             }
             catch (Exception e)
             {
@@ -362,7 +362,7 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
                             runtime.getJdbcUrl(null), runtime.getJdbcUser(),
                             runtime.getJdbcPassword(),
                             runtime.getReplicatorSchemaName(),
-                            runtime.getTungstenTableType());
+                            runtime.getTungstenTableType(), runtime);
                     shardManager.advertiseInternal();
                 }
                 catch (Exception e)
@@ -572,9 +572,9 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
                         "MASTER_ONLINE");
                 heartbeat(props);
             }
-            
+
             // If we got this far, write the current role to help with recovery
-            // later on. 
+            // later on.
             runtime.setLastOnlineRoleName(runtime.getRoleName());
         }
         catch (ReplicatorException e)

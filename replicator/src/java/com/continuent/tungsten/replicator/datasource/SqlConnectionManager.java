@@ -136,7 +136,16 @@ public class SqlConnectionManager
         {
             Database conn = DatabaseFactory.createDatabase(url, user, password,
                     privilegedSlaveUpdate);
-            conn.connect(logSlaveUpdates);
+            conn.connect();
+            if (!logSlaveUpdates && privilegedSlaveUpdate)
+            {
+                // If we are a slave with super power and we do not want to
+                // log updates, turn off logging.
+                if (conn.supportsControlSessionLevelLogging())
+                {
+                    conn.controlSessionLevelLogging(true);
+                }
+            }
             return conn;
         }
         catch (SQLException e)

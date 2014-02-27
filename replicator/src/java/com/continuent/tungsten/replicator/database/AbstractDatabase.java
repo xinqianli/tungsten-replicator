@@ -152,16 +152,6 @@ public abstract class AbstractDatabase implements Database
      */
     public synchronized void connect() throws SQLException
     {
-        connect(false);
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.Database#connect(boolean)
-     */
-    public synchronized void connect(boolean binlog) throws SQLException
-    {
         if (dbConn == null)
         {
             if (dbDriver != null && drivers.get(dbDriver) == null)
@@ -181,14 +171,6 @@ public abstract class AbstractDatabase implements Database
 
             dbConn = DriverManager.getConnection(dbUri, dbUser, dbPassword);
             connected = (dbConn != null);
-
-            if (connected)
-            {
-                if (supportsControlSessionLevelLogging())
-                {
-                    this.controlSessionLevelLogging(!binlog);
-                }
-            }
         }
     }
 
@@ -996,7 +978,7 @@ public abstract class AbstractDatabase implements Database
             table.AddColumn(col);
             cm.put(col.getName(), col);
         }
- 
+
         // Look for primary key columns.
         ResultSet rsk = getPrimaryKeyResultSet(md, schemaName, tableName);
         Key pKey = new Key(Key.Primary);
@@ -1336,6 +1318,7 @@ public abstract class AbstractDatabase implements Database
 
     /**
      * {@inheritDoc}
+     * 
      * @see com.continuent.tungsten.replicator.database.Database#isSystemSchema(java.lang.String)
      */
     @Override
@@ -1345,5 +1328,4 @@ public abstract class AbstractDatabase implements Database
         return false;
     }
 
-    
 }

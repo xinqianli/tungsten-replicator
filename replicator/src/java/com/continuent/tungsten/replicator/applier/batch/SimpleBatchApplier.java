@@ -22,22 +22,19 @@
 
 package com.continuent.tungsten.replicator.applier.batch;
 
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
 import java.nio.charset.Charset;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
 import java.util.TreeMap;
-import java.util.regex.Pattern;
 
 import javax.sql.rowset.serial.SerialException;
 
@@ -82,17 +79,24 @@ import com.continuent.tungsten.replicator.plugin.PluginContext;
  */
 public class SimpleBatchApplier implements RawApplier
 {
-    private static Logger               logger               = Logger.getLogger(SimpleBatchApplier.class);
+    private static Logger               logger              = Logger.getLogger(SimpleBatchApplier.class);
 
     /**
      * Denotes an insert operation.
      */
-    public static String                INSERT               = "I";
+    public static String                INSERT              = "I";
 
     /**
      * Denotes a delete operation.
      */
-    public static String                DELETE               = "D";
+    public static String                DELETE              = "D";
+
+    // Names of staging header columns. These are prefixed when writing data.
+    public static String                OPCODE              = "opcode";
+    public static String                SEQNO               = "seqno";
+    public static String                ROW_ID              = "row_id";
+    public static String                COMMIT_TIMESTAMP    = "commit_timestamp";
+    public static String                SERVICE             = "service";
 
     // Task management information.
     private int                         taskId;
@@ -101,14 +105,16 @@ public class SimpleBatchApplier implements RawApplier
     protected String                    dataSource;
     protected String                    stageDirectory;
     protected String                    loadScript;
+    protected boolean                   cleanUpFiles        = true;
+    protected String                    charset             = "UTF-8";
+    protected String                    timezone            = "GMT-0:00";
     protected String                    stageSchemaPrefix;
     protected String                    stageTablePrefix;
-    protected String                    stageColumnPrefix    = "tungsten_";
-    protected boolean                   requirePrimaryKey;
-    protected boolean                   cleanUpFiles         = true;
-    protected String                    charset              = "UTF-8";
-    protected String                    timezone             = "GMT-0:00";
-    protected boolean                   showCommands;
+    protected String                    stageColumnPrefix   = "tungsten_";
+    protected List<String>              stageColumnNames;
+    protected String                    partitionBy;
+    protected String                    partitionByClass;
+    protected String                    partitionByFormat;
 
     // Replication context
     PluginContext                       context;
@@ -120,7 +126,7 @@ public class SimpleBatchApplier implements RawApplier
     private Charset                     outputCharset;
 
     // Open CVS files in current transaction.
-    private Map<String, CsvInfo>        openCsvFiles         = new TreeMap<String, CsvInfo>();
+    private Map<String, CsvFileSet>     openCsvSets         = new TreeMap<String, CsvFileSet>();
 
     // Script executor.
     private ScriptExecutor              loadScriptExec;
@@ -131,24 +137,44 @@ public class SimpleBatchApplier implements RawApplier
     private ReplDBMSHeader              latestHeader;
 
     // First sequence number in current transaction.
-    private long                        startSeqno           = -1;
+    private long                        startSeqno          = -1;
 
     // Table metadata for base tables.
     private TableMetadataCache          fullMetadataCache;
 
+    // Stage table Tungsten header columns with data types and
+    // distribute by information. This information is a bit messy
+    // because we need to record the following information.
+    //
+    // 1. Column definitions to generate staging table meta
+    // 2. ColumnSpec definitions to write values properly in CSV.
+    // 3. A map of Column instances.
+    //
+    // The first two are stored in order, whereas the map tracks
+    // which header columns are actually enabled.
+    private List<Column>                stageHeaderColumns;
+    private OneRowChange                stageHeader;
+    private Map<String, Integer>        stageHeaderColumnIndexMap;
+
+    // This tracks the row ID column as well as the partition by
+    // column for generating multiple CSV files per table split
+    // by a data value.
+    String                              rowIdColumn;
+    int                                 partitionByColumn   = -1;
+    ValuePartitioner                    valuePartitioner;
+
     // DBMS connection information.
-    protected String                    metadataSchema       = null;
-    protected String                    consistencyTable     = null;
-    protected String                    consistencySelect    = null;
-    protected Pattern                   ignoreSessionPattern = null;
+    protected String                    metadataSchema      = null;
+    protected String                    consistencyTable    = null;
+    protected String                    consistencySelect   = null;
 
     // Catalog.
-    protected UniversalDataSource       dataSourceImpl       = null;
-    protected UniversalConnection       conn                 = null;
-    protected CommitSeqnoAccessor       commitSeqnoAccessor  = null;
+    protected UniversalDataSource       dataSourceImpl      = null;
+    protected UniversalConnection       conn                = null;
+    protected CommitSeqnoAccessor       commitSeqnoAccessor = null;
 
     // Old catalog tables.
-    protected HeartbeatTable            heartbeatTable       = null;
+    protected HeartbeatTable            heartbeatTable      = null;
 
     // Data formatter.
     protected volatile SimpleDateFormat dateFormatter;
@@ -175,16 +201,16 @@ public class SimpleBatchApplier implements RawApplier
         this.stageTablePrefix = stageTablePrefix;
     }
 
-    /** If true, table data must have primary key(s). */
-    public void setRequirePrimaryKey(boolean requirePrimaryKey)
-    {
-        this.requirePrimaryKey = requirePrimaryKey;
-    }
-
     /** Set the prefix for staging table columns. */
     public void setStageColumnPrefix(String stageColumnPrefix)
     {
         this.stageColumnPrefix = stageColumnPrefix;
+    }
+
+    /** Specifies the names and order of staging columns added by Tungsten */
+    public void setStageColumnNames(List<String> stageColumnNames)
+    {
+        this.stageColumnNames = stageColumnNames;
     }
 
     /** Set the name of the staging directory. */
@@ -211,10 +237,29 @@ public class SimpleBatchApplier implements RawApplier
         this.timezone = timezone;
     }
 
-    /** If true, show commands in the log when loading batches. */
-    public void setShowCommands(boolean showCommands)
+    /**
+     * Selects a header column by which to partition CSV data for a single table
+     * into separate files. This must be the full name including prefix, for
+     * example tungsten_commit_timestamp.
+     */
+    public void setPartitionBy(String distributeBy)
     {
-        this.showCommands = showCommands;
+        this.partitionBy = distributeBy;
+    }
+
+    /** Set the name of the value partitioner. */
+    public void setPartitionByClass(String partitionByClass)
+    {
+        this.partitionByClass = partitionByClass;
+    }
+
+    /**
+     * Specifies a format string for the partitioning class used to split CSV
+     * file data.
+     */
+    public void setPartitionByFormat(String partitionByFormat)
+    {
+        this.partitionByFormat = partitionByFormat;
     }
 
     /**
@@ -231,6 +276,8 @@ public class SimpleBatchApplier implements RawApplier
             ConsistencyException, InterruptedException
     {
         long seqno = header.getSeqno();
+        Timestamp commitTimestamp = header.getExtractedTstamp();
+        String service = event.getMetadataOptionValue(ReplOptionParams.SERVICE);
         ArrayList<DBMSData> dbmsDataValues = event.getData();
 
         // Update the starting sequence number in the range.
@@ -316,8 +363,8 @@ public class SimpleBatchApplier implements RawApplier
                                 table, colSpecs, keySpecs);
 
                         // Insert each column into the CSV file.
-                        writeValues(seqno, tableMetadata, colSpecs, colValues,
-                                INSERT);
+                        writeValues(seqno, commitTimestamp, service,
+                                tableMetadata, colSpecs, colValues, INSERT);
                     }
                     else if (action.equals(ActionType.UPDATE))
                     {
@@ -334,10 +381,10 @@ public class SimpleBatchApplier implements RawApplier
                                 table, colSpecs, keySpecs);
 
                         // Write keys for deletion and columns for insert.
-                        writeValues(seqno, tableMetadata, keySpecs, keyValues,
-                                DELETE);
-                        writeValues(seqno, tableMetadata, colSpecs, colValues,
-                                INSERT);
+                        writeValues(seqno, commitTimestamp, service,
+                                tableMetadata, keySpecs, keyValues, DELETE);
+                        writeValues(seqno, commitTimestamp, service,
+                                tableMetadata, colSpecs, colValues, INSERT);
                     }
                     else if (action.equals(ActionType.DELETE))
                     {
@@ -352,8 +399,8 @@ public class SimpleBatchApplier implements RawApplier
                                 table, colSpecs, keySpecs);
 
                         // Insert each column into the CSV file.
-                        writeValues(seqno, tableMetadata, keySpecs, keyValues,
-                                DELETE);
+                        writeValues(seqno, commitTimestamp, service,
+                                tableMetadata, keySpecs, keyValues, DELETE);
                     }
                     else
                     {
@@ -412,9 +459,9 @@ public class SimpleBatchApplier implements RawApplier
 
         // Flush open CSV files now so that data become visible in case we
         // abort.
-        for (CsvInfo info : openCsvFiles.values())
+        for (CsvFileSet fileSet : this.openCsvSets.values())
         {
-            flush(info);
+            fileSet.flushAndCloseCsvFiles();
         }
 
         // Load each open CSV file. We update the seqno of this commit in
@@ -422,20 +469,18 @@ public class SimpleBatchApplier implements RawApplier
         // names that associate easily with the trep_commit_seqno position.
         int loadCount = 0;
         long endSeqno = latestHeader.getSeqno();
-        for (CsvInfo info : openCsvFiles.values())
+        for (CsvFileSet fileSet : this.openCsvSets.values())
         {
-            info.startSeqno = startSeqno;
-            info.endSeqno = endSeqno;
-            loadScriptExec.execute("apply", info);
-            loadCount++;
-        }
+            // Set the transaction boundaries.
+            fileSet.setStartSeqno(startSeqno);
+            fileSet.setEndSeqno(endSeqno);
 
-        // Make sure the loaded CSV files match the total open files.
-        if (loadCount != openCsvFiles.size())
-        {
-            throw new ReplicatorException(
-                    "Load file counts do not match total: loadCount="
-                            + loadCount + " total=" + openCsvFiles.size());
+            // Now load all CSV files.
+            for (CsvInfo info : fileSet.getCsvInfoList())
+            {
+                loadScriptExec.execute("apply", info);
+                loadCount++;
+            }
         }
 
         // Update trep_commit_seqno.
@@ -459,7 +504,7 @@ public class SimpleBatchApplier implements RawApplier
         startSeqno = -1;
 
         // Clear the CSV file cache.
-        openCsvFiles.clear();
+        this.openCsvSets.clear();
 
         // Clear the load directories if desired.
         if (cleanUpFiles)
@@ -499,7 +544,7 @@ public class SimpleBatchApplier implements RawApplier
         }
 
         // Clear the CSV file cache.
-        openCsvFiles.clear();
+        openCsvSets.clear();
 
         // Clear the load directories if desired.
         if (cleanUpFiles)
@@ -551,6 +596,16 @@ public class SimpleBatchApplier implements RawApplier
         metadataSchema = context.getReplicatorSchemaName();
         consistencyTable = metadataSchema + "." + ConsistencyTable.TABLE_NAME;
         consistencySelect = "SELECT * FROM " + consistencyTable + " ";
+
+        // Set default for header columns if not already set.
+        if (this.stageColumnNames == null)
+        {
+            stageColumnNames = new ArrayList<String>();
+            stageColumnNames.add(OPCODE);
+            stageColumnNames.add(SEQNO);
+            stageColumnNames.add(ROW_ID);
+            stageColumnNames.add(COMMIT_TIMESTAMP);
+        }
     }
 
     // Ensure value is not null.
@@ -646,6 +701,113 @@ public class SimpleBatchApplier implements RawApplier
         loadScriptExec = createScriptExecutor(loadScript);
         hasBeginMethod = loadScriptExec.register("begin");
         hasCommitMethod = loadScriptExec.register("commit");
+
+        // Prepare the header columns. We also identify the row id column name
+        // if it exists.
+        stageHeaderColumns = new ArrayList<Column>(stageColumnNames.size());
+        stageHeaderColumnIndexMap = new HashMap<String, Integer>();
+        for (int i = 0; i < stageColumnNames.size(); i++)
+        {
+            // Fetch the current stage header name and start the header column
+            // specification.
+            String headerName = stageColumnNames.get(i);
+
+            // Now check to see if we have a match on the distribute by column
+            // so we can complete the specification.
+            Column headerCol;
+            if (OPCODE.equals(headerName))
+            {
+                headerCol = new Column(stageColumnPrefix + OPCODE, Types.CHAR,
+                        1);
+            }
+            else if (SEQNO.equals(headerName))
+            {
+                headerCol = new Column(stageColumnPrefix + SEQNO, Types.INTEGER);
+            }
+            else if (ROW_ID.equals(headerName))
+            {
+                // We also need to mark the row ID column.
+                headerCol = new Column(stageColumnPrefix + ROW_ID,
+                        Types.INTEGER);
+                rowIdColumn = headerCol.getName();
+            }
+            else if (COMMIT_TIMESTAMP.equals(headerName))
+            {
+                headerCol = new Column(stageColumnPrefix + COMMIT_TIMESTAMP,
+                        Types.TIMESTAMP);
+            }
+            else if (SERVICE.equals(headerName))
+            {
+                headerCol = new Column(stageColumnPrefix + SERVICE,
+                        Types.VARCHAR);
+            }
+            else
+            {
+                throw new ReplicatorException(
+                        "Unrecognized header column name: " + headerName);
+            }
+
+            // Add the column and add a map entry so we can confirm it is
+            // enabled later.
+            stageHeaderColumns.add(headerCol);
+            stageHeaderColumnIndexMap.put(headerName, i);
+        }
+
+        // Now that we have the column definitions, also create a set of
+        // column specifications so that we can write values.
+        stageHeader = new OneRowChange();
+        for (int i = 0; i < stageColumnNames.size(); i++)
+        {
+            // Start the header column specification.
+            ColumnSpec headerColSpec = stageHeader.new ColumnSpec();
+            headerColSpec.setIndex(i);
+
+            // Add metadata specific to the column.
+            Column col = stageHeaderColumns.get(i);
+            headerColSpec.setName(col.getName());
+            headerColSpec.setType(col.getType());
+            headerColSpec.setLength((int) col.getLength());
+
+            // Add the column and check to ensure we have a distribute by
+            // column.
+            stageHeader.getColumnSpec().add(headerColSpec);
+
+            if (headerColSpec.getName().equals(partitionBy))
+            {
+                logger.info("Data files will be partitioned by column: name="
+                        + headerColSpec.getName() + " index=" + (i + 1));
+                partitionByColumn = i;
+            }
+        }
+
+        // If we have a distributeBy column, see if we can find a
+        // formatter.
+        if (partitionByColumn > -1)
+        {
+            if (partitionByClass == null)
+            {
+                throw new ReplicatorException(
+                        "Property partitionBy is set but there is no distributeByClass specified to divide CSV data");
+            }
+            try
+            {
+                Class<?> distributorClass = Class
+                        .forName(this.partitionByClass);
+                valuePartitioner = (ValuePartitioner) distributorClass
+                        .newInstance();
+                valuePartitioner.setTimeZone(tz);
+                valuePartitioner.setFormat(partitionByFormat);
+                logger.info("Initialized value partition class: "
+                        + distributorClass.getName());
+            }
+            catch (Exception e)
+            {
+                throw new ReplicatorException(
+                        "Unable to instantiate partitioner for CSV values: class="
+                                + partitionByClass + " message="
+                                + e.getMessage(), e);
+            }
+        }
     }
 
     /**
@@ -708,8 +870,10 @@ public class SimpleBatchApplier implements RawApplier
      * 
      * @param baseTable Table for which to create corresponding stage table
      * @return Stage table definition
+     * @throws ReplicatorException Thrown if stage table definition cannot be
+     *             created
      */
-    private Table getStageTable(Table baseTable)
+    private Table getStageTable(Table baseTable) throws ReplicatorException
     {
         // Generate schema and table names.
         String stageSchema = baseTable.getSchema();
@@ -719,121 +883,100 @@ public class SimpleBatchApplier implements RawApplier
 
         // Create table definition.
         Table stageTable = new Table(stageSchema, stageName);
-        stageTable.setTable(stageName);
-        stageTable.setSchema(stageSchema);
 
-        // Opcode, seqno, and row_id columns are always first 3 columns.
-        Column opCol = new Column(stageColumnPrefix + "opcode", Types.CHAR, 1);
-        stageTable.AddColumn(opCol);
-        Column seqnoCol = new Column(stageColumnPrefix + "seqno", Types.INTEGER);
-        stageTable.AddColumn(seqnoCol);
-        Column rowIdCol = new Column(stageColumnPrefix + "row_id",
-                Types.INTEGER);
-        stageTable.AddColumn(rowIdCol);
+        // Prepend the header columns.
+        for (Column headerCol : this.stageHeaderColumns)
+        {
+            stageTable.AddColumn(headerCol);
+        }
 
         // Add columns from base table.
-        for (Column col : baseTable.getAllColumns())
+        for (Column baseCol : baseTable.getAllColumns())
         {
-            stageTable.AddColumn(col);
+            stageTable.AddColumn(baseCol);
         }
 
         // Return the result.
         return stageTable;
     }
 
-    // Returns an open CSV file corresponding to a given schema, table name, and
-    // load type.
-    private CsvInfo getCsvWriter(Table tableMetadata)
+    // Returns an open CSV file corresponding to a given schema and table name.
+    private CsvFileSet getCsvFileSet(Table tableMetadata)
             throws ReplicatorException
     {
-        Table stageTableMetadata = getStageTable(tableMetadata);
-
-        // Create a key.
+        // Create a key and search for the corresponding CSV set.
         String key = tableMetadata.getSchema() + "." + tableMetadata.getName();
-        CsvInfo info = this.openCsvFiles.get(key);
-        if (info == null)
+        CsvFileSet fileSet = this.openCsvSets.get(key);
+        if (fileSet == null)
         {
-            // Generate file name.
-            File file = new File(this.stageDir, key + ".csv");
+            // Get stage table metadata.
+            Table stageTableMetadata = getStageTable(tableMetadata);
 
-            // Pick the right table to use. For staging tables, we
-            // need to use the stage metadata instead of going direct.
-            Table csvMetadata;
-            if (stageTableMetadata == null)
-                csvMetadata = tableMetadata;
-            else
-                csvMetadata = stageTableMetadata;
-
-            // Now generate the CSV writer.
-            try
-            {
-                // Ensure the file does not exist. This cleans up from
-                // previous transactions.
-                if (file.exists())
-                {
-                    file.delete();
-                }
-                if (file.exists())
-                {
-                    throw new ReplicatorException(
-                            "Unable to delete CSV file prior to loading new data: "
-                                    + file.getAbsolutePath());
-                }
-
-                // Generate a CSV writer on the file.
-                FileOutputStream outputStream = new FileOutputStream(file);
-                OutputStreamWriter streamWriter = new OutputStreamWriter(
-                        outputStream, outputCharset);
-                BufferedWriter output = new BufferedWriter(streamWriter);
-                CsvWriter writer = conn.getCsvWriter(output);
-                writer.setNullAutofill(true);
-
-                // Populate columns. The last column is the row ID, which is
-                // automatically populated by the CSV writer.
-                String rowIdName = stageColumnPrefix + "row_id";
-                List<Column> columns = csvMetadata.getAllColumns();
-                for (int i = 0; i < columns.size(); i++)
-                {
-                    Column col = columns.get(i);
-                    String name = col.getName();
-                    if (rowIdName.equals(name))
-                        writer.addRowIdName(name);
-                    else
-                        writer.addColumnName(name);
-                }
-
-                // Create and cache writer information.
-                info = new CsvInfo(this.requirePrimaryKey);
-                info.schema = tableMetadata.getSchema();
-                info.table = tableMetadata.getName();
-                info.baseTableMetadata = tableMetadata;
-                info.stageTableMetadata = stageTableMetadata;
-                info.file = file;
-                info.writer = writer;
-                openCsvFiles.put(key, info);
-            }
-            catch (CsvException e)
-            {
-                throw new ReplicatorException("Unable to intialize CSV file: "
-                        + e.getMessage(), e);
-            }
-            catch (IOException e)
-            {
-                throw new ReplicatorException("Unable to intialize CSV file: "
-                        + file.getAbsolutePath());
-            }
+            // Generate and configure the CSV set, since it is missing.
+            fileSet = new CsvFileSet(stageTableMetadata, tableMetadata,
+                    startSeqno);
+            fileSet.setConnection(conn);
+            fileSet.setRowIdColumn(rowIdColumn);
+            fileSet.setStageDir(stageDir);
+            fileSet.setOutputCharset(outputCharset);
+            this.openCsvSets.put(key, fileSet);
         }
-        return info;
+
+        return fileSet;
     }
 
     // Write values into a CSV file.
-    private void writeValues(long seqno, Table tableMetadata,
-            List<ColumnSpec> colSpecs,
+    private void writeValues(long seqno, Timestamp commitTimestamp,
+            String service, Table tableMetadata, List<ColumnSpec> colSpecs,
             ArrayList<ArrayList<ColumnVal>> colValues, String opcode)
             throws ReplicatorException
     {
-        CsvInfo info = getCsvWriter(tableMetadata);
-        CsvWriter csv = info.writer;
+        // Look up header field locations and put them in an array so that we
+        // can write efficiently.
+        int headerSize = stageHeaderColumns.size();
+        Object[] headerValues = new Object[headerSize];
+        Integer opcodeIndex = this.stageHeaderColumnIndexMap.get(OPCODE);
+        if (opcodeIndex != null)
+        {
+            headerValues[opcodeIndex] = opcode;
+        }
+        Integer seqnoIndex = this.stageHeaderColumnIndexMap.get(SEQNO);
+        if (seqnoIndex != null)
+        {
+            headerValues[seqnoIndex] = seqno;
+        }
+        Integer commitTimestampIndex = this.stageHeaderColumnIndexMap
+                .get(COMMIT_TIMESTAMP);
+        if (commitTimestampIndex != null)
+        {
+            headerValues[commitTimestampIndex] = commitTimestamp;
+        }
+        Integer sourceIndex = this.stageHeaderColumnIndexMap.get(SERVICE);
+        if (sourceIndex != null)
+        {
+            headerValues[sourceIndex] = service;
+        }
+
+        // Compute the CSV key.
+        CsvKey key;
+        if (partitionByColumn < 0)
+        {
+            // No distribute by support enabled, so there is just one
+            // CSV file per table.
+            key = CsvKey.emptyKey();
+        }
+        else
+        {
+            // We have a distribute by column, so we need to find the value
+            // and feed it to the value partitioner to generate a key.
+            key = new CsvKey(
+                    valuePartitioner.partition(headerValues[partitionByColumn]));
+        }
+
+        // Fetch out CSV writer. 
+        CsvFileSet fileSet = getCsvFileSet(tableMetadata);
+        CsvFile csvFile = fileSet.getCsvFile(key);
+        CsvWriter csv = csvFile.getWriter();
 
         try
         {
@@ -841,10 +984,20 @@ public class SimpleBatchApplier implements RawApplier
             Iterator<ArrayList<ColumnVal>> colIterator = colValues.iterator();
             while (colIterator.hasNext())
             {
-                // Insert the sequence number and opcode.
-                int csvIndex = 1;
-                csv.put(csvIndex++, opcode);
-                csv.put(csvIndex++, new Long(seqno).toString());
+                // Insert header values. We don't bother with the row_id value
+                // at that will be filled in automatically.
+                int headerIdx = 0;
+                for (int i = 0; i < headerSize; i++)
+                {
+                    headerIdx++;
+                    Object headerValue = headerValues[i];
+                    ColumnSpec headerColSpec = stageHeader.getColumnSpec().get(
+                            i);
+                    if (headerColSpec.getName().equals(rowIdColumn))
+                        continue;
+                    String value = getCsvString(headerValue, headerColSpec);
+                    csv.put(headerIdx, value);
+                }
 
                 // Now add the row data. Note that we skip the 3rd column as
                 // that has the row_id value and is filled in automatically.
@@ -853,9 +1006,10 @@ public class SimpleBatchApplier implements RawApplier
                 {
                     ColumnVal columnVal = row.get(i);
                     ColumnSpec columnSpec = colSpecs.get(i);
-                    String value = getCsvString(columnVal, columnSpec);
+                    String value = getCsvString(columnVal.getValue(),
+                            columnSpec);
                     int colIdx = columnSpec.getIndex();
-                    csv.put(colIdx + 3, value);
+                    csv.put(colIdx + headerIdx, value);
                 }
                 csv.write();
             }
@@ -864,7 +1018,7 @@ public class SimpleBatchApplier implements RawApplier
         {
             // Enumerate table columns.
             StringBuffer colBuffer = new StringBuffer();
-            for (Column col : info.baseTableMetadata.getAllColumns())
+            for (Column col : tableMetadata.getAllColumns())
             {
                 if (colBuffer.length() > 0)
                     colBuffer.append(",");
@@ -881,8 +1035,8 @@ public class SimpleBatchApplier implements RawApplier
             }
 
             throw new ReplicatorException("Invalid write to CSV file: name="
-                    + info.file.getAbsolutePath() + " table="
-                    + info.baseTableMetadata + " table_columns="
+                    + csvFile.getFile().getAbsolutePath() + " table="
+                    + tableMetadata.fullyQualifiedName() + " table_columns="
                     + colBuffer.toString() + " csv_columns="
                     + csvBuffer.toString(), e);
         }
@@ -890,28 +1044,7 @@ public class SimpleBatchApplier implements RawApplier
         {
             throw new ReplicatorException(
                     "Unable to append value to CSV file: "
-                            + info.file.getAbsolutePath(), e);
-        }
-    }
-
-    // Flush an open CSV file.
-    private void flush(CsvInfo info) throws ReplicatorException
-    {
-        // Flush and close the file.
-        try
-        {
-            info.writer.flush();
-            info.writer.getWriter().close();
-        }
-        catch (CsvException e)
-        {
-            throw new ReplicatorException("Unable to close CSV file: "
-                    + info.file.getAbsolutePath(), e);
-        }
-        catch (IOException e)
-        {
-            throw new ReplicatorException("Unable to close CSV file: "
-                    + info.file.getAbsolutePath());
+                            + csvFile.getFile().getAbsolutePath(), e);
         }
     }
 
@@ -986,15 +1119,14 @@ public class SimpleBatchApplier implements RawApplier
      * Converts a column value to a suitable String for CSV loading. This can be
      * overloaded for particular DBMS types.
      * 
-     * @param columnVal Column value
+     * @param value Column value
      * @param columnSpec Column metadata
      * @return String for loading
      * @throws CsvException
      */
-    protected String getCsvString(ColumnVal columnVal, ColumnSpec columnSpec)
+    protected String getCsvString(Object value, ColumnSpec columnSpec)
             throws CsvException
     {
-        Object value = columnVal.getValue();
         if (value == null)
         {
             return null;
@@ -1008,13 +1140,13 @@ public class SimpleBatchApplier implements RawApplier
             return dateFormatter.format((java.sql.Date) value);
         }
         else if (columnSpec.getType() == Types.BLOB
-                || (columnSpec.getType() == Types.NULL && columnVal.getValue() instanceof SerialBlob))
+                || (columnSpec.getType() == Types.NULL && value instanceof SerialBlob))
         { // ______^______
           // Blob in the incoming event masked as NULL,
           // though this happens with a non-NULL value!
           // Case targeted with this: MySQL.TEXT -> CSV
 
-            SerialBlob blob = (SerialBlob) columnVal.getValue();
+            SerialBlob blob = (SerialBlob) value;
 
             if (columnSpec.isBlob())
             {

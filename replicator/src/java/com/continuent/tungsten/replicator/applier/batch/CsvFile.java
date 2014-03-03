@@ -24,28 +24,43 @@ package com.continuent.tungsten.replicator.applier.batch;
 
 import java.io.File;
 
-import com.continuent.tungsten.replicator.database.Table;
+import com.continuent.tungsten.common.csv.CsvWriter;
 
 /**
- * Defines a struct to hold batch CSV file information. When using staging the
- * stage table metadata field is filled in. Otherwise it is null.
+ * Defines information specific to a single file within a CSV file set.
  */
-public class CsvInfo
+public class CsvFile
 {
-    // Struct fields.
-    public String schema;
-    public String table;
-    public String key;
-    public Table  baseTableMetadata;
-    public Table  stageTableMetadata;
-    public File   file;
-    public long   startSeqno = -1;
-    public long   endSeqno   = -1;
+    private final CsvKey    key;
+    private final File      file;
+    private final CsvWriter writer;
 
     /**
-     * Instantiates a new instance.
+     * Creates a new instance.
+     * 
+     * @param key Key for this file within CSV file set
+     * @param file Location of the file on file system
+     * @param writer A CSV writer for the file
      */
-    public CsvInfo()
+    public CsvFile(CsvKey key, File file, CsvWriter writer)
     {
+        this.key = key;
+        this.file = file;
+        this.writer = writer;
+    }
+
+    public CsvKey getKey()
+    {
+        return key;
+    }
+
+    public File getFile()
+    {
+        return file;
+    }
+
+    public CsvWriter getWriter()
+    {
+        return writer;
     }
 }

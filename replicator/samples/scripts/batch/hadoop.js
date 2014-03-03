@@ -23,15 +23,22 @@ function begin()
 }
 
 // Appends data from a single table into a file within an HDFS directory. 
+// If the key is present that becomes a sub-directory so that data are 
+// distributed. 
 function apply(csvinfo)
 {
   // Collect useful data. 
-  sqlParams = csvinfo.getSqlParameters();
-  csv_file = sqlParams.get("%%CSV_FILE%%");
+  csv_file = csvinfo.file.getAbsolutePath();
   schema = csvinfo.schema;
   table = csvinfo.table;
   seqno = csvinfo.startSeqno;
-  hadoop_dir = hadoop_base + '/' + schema + "/" + table;
+  key = csvinfo.key;
+  if (key == "") {
+    hadoop_dir = hadoop_base + '/' + schema + "/" + table;
+  }
+  else {
+    hadoop_dir = hadoop_base + '/' + schema + "/" + table + "/" + key
+  }
   hadoop_file = hadoop_dir + '/' + table + '-' + seqno + ".csv";
   logger.info("Writing file: " + csv_file + " to: " + hadoop_file);
 

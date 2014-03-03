@@ -3,7 +3,7 @@
  * Copyright (C) 2013-2014 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
- * Load script for Hadoop data that uses direct connection to HDFS. 
+ * Load script for Hadoop data that uses direct connection to HDFS.  
  */
 
 // Called once when applier goes online. 
@@ -21,16 +21,22 @@ function begin()
   // Does nothing. 
 }
 
-// Appends data from a single table into a global file. 
+// Loads CSV file to HDFS.  If the key is present that becomes a sub-directory
+// so that data are distributed. 
 function apply(csvinfo)
 {
   // Assemble the parts of the file. 
-  sqlParams = csvinfo.getSqlParameters();
-  csv_file = sqlParams.get("%%CSV_FILE%%");
+  csv_file = csvinfo.file.getAbsolutePath();
   schema = csvinfo.schema;
   table = csvinfo.table;
   seqno = csvinfo.startSeqno;
-  hadoop_dir = hadoop_base + '/' + schema + "/" + table;
+  key = csvinfo.key;
+  if (key == "") {
+    hadoop_dir = hadoop_base + '/' + schema + "/" + table;
+  }
+  else {
+    hadoop_dir = hadoop_base + '/' + schema + "/" + table + "/" + key
+  }
   hadoop_file = hadoop_dir + '/' + table + '-' + seqno + ".csv";
   logger.info("Writing file: " + csv_file + " to: " + hadoop_file);
 

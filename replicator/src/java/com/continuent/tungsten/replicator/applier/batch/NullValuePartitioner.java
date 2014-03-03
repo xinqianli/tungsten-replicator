@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2011-2014 Continuent Inc.
+ * Copyright (C) 2014 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,35 +17,43 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Robert Hodges
- * Contributor(s): Linas Virbalas
+ * Contributor(s): 
  */
 
 package com.continuent.tungsten.replicator.applier.batch;
 
-import java.io.File;
-
-import com.continuent.tungsten.replicator.database.Table;
+import java.util.TimeZone;
 
 /**
- * Defines a struct to hold batch CSV file information. When using staging the
- * stage table metadata field is filled in. Otherwise it is null.
+ * Implements a value partitioner that always returns an empty string.
  */
-public class CsvInfo
+public class NullValuePartitioner implements ValuePartitioner
 {
-    // Struct fields.
-    public String schema;
-    public String table;
-    public String key;
-    public Table  baseTableMetadata;
-    public Table  stageTableMetadata;
-    public File   file;
-    public long   startSeqno = -1;
-    public long   endSeqno   = -1;
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.applier.batch.ValuePartitioner#setFormat(java.lang.String)
+     */
+    public void setFormat(String format)
+    {
+    }
 
     /**
-     * Instantiates a new instance.
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.applier.batch.ValuePartitioner#setTimeZone(java.util.TimeZone)
      */
-    public CsvInfo()
+    public void setTimeZone(TimeZone tz)
     {
+    }
+
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.applier.batch.ValuePartitioner#partition(java.lang.Object)
+     */
+    public String partition(Object value)
+    {
+        return "";
     }
 }

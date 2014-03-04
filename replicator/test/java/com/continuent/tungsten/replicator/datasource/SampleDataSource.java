@@ -24,21 +24,19 @@ package com.continuent.tungsten.replicator.datasource;
 
 import org.apache.log4j.Logger;
 
-import com.continuent.tungsten.common.csv.CsvSpecification;
 import com.continuent.tungsten.replicator.ReplicatorException;
 
 /**
  * Implements a dummy data source type for testing.
  */
-public class SampleDataSource implements UniversalDataSource
+public class SampleDataSource extends AbstractDataSource
+        implements
+            UniversalDataSource
 {
-    private static Logger    logger   = Logger.getLogger(SampleDataSource.class);
+    private static Logger logger = Logger.getLogger(SampleDataSource.class);
 
     // Properties.
-    private String           serviceName;
-    private int              channels = 1;
-    private String           myParameter;
-    private CsvSpecification csv;
+    private String        myParameter;
 
     /** Create new instance. */
     public SampleDataSource()
@@ -55,47 +53,7 @@ public class SampleDataSource implements UniversalDataSource
         this.myParameter = myParameter;
     }
 
-    public String getServiceName()
-    {
-        return serviceName;
-    }
-
-    public int getChannels()
-    {
-        return channels;
-    }
-
-    public CsvSpecification getCsv()
-    {
-        return csv;
-    }
-
-    public void setCsv(CsvSpecification csv)
-    {
-        this.csv = csv;
-    }
-
     // CATALOG API
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.datasource.UniversalDataSource#setServiceName(java.lang.String)
-     */
-    public void setServiceName(String serviceName)
-    {
-        this.serviceName = serviceName;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.datasource.UniversalDataSource#setChannels(int)
-     */
-    public void setChannels(int channels)
-    {
-        this.channels = channels;
-    }
 
     /**
      * Instantiate and configure all data source tables.

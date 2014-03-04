@@ -27,7 +27,6 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.sql.Timestamp;
 import java.sql.Types;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -35,8 +34,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
 import java.util.TreeMap;
-
-import javax.sql.rowset.serial.SerialException;
 
 import org.apache.log4j.Logger;
 
@@ -52,6 +49,7 @@ import com.continuent.tungsten.replicator.database.Table;
 import com.continuent.tungsten.replicator.database.TableMetadataCache;
 import com.continuent.tungsten.replicator.datasource.CommitSeqno;
 import com.continuent.tungsten.replicator.datasource.CommitSeqnoAccessor;
+import com.continuent.tungsten.replicator.datasource.CsvDataFormat;
 import com.continuent.tungsten.replicator.datasource.DataSourceService;
 import com.continuent.tungsten.replicator.datasource.UniversalConnection;
 import com.continuent.tungsten.replicator.datasource.UniversalDataSource;
@@ -67,7 +65,6 @@ import com.continuent.tungsten.replicator.dbms.StatementData;
 import com.continuent.tungsten.replicator.event.DBMSEvent;
 import com.continuent.tungsten.replicator.event.ReplDBMSHeader;
 import com.continuent.tungsten.replicator.event.ReplOptionParams;
-import com.continuent.tungsten.replicator.extractor.mysql.SerialBlob;
 import com.continuent.tungsten.replicator.heartbeat.HeartbeatTable;
 import com.continuent.tungsten.replicator.plugin.PluginContext;
 
@@ -79,68 +76,71 @@ import com.continuent.tungsten.replicator.plugin.PluginContext;
  */
 public class SimpleBatchApplier implements RawApplier
 {
-    private static Logger               logger              = Logger.getLogger(SimpleBatchApplier.class);
+    private static Logger           logger              = Logger.getLogger(SimpleBatchApplier.class);
 
     /**
      * Denotes an insert operation.
      */
-    public static String                INSERT              = "I";
+    public static String            INSERT              = "I";
 
     /**
      * Denotes a delete operation.
      */
-    public static String                DELETE              = "D";
+    public static String            DELETE              = "D";
 
     // Names of staging header columns. These are prefixed when writing data.
-    public static String                OPCODE              = "opcode";
-    public static String                SEQNO               = "seqno";
-    public static String                ROW_ID              = "row_id";
-    public static String                COMMIT_TIMESTAMP    = "commit_timestamp";
-    public static String                SERVICE             = "service";
+    public static String            OPCODE              = "opcode";
+    public static String            SEQNO               = "seqno";
+    public static String            ROW_ID              = "row_id";
+    public static String            COMMIT_TIMESTAMP    = "commit_timestamp";
+    public static String            SERVICE             = "service";
 
     // Task management information.
-    private int                         taskId;
+    private int                     taskId;
 
     // Properties.
-    protected String                    dataSource;
-    protected String                    stageDirectory;
-    protected String                    loadScript;
-    protected boolean                   cleanUpFiles        = true;
-    protected String                    charset             = "UTF-8";
-    protected String                    timezone            = "GMT-0:00";
-    protected String                    stageSchemaPrefix;
-    protected String                    stageTablePrefix;
-    protected String                    stageColumnPrefix   = "tungsten_";
-    protected List<String>              stageColumnNames;
-    protected String                    partitionBy;
-    protected String                    partitionByClass;
-    protected String                    partitionByFormat;
+    protected String                dataSource;
+    protected String                stageDirectory;
+    protected String                loadScript;
+    protected boolean               cleanUpFiles        = true;
+    protected String                charset             = "UTF-8";
+    protected String                timezone            = "GMT-0:00";
+    protected String                stageSchemaPrefix;
+    protected String                stageTablePrefix;
+    protected String                stageColumnPrefix   = "tungsten_";
+    protected List<String>          stageColumnNames;
+    protected String                partitionBy;
+    protected String                partitionByClass;
+    protected String                partitionByFormat;
 
     // Replication context
-    PluginContext                       context;
+    PluginContext                   context;
 
     // Load file directory for this task.
-    private File                        stageDir;
+    private File                    stageDir;
 
     // Character set for writing CSV files.
-    private Charset                     outputCharset;
+    private Charset                 outputCharset;
 
-    // Open CVS files in current transaction.
-    private Map<String, CsvFileSet>     openCsvSets         = new TreeMap<String, CsvFileSet>();
+    // Open CSV file map for current transaction.
+    private Map<String, CsvFileSet> openCsvSets         = new TreeMap<String, CsvFileSet>();
+
+    // Formatter to use when writing objects to CSV.
+    private CsvDataFormat           csvDataFormat;
 
     // Script executor.
-    private ScriptExecutor              loadScriptExec;
-    private boolean                     hasBeginMethod;
-    private boolean                     hasCommitMethod;
+    private ScriptExecutor          loadScriptExec;
+    private boolean                 hasBeginMethod;
+    private boolean                 hasCommitMethod;
 
     // Latest event.
-    private ReplDBMSHeader              latestHeader;
+    private ReplDBMSHeader          latestHeader;
 
     // First sequence number in current transaction.
-    private long                        startSeqno          = -1;
+    private long                    startSeqno          = -1;
 
     // Table metadata for base tables.
-    private TableMetadataCache          fullMetadataCache;
+    private TableMetadataCache      fullMetadataCache;
 
     // Stage table Tungsten header columns with data types and
     // distribute by information. This information is a bit messy
@@ -152,32 +152,29 @@ public class SimpleBatchApplier implements RawApplier
     //
     // The first two are stored in order, whereas the map tracks
     // which header columns are actually enabled.
-    private List<Column>                stageHeaderColumns;
-    private OneRowChange                stageHeader;
-    private Map<String, Integer>        stageHeaderColumnIndexMap;
+    private List<Column>            stageHeaderColumns;
+    private OneRowChange            stageHeader;
+    private Map<String, Integer>    stageHeaderColumnIndexMap;
 
     // This tracks the row ID column as well as the partition by
     // column for generating multiple CSV files per table split
     // by a data value.
-    String                              rowIdColumn;
-    int                                 partitionByColumn   = -1;
-    ValuePartitioner                    valuePartitioner;
+    String                          rowIdColumn;
+    int                             partitionByColumn   = -1;
+    ValuePartitioner                valuePartitioner;
 
     // DBMS connection information.
-    protected String                    metadataSchema      = null;
-    protected String                    consistencyTable    = null;
-    protected String                    consistencySelect   = null;
+    protected String                metadataSchema      = null;
+    protected String                consistencyTable    = null;
+    protected String                consistencySelect   = null;
 
     // Catalog.
-    protected UniversalDataSource       dataSourceImpl      = null;
-    protected UniversalConnection       conn                = null;
-    protected CommitSeqnoAccessor       commitSeqnoAccessor = null;
+    protected UniversalDataSource   dataSourceImpl      = null;
+    protected UniversalConnection   conn                = null;
+    protected CommitSeqnoAccessor   commitSeqnoAccessor = null;
 
     // Old catalog tables.
-    protected HeartbeatTable            heartbeatTable      = null;
-
-    // Data formatter.
-    protected volatile SimpleDateFormat dateFormatter;
+    protected HeartbeatTable        heartbeatTable      = null;
 
     public void setDataSource(String dataSource)
     {
@@ -628,11 +625,22 @@ public class SimpleBatchApplier implements RawApplier
     public void prepare(PluginContext context) throws ReplicatorException,
             InterruptedException
     {
-        // Create a formatter for printing dates.
+        // Connect to data source.
+        DataSourceService datasourceService = (DataSourceService) context
+                .getService("datasource");
+        if (datasourceService == null)
+        {
+            throw new ReplicatorException(
+                    "Unable to locate service for data source configuration; "
+                            + "check replicator configuration files: service name=datasource");
+        }
+        dataSourceImpl = datasourceService.find(dataSource);
+        conn = dataSourceImpl.getConnection();
+
+        // Look up the time zone for use with CSV, then get an appropriate
+        // formatter from the data source.
         TimeZone tz = TimeZone.getTimeZone(timezone);
-        dateFormatter = new SimpleDateFormat();
-        dateFormatter.setTimeZone(tz);
-        dateFormatter.applyPattern("yyyy-MM-dd HH:mm:ss.SSS");
+        csvDataFormat = dataSourceImpl.getCsvStringFormatter(tz);
 
         // Look up the output character set.
         if (charset == null)
@@ -666,18 +674,6 @@ public class SimpleBatchApplier implements RawApplier
 
         // Initialize table metadata cache.
         fullMetadataCache = new TableMetadataCache(5000);
-
-        // Connect to data source.
-        DataSourceService datasourceService = (DataSourceService) context
-                .getService("datasource");
-        if (datasourceService == null)
-        {
-            throw new ReplicatorException(
-                    "Unable to locate service for data source configuration; "
-                            + "check replicator configuration files: service name=datasource");
-        }
-        dataSourceImpl = datasourceService.find(dataSource);
-        conn = dataSourceImpl.getConnection();
 
         // Prepare accessor(s) to data.
         CommitSeqno commitSeqno = dataSourceImpl.getCommitSeqno();
@@ -973,7 +969,7 @@ public class SimpleBatchApplier implements RawApplier
                     valuePartitioner.partition(headerValues[partitionByColumn]));
         }
 
-        // Fetch out CSV writer. 
+        // Fetch a CSV writer.
         CsvFileSet fileSet = getCsvFileSet(tableMetadata);
         CsvFile csvFile = fileSet.getCsvFile(key);
         CsvWriter csv = csvFile.getWriter();
@@ -1116,68 +1112,18 @@ public class SimpleBatchApplier implements RawApplier
     }
 
     /**
-     * Converts a column value to a suitable String for CSV loading. This can be
-     * overloaded for particular DBMS types.
+     * Converts a column value to a suitable String for CSV loading.
      * 
      * @param value Column value
-     * @param columnSpec Column metadata
+     * @param columnSpec Column metadata containing type and whether underlying
+     *            data is actually binary regardless of what Java type says
      * @return String for loading
-     * @throws CsvException
      */
     protected String getCsvString(Object value, ColumnSpec columnSpec)
-            throws CsvException
+            throws ReplicatorException
     {
-        if (value == null)
-        {
-            return null;
-        }
-        else if (value instanceof Timestamp)
-        {
-            return dateFormatter.format((Timestamp) value);
-        }
-        else if (value instanceof java.sql.Date)
-        {
-            return dateFormatter.format((java.sql.Date) value);
-        }
-        else if (columnSpec.getType() == Types.BLOB
-                || (columnSpec.getType() == Types.NULL && value instanceof SerialBlob))
-        { // ______^______
-          // Blob in the incoming event masked as NULL,
-          // though this happens with a non-NULL value!
-          // Case targeted with this: MySQL.TEXT -> CSV
-
-            SerialBlob blob = (SerialBlob) value;
-
-            if (columnSpec.isBlob())
-            {
-                // If it's really a blob, the following will not work correctly,
-                // but let's not eat the value, if there's a possibility of one.
-                return value.toString();
-            }
-            else
-            {
-                // Expect a textual field.
-                String toString = null;
-
-                if (blob != null)
-                {
-                    try
-                    {
-                        toString = new String(blob.getBytes(1,
-                                (int) blob.length()));
-                    }
-                    catch (SerialException e)
-                    {
-                        throw new CsvException(
-                                "Execption while getting blob.getBytes(...)", e);
-                    }
-                }
-
-                return toString;
-            }
-        }
-        else
-            return value.toString();
+        return csvDataFormat.csvString(value, columnSpec.getType(),
+                columnSpec.isBlob());
     }
 
     // Create a directory if it does not exist.

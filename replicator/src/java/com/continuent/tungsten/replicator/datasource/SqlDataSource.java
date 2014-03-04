@@ -31,13 +31,13 @@ import com.continuent.tungsten.replicator.database.Database;
  * Implements a data source based on a relational DBMS. This supersedes class
  * com.continuent.tungsten.replicator.thl.CatalogManager.
  */
-public class SqlDataSource implements UniversalDataSource
+public class SqlDataSource extends AbstractDataSource
+        implements
+            UniversalDataSource
 {
-    private static Logger logger   = Logger.getLogger(SqlDataSource.class);
+    private static Logger logger = Logger.getLogger(SqlDataSource.class);
 
     // Properties.
-    private String        serviceName;
-    private int           channels = 1;
     private String        url;
     private String        user;
     private String        password;
@@ -138,42 +138,14 @@ public class SqlDataSource implements UniversalDataSource
         this.schema = schema;
     }
 
-    public String getServiceName()
-    {
-        return serviceName;
-    }
-
-    public int getChannels()
-    {
-        return channels;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.datasource.UniversalDataSource#setServiceName(java.lang.String)
-     */
-    public void setServiceName(String serviceName)
-    {
-        this.serviceName = serviceName;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.datasource.UniversalDataSource#setChannels(int)
-     */
-    public void setChannels(int channels)
-    {
-        this.channels = channels;
-    }
-
     /**
      * Instantiate and configure all data source tables.
      */
     @Override
     public void configure() throws ReplicatorException, InterruptedException
     {
+        super.configure();
+
         // Configure connection manager.
         connectionManager = new SqlConnectionManager();
         connectionManager.setUrl(url);

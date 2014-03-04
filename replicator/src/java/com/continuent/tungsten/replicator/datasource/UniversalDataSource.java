@@ -22,6 +22,8 @@
 
 package com.continuent.tungsten.replicator.datasource;
 
+import java.util.TimeZone;
+
 import com.continuent.tungsten.replicator.ReplicatorException;
 
 /**
@@ -81,4 +83,13 @@ public interface UniversalDataSource extends CatalogEntity
      * Releases a wrapped connection.
      */
     public void releaseConnection(UniversalConnection conn);
+
+    /**
+     * Returns a configured formatter for writing data to CSV files for this
+     * particular data source type.
+     * 
+     * @param tz A time zone to use in date/time conversions
+     */
+    public CsvDataFormat getCsvStringFormatter(TimeZone tzs)
+            throws ReplicatorException;
 }

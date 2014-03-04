@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.continuent.tungsten.common.csv.CsvWriter;
+import com.continuent.tungsten.common.csv.NullPolicy;
 import com.continuent.tungsten.replicator.ReplicatorException;
 
 /**
@@ -215,8 +216,13 @@ public class DerbyDatabase extends AbstractDatabase
      */
     public CsvWriter getCsvWriter(BufferedWriter writer)
     {
-        // Need to implement in order to support CSV.
-        throw new UnsupportedOperationException(
-                "CSV output is not supported for this database type");
+        CsvWriter csv = new CsvWriter(writer);
+        csv.setQuoteChar('"');
+        csv.setQuoted(true);
+        csv.setEscapeChar('\\');
+        csv.setEscapedChars("\\");
+        csv.setNullPolicy(NullPolicy.skip);
+        csv.setWriteHeaders(false);
+        return csv;
     }
 }

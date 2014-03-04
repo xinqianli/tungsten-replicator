@@ -22,7 +22,16 @@
 
 package com.continuent.tungsten.replicator.datasource;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
 import java.sql.Timestamp;
+import java.sql.Types;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.TimeZone;
 
 import junit.framework.Assert;
 
@@ -30,6 +39,7 @@ import org.apache.log4j.Logger;
 import org.junit.Test;
 
 import com.continuent.tungsten.common.config.TungstenProperties;
+import com.continuent.tungsten.common.csv.CsvWriter;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.event.ReplDBMSHeader;
 import com.continuent.tungsten.replicator.event.ReplDBMSHeaderData;
@@ -283,6 +293,61 @@ public class AbstractDataSourceTest
     }
 
     /**
+     * Verify that we can obtain both a CSV writer as well as a string
+     * formatter, then write successfully to a CSV file.
+     */
+    @Test
+    public void testCsvFormattingAndWriting() throws Exception
+    {
+        if (!assertTestProperties())
+            return;
+        File testDir = prepareTestDir("testCsvFormattingAndWriting");
+
+        // Allocate connection and CSV formatter from the data source.
+        UniversalDataSource c = prepareCatalog("testCsvFormattingAndWriting");
+        UniversalConnection conn = c.getConnection();
+        CsvDataFormat formatter = c.getCsvStringFormatter(TimeZone
+                .getDefault());
+        Assert.assertNotNull("Expected to get a CSV formatter", formatter);
+
+        // Now get a CSV file and write some random data to the same.
+        File csvFile = new File(testDir, "test.csv");
+        BufferedWriter writer = new BufferedWriter(new FileWriter(csvFile));
+        CsvWriter csvWriter = conn.getCsvWriter(writer);
+
+        csvWriter.addColumnName("string");
+        csvWriter.addColumnName("date");
+        csvWriter.addColumnName("float");
+        csvWriter.addColumnName("double");
+
+        String v1 = formatter.csvString("my string", Types.VARCHAR, false);
+        String v2 = formatter.csvString(
+                new Timestamp(System.currentTimeMillis()), Types.TIMESTAMP,
+                false);
+        String v3 = formatter.csvString(new Float(2.0), Types.FLOAT, false);
+        String v4 = formatter.csvString(new Double(99.9), Types.DOUBLE, false);
+
+        csvWriter.put("string", v1);
+        csvWriter.put("date", v2);
+        csvWriter.put("float", v3);
+        csvWriter.put("double", v4);
+
+        csvWriter.write();
+        csvWriter.flush();
+        writer.close();
+
+        // Read back CSV file and confirm it has our data.
+        String path = csvFile.getAbsolutePath();
+        Assert.assertTrue("Ensuring CSV file exists: " + path,
+                csvFile.canRead());
+        List<String> contents = getFileContents(csvFile);
+        Assert.assertEquals("Checking file length: " + path, 1, contents.size());
+        String line1 = contents.get(0);
+        Assert.assertTrue("Ensuring data are present: " + path,
+                line1.contains("my string"));
+    }
+
+    /**
      * Prepares a data source and returns same to caller.
      */
     private UniversalDataSource prepareCatalog(String name, boolean clear)
@@ -325,4 +390,42 @@ public class AbstractDataSourceTest
             return true;
     }
 
+    // Create an empty test directory or if the directory exists remove
+    // any files within it.
+    private File prepareTestDir(String dirName) throws Exception
+    {
+        File dir = new File(dirName);
+        // Delete old log directory.
+        if (dir.exists())
+        {
+            for (File f : dir.listFiles())
+            {
+                f.delete();
+            }
+            dir.delete();
+        }
+
+        // Create a new directory.
+        if (!dir.mkdirs())
+        {
+            throw new Exception("Unable to create test directory: "
+                    + dir.getAbsolutePath());
+        }
+        return dir;
+    }
+
+    // Read a file and return lines as a list of string values.
+    private List<String> getFileContents(File f) throws Exception
+    {
+        LinkedList<String> lines = new LinkedList<String>();
+        FileReader fr = new FileReader(f);
+        BufferedReader br = new BufferedReader(fr);
+        String nextLine;
+        while ((nextLine = br.readLine()) != null)
+        {
+            lines.add(nextLine);
+        }
+        br.close();
+        return lines;
+    }
 }

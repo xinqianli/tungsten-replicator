@@ -128,7 +128,11 @@ public class THL implements Store
 
     // If true check log consistency with catalog when starting up.
     private boolean            logConsistencyCheck  = false;
-    
+
+    // A restart position that allows downstream stages to set the log
+    // position when the log is empty.
+    private ReplDBMSHeader     restartPosition;
+
     /** Creates a store instance. */
     public THL()
     {
@@ -302,6 +306,11 @@ public class THL implements Store
     public void setLogConsistencyCheck(boolean checkRecoveredMasterLog)
     {
         this.logConsistencyCheck = checkRecoveredMasterLog;
+    }
+
+    public void setRestartPosition(ReplDBMSHeader restartPosition)
+    {
+        this.restartPosition = restartPosition;
     }
 
     // STORE API STARTS HERE.
@@ -626,6 +635,10 @@ public class THL implements Store
         {
             // Return the trep_commit_seqno position if that can be found.
             return catalog.getMinLastEvent();
+        }
+        else if (restartPosition != null)
+        {
+            return restartPosition;
         }
         else
         {

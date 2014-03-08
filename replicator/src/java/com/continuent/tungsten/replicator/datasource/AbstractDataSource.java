@@ -28,6 +28,8 @@ import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.common.csv.CsvSpecification;
 import com.continuent.tungsten.replicator.ReplicatorException;
+import com.continuent.tungsten.replicator.csv.CsvDataFormat;
+import com.continuent.tungsten.replicator.csv.DefaultCsvDataFormat;
 
 /**
  * Holds variables and implements methods that are common to all data sources.

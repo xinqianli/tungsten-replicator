@@ -43,13 +43,17 @@ import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.applier.RawApplier;
 import com.continuent.tungsten.replicator.consistency.ConsistencyException;
 import com.continuent.tungsten.replicator.consistency.ConsistencyTable;
+import com.continuent.tungsten.replicator.csv.CsvDataFormat;
+import com.continuent.tungsten.replicator.csv.CsvFile;
+import com.continuent.tungsten.replicator.csv.CsvFileSet;
+import com.continuent.tungsten.replicator.csv.CsvInfo;
+import com.continuent.tungsten.replicator.csv.CsvKey;
 import com.continuent.tungsten.replicator.database.Column;
 import com.continuent.tungsten.replicator.database.Key;
 import com.continuent.tungsten.replicator.database.Table;
 import com.continuent.tungsten.replicator.database.TableMetadataCache;
 import com.continuent.tungsten.replicator.datasource.CommitSeqno;
 import com.continuent.tungsten.replicator.datasource.CommitSeqnoAccessor;
-import com.continuent.tungsten.replicator.datasource.CsvDataFormat;
 import com.continuent.tungsten.replicator.datasource.DataSourceService;
 import com.continuent.tungsten.replicator.datasource.UniversalConnection;
 import com.continuent.tungsten.replicator.datasource.UniversalDataSource;
@@ -787,6 +791,9 @@ public class SimpleBatchApplier implements RawApplier
             }
             try
             {
+                logger.info("Output file partitioning requested: column="
+                        + partitionBy + " partitioner=" + partitionByClass
+                        + " format=" + partitionByFormat);
                 Class<?> distributorClass = Class
                         .forName(this.partitionByClass);
                 valuePartitioner = (ValuePartitioner) distributorClass
@@ -838,6 +845,21 @@ public class SimpleBatchApplier implements RawApplier
     public void release(PluginContext context) throws ReplicatorException,
             InterruptedException
     {
+        // Release load script. This calls the release method.
+        if (loadScriptExec != null)
+        {
+            try
+            {
+                loadScriptExec.release(context);
+            }
+            catch (Exception e)
+            {
+                logger.warn(
+                        "Unable to release load script: name=" + loadScript, e);
+            }
+            loadScriptExec = null;
+        }
+
         // Release staging directory if cleanup is requested.
         if (stageDir != null && cleanUpFiles)
         {

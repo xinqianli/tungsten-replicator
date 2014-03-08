@@ -25,6 +25,7 @@ package com.continuent.tungsten.replicator.datasource;
 import java.util.TimeZone;
 
 import com.continuent.tungsten.replicator.ReplicatorException;
+import com.continuent.tungsten.replicator.csv.CsvDataFormat;
 
 /**
  * Denotes a generic data source that a replicator may connect at either end of

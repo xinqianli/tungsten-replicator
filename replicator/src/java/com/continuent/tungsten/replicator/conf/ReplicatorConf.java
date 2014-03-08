@@ -176,6 +176,10 @@ public class ReplicatorConf
     static public final String   STORE                                 = "store";
     static public final String   STORE_ROOT                            = "replicator.store";
 
+    /** Data source parameter names. */
+    static public final String   DATASOURCE                            = "datasource";
+    static public final String   DATASOURCE_ROOT                       = "replicator.datasource";
+
     /** Applier failure policy */
     static public final String   APPLIER_FAILURE_POLICY                = "replicator.applier.failure_policy";
     static public final String   APPLIER_FAILURE_POLICY_DEFAULT        = "stop";

@@ -28,6 +28,7 @@ import java.sql.Statement;
 import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.replicator.ReplicatorException;
+import com.continuent.tungsten.replicator.csv.CsvInfo;
 import com.continuent.tungsten.replicator.database.Database;
 import com.continuent.tungsten.replicator.database.Table;
 

@@ -25,8 +25,7 @@ function begin()
 function apply(csvinfo)
 {
   // Collect useful data. 
-  sqlParams = csvinfo.getSqlParameters();
-  csv_file = sqlParams.get("%%CSV_FILE%%");
+  csv_file = csvinfo.file.getAbsolutePath();
   schema = csvinfo.schema;
   table = csvinfo.table;
   seqno = csvinfo.startSeqno;

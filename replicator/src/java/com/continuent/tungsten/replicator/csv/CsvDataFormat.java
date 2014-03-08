@@ -20,7 +20,7 @@
  * Contributor(s): 
  */
 
-package com.continuent.tungsten.replicator.datasource;
+package com.continuent.tungsten.replicator.csv;
 
 import java.util.TimeZone;
 

@@ -20,7 +20,7 @@
  * Contributor(s): 
  */
 
-package com.continuent.tungsten.replicator.datasource;
+package com.continuent.tungsten.replicator.csv;
 
 import java.sql.Timestamp;
 import java.sql.Types;
@@ -49,7 +49,7 @@ public class DefaultCsvDataFormat implements CsvDataFormat
     /**
      * {@inheritDoc}
      * 
-     * @see com.continuent.tungsten.replicator.datasource.CsvDataFormat#setTimeZone(java.util.TimeZone)
+     * @see com.continuent.tungsten.replicator.csv.CsvDataFormat#setTimeZone(java.util.TimeZone)
      */
     public void setTimeZone(TimeZone timezone)
     {
@@ -59,7 +59,7 @@ public class DefaultCsvDataFormat implements CsvDataFormat
     /**
      * {@inheritDoc}
      * 
-     * @see com.continuent.tungsten.replicator.datasource.CsvDataFormat#prepare()
+     * @see com.continuent.tungsten.replicator.csv.CsvDataFormat#prepare()
      */
     public void prepare()
     {
@@ -82,7 +82,7 @@ public class DefaultCsvDataFormat implements CsvDataFormat
     /**
      * {@inheritDoc}
      * 
-     * @see com.continuent.tungsten.replicator.datasource.CsvDataFormat#csvString(java.lang.Object,
+     * @see com.continuent.tungsten.replicator.csv.CsvDataFormat#csvString(java.lang.Object,
      *      int, boolean)
      */
     public String csvString(Object value, int javaType, boolean isBlob)

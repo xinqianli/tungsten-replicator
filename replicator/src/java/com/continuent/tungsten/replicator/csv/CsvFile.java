@@ -20,7 +20,7 @@
  * Contributor(s): Linas Virbalas
  */
 
-package com.continuent.tungsten.replicator.applier.batch;
+package com.continuent.tungsten.replicator.csv;
 
 import java.io.File;
 

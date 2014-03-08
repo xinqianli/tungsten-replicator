@@ -28,6 +28,7 @@ import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.common.exec.ProcessExecutor;
 import com.continuent.tungsten.replicator.ReplicatorException;
+import com.continuent.tungsten.replicator.plugin.PluginContext;
 
 /**
  * Implements a runtime that can be provided to Javascript scripts with useful
@@ -36,6 +37,21 @@ import com.continuent.tungsten.replicator.ReplicatorException;
 public class JavascriptRuntime
 {
     private static Logger logger = Logger.getLogger(JavascriptRuntime.class);
+
+    private PluginContext context;
+
+    /**
+     * Creates a new runtime with current context.
+     */
+    public JavascriptRuntime(PluginContext context)
+    {
+        this.context = context;
+    }
+
+    public PluginContext getContext()
+    {
+        return context;
+    }
 
     /**
      * Execute an OS command and return the result of stdout.
@@ -79,8 +95,7 @@ public class JavascriptRuntime
      * @param parameters Map containing name value pairs of parameters
      * @return Fully parameter
      */
-    public String parameterize(String command,
-            Map<String, String> parameters)
+    public String parameterize(String command, Map<String, String> parameters)
     {
         for (String key : parameters.keySet())
         {

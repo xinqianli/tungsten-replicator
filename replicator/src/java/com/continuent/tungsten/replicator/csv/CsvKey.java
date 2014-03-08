@@ -20,7 +20,7 @@
  * Contributor(s): 
  */
 
-package com.continuent.tungsten.replicator.applier.batch;
+package com.continuent.tungsten.replicator.csv;
 
 /**
  * Defines a key for a CSV file with a CSV file set. A key is a value used to

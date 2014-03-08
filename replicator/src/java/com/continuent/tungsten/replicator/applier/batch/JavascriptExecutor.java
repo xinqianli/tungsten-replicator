@@ -184,7 +184,7 @@ public class JavascriptExecutor implements ScriptExecutor
             // Provide access to a runtime to help run processes and other
             // useful things.
             ScriptableObject.putProperty(scope, "runtime",
-                    new JavascriptRuntime());
+                    new JavascriptRuntime(context));
 
             // Get a pointer to function "prepare()" and call it.
             getFunctionAndCall(jsContext, "prepare");

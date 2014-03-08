@@ -41,6 +41,7 @@ import org.junit.Test;
 import com.continuent.tungsten.common.config.TungstenProperties;
 import com.continuent.tungsten.common.csv.CsvWriter;
 import com.continuent.tungsten.replicator.ReplicatorException;
+import com.continuent.tungsten.replicator.csv.CsvDataFormat;
 import com.continuent.tungsten.replicator.event.ReplDBMSHeader;
 import com.continuent.tungsten.replicator.event.ReplDBMSHeaderData;
 

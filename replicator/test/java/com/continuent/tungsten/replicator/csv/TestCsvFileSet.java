@@ -20,7 +20,7 @@
  * Contributor(s): 
  */
 
-package com.continuent.tungsten.replicator.applier.batch;
+package com.continuent.tungsten.replicator.csv;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -41,6 +41,10 @@ import org.junit.Test;
 import com.continuent.tungsten.common.config.TungstenProperties;
 import com.continuent.tungsten.common.csv.CsvWriter;
 import com.continuent.tungsten.replicator.ReplicatorException;
+import com.continuent.tungsten.replicator.csv.CsvFile;
+import com.continuent.tungsten.replicator.csv.CsvFileSet;
+import com.continuent.tungsten.replicator.csv.CsvInfo;
+import com.continuent.tungsten.replicator.csv.CsvKey;
 import com.continuent.tungsten.replicator.database.Column;
 import com.continuent.tungsten.replicator.database.Table;
 import com.continuent.tungsten.replicator.datasource.DataSourceManager;

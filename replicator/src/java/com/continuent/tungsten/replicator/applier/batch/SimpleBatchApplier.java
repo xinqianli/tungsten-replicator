@@ -25,6 +25,7 @@ package com.continuent.tungsten.replicator.applier.batch;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.util.ArrayList;
@@ -49,12 +50,14 @@ import com.continuent.tungsten.replicator.csv.CsvFileSet;
 import com.continuent.tungsten.replicator.csv.CsvInfo;
 import com.continuent.tungsten.replicator.csv.CsvKey;
 import com.continuent.tungsten.replicator.database.Column;
+import com.continuent.tungsten.replicator.database.Database;
 import com.continuent.tungsten.replicator.database.Key;
 import com.continuent.tungsten.replicator.database.Table;
 import com.continuent.tungsten.replicator.database.TableMetadataCache;
 import com.continuent.tungsten.replicator.datasource.CommitSeqno;
 import com.continuent.tungsten.replicator.datasource.CommitSeqnoAccessor;
 import com.continuent.tungsten.replicator.datasource.DataSourceService;
+import com.continuent.tungsten.replicator.datasource.HdfsConnection;
 import com.continuent.tungsten.replicator.datasource.UniversalConnection;
 import com.continuent.tungsten.replicator.datasource.UniversalDataSource;
 import com.continuent.tungsten.replicator.dbms.DBMSData;
@@ -71,12 +74,14 @@ import com.continuent.tungsten.replicator.event.ReplDBMSHeader;
 import com.continuent.tungsten.replicator.event.ReplOptionParams;
 import com.continuent.tungsten.replicator.heartbeat.HeartbeatTable;
 import com.continuent.tungsten.replicator.plugin.PluginContext;
+import com.continuent.tungsten.replicator.scripting.HdfsWrapper;
 import com.continuent.tungsten.replicator.scripting.JavascriptExecutor;
 import com.continuent.tungsten.replicator.scripting.ScriptExecutor;
 import com.continuent.tungsten.replicator.scripting.ScriptExecutorService;
 import com.continuent.tungsten.replicator.scripting.ScriptExecutorTaskStatus;
 import com.continuent.tungsten.replicator.scripting.ScriptMethodRequest;
 import com.continuent.tungsten.replicator.scripting.ScriptMethodResponse;
+import com.continuent.tungsten.replicator.scripting.SqlWrapper;
 
 /**
  * Implements an applier that bulk loads data into a SQL database via CSV files.
@@ -86,72 +91,72 @@ import com.continuent.tungsten.replicator.scripting.ScriptMethodResponse;
  */
 public class SimpleBatchApplier implements RawApplier
 {
-    private static Logger           logger              = Logger.getLogger(SimpleBatchApplier.class);
+    private static Logger               logger              = Logger.getLogger(SimpleBatchApplier.class);
 
     /**
      * Denotes an insert operation.
      */
-    public static String            INSERT              = "I";
+    public static String                INSERT              = "I";
 
     /**
      * Denotes a delete operation.
      */
-    public static String            DELETE              = "D";
+    public static String                DELETE              = "D";
 
     // Names of staging header columns. These are prefixed when writing data.
-    public static String            OPCODE              = "opcode";
-    public static String            SEQNO               = "seqno";
-    public static String            ROW_ID              = "row_id";
-    public static String            COMMIT_TIMESTAMP    = "commit_timestamp";
-    public static String            SERVICE             = "service";
+    public static String                OPCODE              = "opcode";
+    public static String                SEQNO               = "seqno";
+    public static String                ROW_ID              = "row_id";
+    public static String                COMMIT_TIMESTAMP    = "commit_timestamp";
+    public static String                SERVICE             = "service";
 
     // Task management information.
-    private int                     taskId;
+    private int                         taskId;
 
     // Properties.
-    protected String                dataSource;
-    protected String                stageDirectory;
-    protected String                loadScript;
-    protected boolean               cleanUpFiles        = true;
-    protected String                charset             = "UTF-8";
-    protected String                timezone            = "GMT-0:00";
-    protected String                stageSchemaPrefix;
-    protected String                stageTablePrefix;
-    protected String                stageColumnPrefix   = "tungsten_";
-    protected List<String>          stageColumnNames;
-    protected String                partitionBy;
-    protected String                partitionByClass;
-    protected String                partitionByFormat;
-    protected int                   parallelization     = 1;
+    protected String                    dataSource;
+    protected String                    stageDirectory;
+    protected String                    loadScript;
+    protected boolean                   cleanUpFiles        = true;
+    protected String                    charset             = "UTF-8";
+    protected String                    timezone            = "GMT-0:00";
+    protected String                    stageSchemaPrefix;
+    protected String                    stageTablePrefix;
+    protected String                    stageColumnPrefix   = "tungsten_";
+    protected List<String>              stageColumnNames;
+    protected String                    partitionBy;
+    protected String                    partitionByClass;
+    protected String                    partitionByFormat;
+    protected int                       parallelization     = 1;
 
     // Replication context
-    PluginContext                   context;
+    PluginContext                       context;
 
     // Load file directory for this task.
-    private File                    stageDir;
+    private File                        stageDir;
 
     // Character set for writing CSV files.
-    private Charset                 outputCharset;
+    private Charset                     outputCharset;
 
     // Open CSV file map for current transaction.
-    private Map<String, CsvFileSet> openCsvSets         = new TreeMap<String, CsvFileSet>();
+    private Map<String, CsvFileSet>     openCsvSets         = new TreeMap<String, CsvFileSet>();
 
     // Formatter to use when writing objects to CSV.
-    private CsvDataFormat           csvDataFormat;
+    private CsvDataFormat               csvDataFormat;
 
     // Script executors, which are stored as an array to enable parallel load.
-    private List<ScriptExecutor>    loadScriptExecutors;
-    private boolean                 hasBeginMethod;
-    private boolean                 hasCommitMethod;
+    private List<ScriptExecutor>        loadScriptExecutors;
+    private boolean                     hasBeginMethod;
+    private boolean                     hasCommitMethod;
 
     // Latest event.
-    private ReplDBMSHeader          latestHeader;
+    private ReplDBMSHeader              latestHeader;
 
     // First sequence number in current transaction.
-    private long                    startSeqno          = -1;
+    private long                        startSeqno          = -1;
 
     // Table metadata for base tables.
-    private TableMetadataCache      fullMetadataCache;
+    private TableMetadataCache          fullMetadataCache;
 
     // Stage table Tungsten header columns with data types and
     // distribute by information. This information is a bit messy
@@ -163,29 +168,29 @@ public class SimpleBatchApplier implements RawApplier
     //
     // The first two are stored in order, whereas the map tracks
     // which header columns are actually enabled.
-    private List<Column>            stageHeaderColumns;
-    private OneRowChange            stageHeader;
-    private Map<String, Integer>    stageHeaderColumnIndexMap;
+    private List<Column>                stageHeaderColumns;
+    private OneRowChange                stageHeader;
+    private Map<String, Integer>        stageHeaderColumnIndexMap;
 
     // This tracks the row ID column as well as the partition by
     // column for generating multiple CSV files per table split
     // by a data value.
-    String                          rowIdColumn;
-    int                             partitionByColumn   = -1;
-    ValuePartitioner                valuePartitioner;
+    String                              rowIdColumn;
+    int                                 partitionByColumn   = -1;
+    ValuePartitioner                    valuePartitioner;
 
     // DBMS connection information.
-    protected String                metadataSchema      = null;
-    protected String                consistencyTable    = null;
-    protected String                consistencySelect   = null;
+    protected String                    metadataSchema      = null;
+    protected String                    consistencyTable    = null;
+    protected String                    consistencySelect   = null;
 
     // Catalog information.
-    protected UniversalDataSource   dataSourceImpl      = null;
-    protected UniversalConnection   conn                = null;
-    protected CommitSeqnoAccessor   commitSeqnoAccessor = null;
+    protected UniversalDataSource       dataSourceImpl      = null;
+    protected List<UniversalConnection> connections         = null;
+    protected CommitSeqnoAccessor       commitSeqnoAccessor = null;
 
     // Old catalog tables.
-    protected HeartbeatTable        heartbeatTable      = null;
+    protected HeartbeatTable            heartbeatTable      = null;
 
     public void setDataSource(String dataSource)
     {
@@ -307,14 +312,9 @@ public class SimpleBatchApplier implements RawApplier
         {
             try
             {
-                // heartbeatTable.applyHeartbeat(conn, event.getSourceTstamp(),
-                // hbName);
-                // heartbeatTable.completeHeartbeat(conn, header.getSeqno(),
-                // event.getEventId());
-                if (doCommit)
-                {
-                    conn.commit();
-                }
+                // TODO: This needs to be sorted out as the
+                // task execution loop needs to know we committed.
+                commit();
             }
             catch (ReplicatorException e)
             {
@@ -565,6 +565,13 @@ public class SimpleBatchApplier implements RawApplier
         // Commit on data source.
         try
         {
+            // Commit on connections.
+            for (UniversalConnection conn : connections)
+            {
+                conn.commit();
+                conn.setAutoCommit(false);
+            }
+            // Call script method if and only if previous commits succeed.
             if (hasCommitMethod)
             {
                 for (ScriptExecutor exec : loadScriptExecutors)
@@ -572,8 +579,6 @@ public class SimpleBatchApplier implements RawApplier
                     exec.execute("commit", null);
                 }
             }
-            conn.commit();
-            conn.setAutoCommit(false);
         }
         catch (Exception e)
         {
@@ -613,15 +618,19 @@ public class SimpleBatchApplier implements RawApplier
     public void rollback() throws InterruptedException
     {
         // Roll back connection.
-        try
+        for (UniversalConnection conn : connections)
         {
-            rollbackTransaction();
-        }
-        catch (Exception e)
-        {
-            logger.info("Unable to roll back transaction");
-            if (logger.isDebugEnabled())
-                logger.debug("Transaction rollback error", e);
+            try
+            {
+                conn.rollback();
+                conn.setAutoCommit(true);
+            }
+            catch (Exception e)
+            {
+                logger.info("Unable to roll back transaction");
+                if (logger.isDebugEnabled())
+                    logger.debug("Transaction rollback error", e);
+            }
         }
 
         // Clear the CSV file cache.
@@ -709,7 +718,7 @@ public class SimpleBatchApplier implements RawApplier
     public void prepare(PluginContext context) throws ReplicatorException,
             InterruptedException
     {
-        // Connect to data source.
+        // Find the data source.
         DataSourceService datasourceService = (DataSourceService) context
                 .getService("datasource");
         if (datasourceService == null)
@@ -719,7 +728,14 @@ public class SimpleBatchApplier implements RawApplier
                             + "check replicator configuration files: service name=datasource");
         }
         dataSourceImpl = datasourceService.find(dataSource);
-        conn = dataSourceImpl.getConnection();
+
+        // Establish connections for each parallel thread we plan to run.
+        connections = new ArrayList<UniversalConnection>(parallelization);
+        for (int i = 0; i < parallelization; i++)
+        {
+            UniversalConnection conn = dataSourceImpl.getConnection();
+            connections.add(conn);
+        }
 
         // Look up the time zone for use with CSV, then get an appropriate
         // formatter from the data source.
@@ -761,7 +777,8 @@ public class SimpleBatchApplier implements RawApplier
 
         // Prepare accessor(s) to data.
         CommitSeqno commitSeqno = dataSourceImpl.getCommitSeqno();
-        commitSeqnoAccessor = commitSeqno.createAccessor(taskId, conn);
+        commitSeqnoAccessor = commitSeqno.createAccessor(taskId,
+                connections.get(0));
 
         // Fetch the last event.
         latestHeader = commitSeqnoAccessor.lastCommitSeqno();
@@ -769,7 +786,10 @@ public class SimpleBatchApplier implements RawApplier
         // Ensure we are not in auto-commit mode.
         try
         {
-            conn.setAutoCommit(false);
+            for (UniversalConnection conn : connections)
+            {
+                conn.setAutoCommit(false);
+            }
         }
         catch (Exception e)
         {
@@ -784,7 +804,38 @@ public class SimpleBatchApplier implements RawApplier
                 parallelization);
         for (int i = 0; i < parallelization; i++)
         {
+            // Create the executor.
             ScriptExecutor exec = createScriptExecutor(loadScript);
+
+            // Create a long-running connection for loading.
+            Map<String, Object> contextMap = new HashMap<String, Object>();
+            UniversalConnection conn = connections.get(i);
+            if (conn instanceof Database)
+            {
+                try
+                {
+                    // Create a SQL connection wrapper if we have a SQL
+                    // connection and add to environment as 'sql'.
+                    contextMap.put("sql", new SqlWrapper((Database) conn));
+                }
+                catch (SQLException e)
+                {
+                    throw new ReplicatorException(
+                            "Unable to initialize connection for load script: script="
+                                    + loadScript + " message=" + e.getMessage(),
+                            e);
+                }
+            }
+            else if (conn instanceof HdfsConnection)
+            {
+                // If we have an HDFS connection wrap that and put into
+                // environment as 'hdfs'.
+                contextMap.put("hdfs", new HdfsWrapper((HdfsConnection) conn));
+            }
+            exec.setContextMap(contextMap);
+
+            // Prepare the executor for use.
+            exec.prepare(context);
             hasBeginMethod = exec.register("begin");
             hasCommitMethod = exec.register("commit");
             loadScriptExecutors.add(exec);
@@ -920,7 +971,6 @@ public class SimpleBatchApplier implements RawApplier
         // Set parameters and prepare.
         exec.setScript(script);
         exec.setDefaultDataSourceName(this.dataSource);
-        exec.prepare(context);
         return exec;
     }
 
@@ -966,10 +1016,13 @@ public class SimpleBatchApplier implements RawApplier
         }
 
         // Release our connection. This prevents all manner of trouble.
-        if (conn != null)
+        if (connections != null)
         {
-            conn.close();
-            conn = null;
+            for (UniversalConnection conn : connections)
+            {
+                conn.close();
+            }
+            connections = null;
         }
     }
 
@@ -1024,7 +1077,7 @@ public class SimpleBatchApplier implements RawApplier
             // Generate and configure the CSV set, since it is missing.
             fileSet = new CsvFileSet(stageTableMetadata, tableMetadata,
                     startSeqno);
-            fileSet.setConnection(conn);
+            fileSet.setConnection(connections.get(0));
             fileSet.setRowIdColumn(rowIdColumn);
             fileSet.setStageDir(stageDir);
             fileSet.setOutputCharset(outputCharset);
@@ -1283,17 +1336,4 @@ public class SimpleBatchApplier implements RawApplier
         }
     }
 
-    // Rolls back the current transaction.
-    private void rollbackTransaction() throws Exception
-    {
-        try
-        {
-            conn.rollback();
-        }
-        finally
-        {
-            // Switch connection back to auto-commit.
-            conn.setAutoCommit(true);
-        }
-    }
 }

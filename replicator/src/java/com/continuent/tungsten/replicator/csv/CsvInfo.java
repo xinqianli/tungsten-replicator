@@ -23,7 +23,14 @@
 package com.continuent.tungsten.replicator.csv;
 
 import java.io.File;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 
+import com.continuent.tungsten.replicator.ReplicatorException;
+import com.continuent.tungsten.replicator.database.Column;
+import com.continuent.tungsten.replicator.database.Key;
 import com.continuent.tungsten.replicator.database.Table;
 
 /**
@@ -47,5 +54,66 @@ public class CsvInfo
      */
     public CsvInfo()
     {
+    }
+
+    /**
+     * Returns SQL substitution parameters for this CSV file.
+     */
+    public Map<String, Object> getSqlParameters() throws ReplicatorException
+    {
+        // Generate data for base and staging tables.
+        List<String> pkey = getPKColumns();
+        String basePkey = baseTableMetadata.getName() + "." + pkey;
+        String stagePkey = stageTableMetadata.getName() + "." + pkey;
+        StringBuffer colNames = new StringBuffer();
+        for (Column col : baseTableMetadata.getAllColumns())
+        {
+            if (colNames.length() > 0)
+                colNames.append(",");
+            colNames.append(col.getName());
+        }
+
+        // Create map containing parameters.
+        Map<String, Object> parameters = new HashMap<String, Object>();
+        parameters.put("%%CSV_FILE%%", file.getAbsolutePath());
+        parameters
+                .put("%%BASE_TABLE%%", baseTableMetadata.fullyQualifiedName());
+        parameters.put("%%BASE_COLUMNS%%", colNames.toString());
+        parameters.put("%%STAGE_TABLE%%", stageTableMetadata.getName());
+        parameters.put("%%STAGE_SCHEMA%%", stageTableMetadata.getSchema());
+        parameters.put("%%STAGE_TABLE_FQN%%",
+                stageTableMetadata.fullyQualifiedName());
+        parameters.put("%%PKEY%%", pkey);
+        parameters.put("%%BASE_PKEY%%", basePkey);
+        parameters.put("%%STAGE_PKEY%%", stagePkey);
+
+        // Return parameters.
+        return parameters;
+    }
+
+    /**
+     * Determines primary key names for the given CsvInfo object. If underlying
+     * metadata table contains a primary key, it is used.
+     * 
+     * @return Primary key column names.
+     * @throws ReplicatorException Thrown if primary key cannot be found
+     */
+    public List<String> getPKColumns() throws ReplicatorException
+    {
+        LinkedList<String> primaryKeyColumns = new LinkedList<String>();
+
+        // If THL event contains PK, use it.
+        if (baseTableMetadata.getPrimaryKey() != null
+                && baseTableMetadata.getPrimaryKey().getColumns() != null)
+        {
+            Key pkey = baseTableMetadata.getPrimaryKey();
+            for (Column pkCol : pkey.getColumns())
+            {
+                String name = pkCol.getName();
+                if (name != null && !"".equals(name))
+                    primaryKeyColumns.add(name);
+            }
+        }
+        return primaryKeyColumns;
     }
 }

@@ -27,12 +27,15 @@ import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.Map;
 
 import junit.framework.Assert;
 
 import org.apache.log4j.Logger;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.mozilla.javascript.Undefined;
 
 import com.continuent.tungsten.common.config.TungstenProperties;
 import com.continuent.tungsten.replicator.ReplicatorException;
@@ -146,27 +149,58 @@ public class JavaScriptExecutorTest
     {
         String script = "function doit(csvinfo) { mystring = runtime.getDefaultDataSourceName(); return mystring; }";
         Object val = execute("testDsName", script, "doit", "some input",
-                "testDsName");
+                "testDsName", null);
         Assert.assertEquals("Checking for default ds name", "testDsName",
                 (String) val.toString());
+    }
+
+    /**
+     * Verify that we can find a context object if it is inserted into the
+     * executor using a context map.
+     */
+    @Test
+    public void testContextObject() throws Exception
+    {
+        String script = "function context_object() { return myvalue; }";
+        Map<String, Object> context = new HashMap<String, Object>();
+        context.put("myvalue", new Integer(99));
+        Object val = execute("testContextObject", script, "context_object",
+                null, "testContextObject", context);
+        int convertedValue = (Integer) val;
+        Assert.assertEquals("Checking for context object", 99, convertedValue);
+    }
+
+    /**
+     * Verify that the logger object is available in the context.  We also 
+     * check null return values along the way. 
+     */
+    @Test
+    public void testJavascriptLogging() throws Exception
+    {
+        String script = "function logging() {  }";
+        Object val = execute("logging", script, "logging", null, "logging",
+                null);
+        Assert.assertTrue(val instanceof Undefined);
     }
 
     // Create a context and execute script using default data source name.
     private Object execute(String name, String script, String method,
             Object argument) throws Exception
     {
-        return execute(name, script, method, argument, null);
+        return execute(name, script, method, argument, null, null);
     }
 
     // Create context and execute method on script.
     private Object execute(String name, String script, String method,
-            Object argument, String dsName) throws Exception
+            Object argument, String dsName, Map<String, Object> contextMap)
+            throws Exception
     {
         File scriptFile = writeScript(name, script);
         Database db = getDatabase();
         JavascriptExecutor exec = new JavascriptExecutor();
         exec.setScript(scriptFile.getAbsolutePath());
         exec.setDefaultDataSourceName(dsName);
+        exec.setContextMap(contextMap);
         exec.prepare(null);
         Object value = exec.execute(method, argument);
         exec.release(null);

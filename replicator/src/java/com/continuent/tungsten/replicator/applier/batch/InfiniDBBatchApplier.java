@@ -67,7 +67,8 @@ public class InfiniDBBatchApplier extends SimpleBatchApplier
         }
         try
         {
-            tmpStatement = ((Database) conn).createStatement();
+            Database conn = (Database) connections.get(0);
+            tmpStatement = conn.createStatement();
             conn.setAutoCommit(false);
             int rowsLoaded = tmpStatement.executeUpdate(delete);
             conn.commit();

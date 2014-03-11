@@ -22,6 +22,8 @@
 
 package com.continuent.tungsten.replicator.scripting;
 
+import java.util.Map;
+
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.plugin.ReplicatorPlugin;
 
@@ -33,12 +35,15 @@ public interface ScriptExecutor extends ReplicatorPlugin
 {
     /** Sets the script name. */
     public void setScript(String script);
-    
+
     /** Returns the script name. */
     public String getScript();
 
     /** Sets the default data source name, if it exists. */
     public void setDefaultDataSourceName(String name);
+
+    /** Sets a map of objects to be inserted into the executor context. */
+    public void setContextMap(Map<String, Object> contextMap);
 
     /**
      * Register a method name. This must be called prior to invoking any

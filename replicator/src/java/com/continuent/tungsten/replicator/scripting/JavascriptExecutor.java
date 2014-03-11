@@ -69,6 +69,9 @@ public class JavascriptExecutor implements ScriptExecutor
     // Optional default data source name.
     private String                defaultDataSourceName = null;
 
+    // Map of objects to be inserted into the script context.
+    private Map<String, Object>   contextMap            = null;
+
     // Compiled user's script.
     private Script                script                = null;
 
@@ -98,6 +101,16 @@ public class JavascriptExecutor implements ScriptExecutor
     public String getScript()
     {
         return this.scriptFile;
+    }
+
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.scripting.ScriptExecutor#setContextMap(java.util.Map)
+     */
+    public void setContextMap(Map<String, Object> contextMap)
+    {
+        this.contextMap = contextMap;
     }
 
     /**
@@ -155,6 +168,17 @@ public class JavascriptExecutor implements ScriptExecutor
             // useful things.
             ScriptableObject.putProperty(scope, "runtime",
                     new JavascriptRuntime(context, defaultDataSourceName));
+
+            // If we have a context map available, load the objects contained
+            // therein.
+            if (contextMap != null)
+            {
+                for (String key : contextMap.keySet())
+                {
+                    Object value = contextMap.get(key);
+                    ScriptableObject.putProperty(scope, key, value);
+                }
+            }
 
             // Get a pointer to function "prepare()" and call it.
             getFunctionAndCall(jsContext, "prepare");

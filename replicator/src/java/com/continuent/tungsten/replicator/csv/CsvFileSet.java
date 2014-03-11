@@ -112,6 +112,12 @@ public class CsvFileSet
         this.endSeqno = endSeqno;
     }
 
+    /** Returns the count of CSV files in the set. */
+    public int size()
+    {
+        return csvFiles.size();
+    }
+
     /**
      * Returns an open CSV file for the indicated key.
      * 

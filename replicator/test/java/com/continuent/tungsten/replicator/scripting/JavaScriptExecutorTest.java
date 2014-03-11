@@ -20,7 +20,7 @@
  * Contributor(s): 
  */
 
-package com.continuent.tungsten.replicator.applier.batch;
+package com.continuent.tungsten.replicator.scripting;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -45,9 +45,9 @@ import com.continuent.tungsten.replicator.database.DatabaseFactory;
  * 
  * @author <a href="mailto:robert.hodges@continuent.com">Robert Hodges</a>
  */
-public class TestJavascriptBatch
+public class JavaScriptExecutorTest
 {
-    private static Logger logger = Logger.getLogger(TestJavascriptBatch.class);
+    private static Logger logger = Logger.getLogger(JavaScriptExecutorTest.class);
 
     private static String driver;
     private static String url;
@@ -139,34 +139,34 @@ public class TestJavascriptBatch
     }
 
     /**
-     * Verify that a bad SQL statement throws an exception.
+     * Verify that we can find the default data source name if it is provided.
      */
     @Test
-    public void testBadSQL() throws Exception
+    public void testDsName() throws Exception
     {
-        String script = "function doit(csvinfo) { sql.execute('bad sql'); }";
-        boolean failed = false;
-        try
-        {
-            execute("testBadSQL", script, "doit", "some input");
-        }
-        catch (Exception e)
-        {
-            logger.info("Caught expected exception");
-            failed = true;
-        }
-        Assert.assertTrue("Query should fail", failed);
+        String script = "function doit(csvinfo) { mystring = runtime.getDefaultDataSourceName(); return mystring; }";
+        Object val = execute("testDsName", script, "doit", "some input",
+                "testDsName");
+        Assert.assertEquals("Checking for default ds name", "testDsName",
+                (String) val.toString());
+    }
+
+    // Create a context and execute script using default data source name.
+    private Object execute(String name, String script, String method,
+            Object argument) throws Exception
+    {
+        return execute(name, script, method, argument, null);
     }
 
     // Create context and execute method on script.
     private Object execute(String name, String script, String method,
-            Object argument) throws Exception
+            Object argument, String dsName) throws Exception
     {
         File scriptFile = writeScript(name, script);
         Database db = getDatabase();
         JavascriptExecutor exec = new JavascriptExecutor();
-        exec.setConnection(db);
         exec.setScript(scriptFile.getAbsolutePath());
+        exec.setDefaultDataSourceName(dsName);
         exec.prepare(null);
         Object value = exec.execute(method, argument);
         exec.release(null);

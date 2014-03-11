@@ -20,10 +20,9 @@
  * Contributor(s): 
  */
 
-package com.continuent.tungsten.replicator.applier.batch;
+package com.continuent.tungsten.replicator.scripting;
 
 import com.continuent.tungsten.replicator.ReplicatorException;
-import com.continuent.tungsten.replicator.datasource.UniversalConnection;
 import com.continuent.tungsten.replicator.plugin.ReplicatorPlugin;
 
 /**
@@ -32,11 +31,14 @@ import com.continuent.tungsten.replicator.plugin.ReplicatorPlugin;
  */
 public interface ScriptExecutor extends ReplicatorPlugin
 {
-    /** Sets the data source connection. */
-    public void setConnection(UniversalConnection connection);
-
     /** Sets the script name. */
     public void setScript(String script);
+    
+    /** Returns the script name. */
+    public String getScript();
+
+    /** Sets the default data source name, if it exists. */
+    public void setDefaultDataSourceName(String name);
 
     /**
      * Register a method name. This must be called prior to invoking any

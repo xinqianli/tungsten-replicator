@@ -7,6 +7,11 @@ replicator.applier.dbms.dataSource=applier
 # Location of the load script. 
 replicator.applier.dbms.loadScript=${replicator.home.dir}/samples/scripts/batch/@{SERVICE.BATCH_LOAD_TEMPLATE}.js
 
+# Number of threads to use for loading.  The default is 1.  Values greater 
+# than 1 are recommended only for idempotent data sources like Hadoop whose 
+# load scripts automatically clean up partially loaded data.  
+replicator.applier.dbms.parallelization=1
+
 # Timezone and character set.  
 replicator.applier.dbms.timezone=GMT+0:00
 #replicator.applier.dbms.charset=UTF-8

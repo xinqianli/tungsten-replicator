@@ -71,6 +71,12 @@ import com.continuent.tungsten.replicator.event.ReplDBMSHeader;
 import com.continuent.tungsten.replicator.event.ReplOptionParams;
 import com.continuent.tungsten.replicator.heartbeat.HeartbeatTable;
 import com.continuent.tungsten.replicator.plugin.PluginContext;
+import com.continuent.tungsten.replicator.scripting.JavascriptExecutor;
+import com.continuent.tungsten.replicator.scripting.ScriptExecutor;
+import com.continuent.tungsten.replicator.scripting.ScriptExecutorService;
+import com.continuent.tungsten.replicator.scripting.ScriptExecutorTaskStatus;
+import com.continuent.tungsten.replicator.scripting.ScriptMethodRequest;
+import com.continuent.tungsten.replicator.scripting.ScriptMethodResponse;
 
 /**
  * Implements an applier that bulk loads data into a SQL database via CSV files.
@@ -116,6 +122,7 @@ public class SimpleBatchApplier implements RawApplier
     protected String                partitionBy;
     protected String                partitionByClass;
     protected String                partitionByFormat;
+    protected int                   parallelization     = 1;
 
     // Replication context
     PluginContext                   context;
@@ -132,8 +139,8 @@ public class SimpleBatchApplier implements RawApplier
     // Formatter to use when writing objects to CSV.
     private CsvDataFormat           csvDataFormat;
 
-    // Script executor.
-    private ScriptExecutor          loadScriptExec;
+    // Script executors, which are stored as an array to enable parallel load.
+    private List<ScriptExecutor>    loadScriptExecutors;
     private boolean                 hasBeginMethod;
     private boolean                 hasCommitMethod;
 
@@ -172,7 +179,7 @@ public class SimpleBatchApplier implements RawApplier
     protected String                consistencyTable    = null;
     protected String                consistencySelect   = null;
 
-    // Catalog.
+    // Catalog information.
     protected UniversalDataSource   dataSourceImpl      = null;
     protected UniversalConnection   conn                = null;
     protected CommitSeqnoAccessor   commitSeqnoAccessor = null;
@@ -261,6 +268,14 @@ public class SimpleBatchApplier implements RawApplier
     public void setPartitionByFormat(String partitionByFormat)
     {
         this.partitionByFormat = partitionByFormat;
+    }
+
+    /**
+     * Specifies the number of loads to run in parallel when applying.
+     */
+    public void setParallelization(int parallelization)
+    {
+        this.parallelization = parallelization;
     }
 
     /**
@@ -454,34 +469,94 @@ public class SimpleBatchApplier implements RawApplier
         if (startSeqno < 0)
             startSeqno = latestHeader.getSeqno();
 
-        // Invoke being method on load script to show transaction is starting.
+        // Invoke begin method on load scripts to show transaction is starting.
         if (hasBeginMethod)
-            loadScriptExec.execute("begin", null);
+        {
+            for (ScriptExecutor exec : loadScriptExecutors)
+            {
+                exec.execute("begin", null);
+            }
+        }
 
         // Flush open CSV files now so that data become visible in case we
-        // abort.
+        // abort. Count them along the way so we know how big the request
+        // queue should be.
+        int pendingCsvCount = 0;
         for (CsvFileSet fileSet : this.openCsvSets.values())
         {
             fileSet.flushAndCloseCsvFiles();
+            pendingCsvCount += fileSet.size();
         }
 
-        // Load each open CSV file. We update the seqno of this commit in
+        // Load each open CSV file into a request queue. We update the seqno of
+        // this commit in
         // CsvInfo as that helps the batch load scripts generate unique file
         // names that associate easily with the trep_commit_seqno position.
-        int loadCount = 0;
         long endSeqno = latestHeader.getSeqno();
+        ScriptExecutorService execService = new ScriptExecutorService(
+                "batch-load", loadScriptExecutors, Math.max(1, pendingCsvCount));
         for (CsvFileSet fileSet : this.openCsvSets.values())
         {
             // Set the transaction boundaries.
             fileSet.setStartSeqno(startSeqno);
             fileSet.setEndSeqno(endSeqno);
 
-            // Now load all CSV files.
+            // Load requests to process all pending CSV files in the set.
             for (CsvInfo info : fileSet.getCsvInfoList())
             {
-                loadScriptExec.execute("apply", info);
-                loadCount++;
+                ScriptMethodRequest request = new ScriptMethodRequest("apply",
+                        info);
+                execService.addRequest(request);
             }
+        }
+
+        // Process all requests. If there is a failure we need to search for the
+        // failed task and log the error properly.
+        try
+        {
+            boolean succeeded = execService.process();
+            if (succeeded)
+            {
+                if (logger.isDebugEnabled())
+                {
+                    logger.debug("Loading tasks completed successfully");
+                }
+            }
+            else
+            {
+                List<ScriptExecutorTaskStatus> statusValues = execService
+                        .getTaskStatusList();
+                for (ScriptExecutorTaskStatus status : statusValues)
+                {
+                    if (!status.isSuccessful())
+                    {
+                        ScriptMethodResponse response = status
+                                .getFailedResponse();
+                        ScriptMethodRequest request = response.getRequest();
+                        Throwable rootCause = response.getThrowable();
+                        CsvInfo info = (CsvInfo) request.getArgument();
+                        String message = "CSV loading failed: schema="
+                                + info.schema + " table=" + info.table
+                                + " CSV file=" + info.file.getAbsolutePath()
+                                + " message=" + rootCause.getMessage();
+                        throw new ReplicatorException(message, rootCause);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            execService.shutdownNow();
+        }
+
+        // Ensure that the number of files loaded matches the number of files we
+        // expected.
+        int loadCount = execService.getMethodInvocationCount();
+        if (loadCount != pendingCsvCount)
+        {
+            throw new ReplicatorException(
+                    "Actual loaded file count does not match expected pending CSV file count: actual="
+                            + loadCount + " expected=" + pendingCsvCount);
         }
 
         // Update trep_commit_seqno.
@@ -491,7 +566,12 @@ public class SimpleBatchApplier implements RawApplier
         try
         {
             if (hasCommitMethod)
-                loadScriptExec.execute("commit", null);
+            {
+                for (ScriptExecutor exec : loadScriptExecutors)
+                {
+                    exec.execute("commit", null);
+                }
+            }
             conn.commit();
             conn.setAutoCommit(false);
         }
@@ -698,9 +778,17 @@ public class SimpleBatchApplier implements RawApplier
         }
 
         // Initialize load script.
-        loadScriptExec = createScriptExecutor(loadScript);
-        hasBeginMethod = loadScriptExec.register("begin");
-        hasCommitMethod = loadScriptExec.register("commit");
+        logger.info("Initializing load script: name=" + loadScript
+                + " parallelization=" + parallelization);
+        this.loadScriptExecutors = new ArrayList<ScriptExecutor>(
+                parallelization);
+        for (int i = 0; i < parallelization; i++)
+        {
+            ScriptExecutor exec = createScriptExecutor(loadScript);
+            hasBeginMethod = exec.register("begin");
+            hasCommitMethod = exec.register("commit");
+            loadScriptExecutors.add(exec);
+        }
 
         // Prepare the header columns. We also identify the row id column name
         // if it exists.
@@ -830,8 +918,8 @@ public class SimpleBatchApplier implements RawApplier
         }
 
         // Set parameters and prepare.
-        exec.setConnection(conn);
         exec.setScript(script);
+        exec.setDefaultDataSourceName(this.dataSource);
         exec.prepare(context);
         return exec;
     }
@@ -846,18 +934,21 @@ public class SimpleBatchApplier implements RawApplier
             InterruptedException
     {
         // Release load script. This calls the release method.
-        if (loadScriptExec != null)
+        if (loadScriptExecutors != null)
         {
             try
             {
-                loadScriptExec.release(context);
+                for (ScriptExecutor exec : loadScriptExecutors)
+                {
+                    exec.release(context);
+                }
             }
             catch (Exception e)
             {
                 logger.warn(
                         "Unable to release load script: name=" + loadScript, e);
             }
-            loadScriptExec = null;
+            loadScriptExecutors = null;
         }
 
         // Release staging directory if cleanup is requested.

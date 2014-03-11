@@ -20,7 +20,7 @@
  * Contributor(s): Linas Virbalas, Stephane Giron
  */
 
-package com.continuent.tungsten.replicator.applier.batch;
+package com.continuent.tungsten.replicator.scripting;
 
 import org.apache.log4j.Logger;
 

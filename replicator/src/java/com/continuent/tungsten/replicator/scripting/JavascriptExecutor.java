@@ -20,12 +20,11 @@
  * Contributor(s): Linas Virbalas
  */
 
-package com.continuent.tungsten.replicator.applier.batch;
+package com.continuent.tungsten.replicator.scripting;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
-import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -34,15 +33,13 @@ import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ContextFactory;
 import org.mozilla.javascript.EvaluatorException;
 import org.mozilla.javascript.Function;
+import org.mozilla.javascript.NativeJavaObject;
 import org.mozilla.javascript.Script;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
 import org.mozilla.javascript.Undefined;
 
 import com.continuent.tungsten.replicator.ReplicatorException;
-import com.continuent.tungsten.replicator.database.Database;
-import com.continuent.tungsten.replicator.datasource.HdfsConnection;
-import com.continuent.tungsten.replicator.datasource.UniversalConnection;
 import com.continuent.tungsten.replicator.plugin.PluginContext;
 
 /**
@@ -64,36 +61,23 @@ import com.continuent.tungsten.replicator.plugin.PluginContext;
  */
 public class JavascriptExecutor implements ScriptExecutor
 {
-    private static Logger         logger     = Logger.getLogger(JavascriptExecutor.class);
+    private static Logger         logger                = Logger.getLogger(JavascriptExecutor.class);
 
     // Location of script.
-    private String                scriptFile = null;
+    private String                scriptFile            = null;
 
-    // DBMS connection and statement.
-    private UniversalConnection   connection;
-    private SqlWrapper            sqlConnectionWrapper;
-    private HdfsWrapper           hdfsConnectionWrapper;
+    // Optional default data source name.
+    private String                defaultDataSourceName = null;
 
     // Compiled user's script.
-    private Script                script     = null;
+    private Script                script                = null;
 
     // JavaScript scope containing all objects including functions of the user's
     // script and our exported objects.
-    private Scriptable            scope      = null;
+    private Scriptable            scope                 = null;
 
     // Pointer to the script function map.
-    private Map<String, Function> functions  = new HashMap<String, Function>();
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.applier.batch.ScriptExecutor#setConnection(com.continuent.tungsten.replicator.database.Database)
-     */
-    @Override
-    public void setConnection(UniversalConnection connection)
-    {
-        this.connection = connection;
-    }
+    private Map<String, Function> functions             = new HashMap<String, Function>();
 
     /**
      * {@inheritDoc}
@@ -104,6 +88,26 @@ public class JavascriptExecutor implements ScriptExecutor
     public void setScript(String script)
     {
         this.scriptFile = script;
+    }
+
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.applier.batch.ScriptExecutor#getScript()
+     */
+    public String getScript()
+    {
+        return this.scriptFile;
+    }
+
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.applier.batch.ScriptExecutor#setDefaultDataSourceName(java.lang.String)
+     */
+    public void setDefaultDataSourceName(String defaultDataSourceName)
+    {
+        this.defaultDataSourceName = defaultDataSourceName;
     }
 
     /**
@@ -127,26 +131,6 @@ public class JavascriptExecutor implements ScriptExecutor
      */
     public void prepare(PluginContext context) throws ReplicatorException
     {
-        // Create a connection wrapper to provide SQL capabilities if we have
-        // a SQL connection.
-        if (connection instanceof Database)
-        {
-            try
-            {
-                sqlConnectionWrapper = new SqlWrapper((Database) connection);
-            }
-            catch (SQLException e)
-            {
-                throw new ReplicatorException(
-                        "Unable to initialize JDBC connection for load script: script="
-                                + script + " message=" + e.getMessage(), e);
-            }
-        }
-        else if (connection instanceof HdfsConnection)
-        {
-            hdfsConnectionWrapper = new HdfsWrapper((HdfsConnection) connection);
-        }
-
         // Create JavaScript context which will be used for preparing script.
         Context jsContext = ContextFactory.getGlobal().enterContext();
 
@@ -167,24 +151,10 @@ public class JavascriptExecutor implements ScriptExecutor
             // Provide access to the logger object.
             ScriptableObject.putProperty(scope, "logger", logger);
 
-            // Provide access to the SQL connection wrapper if defined.
-            if (sqlConnectionWrapper != null)
-            {
-                ScriptableObject
-                        .putProperty(scope, "sql", sqlConnectionWrapper);
-            }
-
-            // Provide access to the HDFS connection wrapper if defined.
-            if (hdfsConnectionWrapper != null)
-            {
-                ScriptableObject.putProperty(scope, "hdfs",
-                        hdfsConnectionWrapper);
-            }
-
             // Provide access to a runtime to help run processes and other
             // useful things.
             ScriptableObject.putProperty(scope, "runtime",
-                    new JavascriptRuntime(context));
+                    new JavascriptRuntime(context, defaultDataSourceName));
 
             // Get a pointer to function "prepare()" and call it.
             getFunctionAndCall(jsContext, "prepare");
@@ -227,17 +197,6 @@ public class JavascriptExecutor implements ScriptExecutor
         {
             // Exit JavaScript context.
             Context.exit();
-        }
-
-        // Release SQL resources.
-        if (sqlConnectionWrapper != null)
-        {
-            sqlConnectionWrapper.close();
-        }
-        // Release HDFS resources.
-        if (hdfsConnectionWrapper != null)
-        {
-            hdfsConnectionWrapper.close();
         }
     }
 
@@ -308,8 +267,13 @@ public class JavascriptExecutor implements ScriptExecutor
             // Exit JavaScript context.
             Context.exit();
 
-            // Return the value to caller.
-            return returnValue;
+            // Return the value to caller. If it is a native Java object we must
+            // unwrap it to return a Java value. Otherwise, we can safely return
+            // the value itself.
+            if (returnValue instanceof NativeJavaObject)
+                return ((NativeJavaObject) returnValue).unwrap();
+            else
+                return returnValue;
         }
     }
 

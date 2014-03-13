@@ -489,9 +489,8 @@ public class SimpleBatchApplier implements RawApplier
         }
 
         // Load each open CSV file into a request queue. We update the seqno of
-        // this commit in
-        // CsvInfo as that helps the batch load scripts generate unique file
-        // names that associate easily with the trep_commit_seqno position.
+        // this commit in CsvInfo as that helps the batch load scripts generate 
+        // unique file names that associate easily with the trep_commit_seqno position.
         long endSeqno = latestHeader.getSeqno();
         ScriptExecutorService execService = new ScriptExecutorService(
                 "batch-load", loadScriptExecutors, Math.max(1, pendingCsvCount));

@@ -133,9 +133,9 @@ public class TestBatchApply
     }
 
     /**
-     * Validate that that we can configure a partitioner to divide CSV output
-     * files by the hour in which transactions commit. The case works by adding
-     * inputs with commit timestamps set an hour apart that should force data to
+     * Validate that we can configure a partitioner to divide CSV output files
+     * by the hour in which transactions commit. The case works by adding inputs
+     * with commit timestamps set an hour apart that should force data to
      * partition as many fields as there are transactions.
      */
     @Test
@@ -202,6 +202,85 @@ public class TestBatchApply
         }
         Assert.assertEquals("Checking for expected number of CSV partitions",
                 3, partitionNames.size());
+
+        // Shutdown.
+        pipeline.shutdown(false);
+        pipeline.release(runtime);
+    }
+
+    /**
+     * Validate that if we set the parallelization to greater than 1 and there
+     * are multiple tables per transaction those tables will be loaded in
+     * separate threads.
+     */
+    @Test
+    public void testBatchParallelApply() throws Exception
+    {
+        // Create the pipeline. Set the parallelization to 5. To
+        // ensure everything goes as a single transaction set the block
+        // commit interval 3 seconds.
+        String service = "testBatchParallelApply";
+        File testDir = helper.prepareTestDir(service);
+        TungstenProperties config = helper.generateBatchApplyProps(testDir,
+                service, false);
+        config.set("replicator.applier.batch-applier.parallelization", 5);
+        config.set("replicator.stage.q-to-batch-apply.blockCommitRowCount", 10);
+        config.set("replicator.stage.q-to-batch-apply.blockCommitInterval",
+                "1s");
+
+        // Ready the pipeline but do not start.
+        ReplicatorRuntime runtime = new ReplicatorRuntime(config,
+                new MockOpenReplicatorContext(),
+                ReplicatorMonitor.getInstance());
+        runtime.configure();
+        runtime.prepare();
+        pipeline = runtime.getPipeline();
+
+        // Find the store.
+        InMemoryQueueStore queue = (InMemoryQueueStore) pipeline
+                .getStore("queue");
+
+        // Load transactions on different tables.
+        for (int t = 0; t < 50; t++)
+        {
+            // Generate the table name.
+            String table = "table_" + (t % 5);
+
+            // Generate and enqueue data.
+            String names[] = new String[2];
+            Integer values[] = new Integer[2];
+            for (int i = 0; i < names.length; i++)
+            {
+                // Generate
+                names[i] = "data-" + t + "-" + i;
+                values[i] = i;
+            }
+            ReplDBMSEvent anEvent = eventGenerator.eventFromRowInsert(t,
+                    "schema", table, names, values, 0, true);
+            queue.put(anEvent);
+        }
+
+        // Start the pipeline now that the transactions are loaded.
+        pipeline.start(new MockEventDispatcher());
+
+        // Wait for the transaction to be committed.
+        Future<ReplDBMSHeader> wait = pipeline.watchForCommittedSequenceNumber(
+                49, false);
+        ReplDBMSHeader lastEvent = wait.get(10, TimeUnit.SECONDS);
+        Assert.assertEquals("Expected end seqno", 49, lastEvent.getSeqno());
+
+        // Confirm that there are at least 5 output files.
+        List<String> csvNames = new LinkedList<String>();
+        for (String child : testDir.list())
+        {
+            if (child.contains(".data"))
+            {
+                csvNames.add(child);
+                logger.info("Found csv name:" + child);
+            }
+        }
+        Assert.assertEquals("Ensuring expected number of csv files", 5,
+                csvNames.size());
 
         // Shutdown.
         pipeline.shutdown(false);

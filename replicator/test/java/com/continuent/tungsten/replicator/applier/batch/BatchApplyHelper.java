@@ -69,8 +69,9 @@ public class BatchApplyHelper
         builder.setProperty(ReplicatorConf.METADATA_SCHEMA, serviceName);
         builder.addPipeline("master", "q-to-batch-apply", "queue", "datasource");
 
-        // Define store.
+        // Define store and assign adequate capacity. 
         builder.addComponent("store", "queue", InMemoryQueueStore.class);
+        builder.addProperty("store", "queue", "maxSize", "500");
 
         // Define the single stage with no filters.
         builder.addStage("q-to-batch-apply", "q-extract", "batch-applier", null);
@@ -137,6 +138,7 @@ public class BatchApplyHelper
                 .append("  runtime.exec('echo begin >> ' + dir + '/begin.stat');\n")
                 .append("}\n")
                 .append("function apply(csvinfo) {\n")
+                .append("  logger.info('Applying csv: table=' + csvinfo.baseTableMetadata.getName());")
                 .append("  if (csvinfo.key == '') {\n")
                 .append("    output_csv = csvinfo.baseTableMetadata.getName() + '.data';\n")
                 .append("  } else {\n")

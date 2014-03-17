@@ -132,6 +132,7 @@ DELETE_REPLICATION_POSITION = "delete_replication_position"
 RESTART_REPLICATORS = "restart_replicators"
 RESTART_MANAGERS = "restart_managers"
 RESTART_CONNECTORS = "restart_connectors"
+PROVISION_NEW_SLAVES = "provision_new_slaves"
 
 TPM_COMMAND_NAME = "tpm"
 AUTODETECT = 'autodetect'
@@ -2118,7 +2119,7 @@ module JSON
             result << state.indent * depth if indent
             result << ']'
     
-            if valid_keys == 0
+            if valid_keys == 0 && depth != 0
               return ""
             end
     

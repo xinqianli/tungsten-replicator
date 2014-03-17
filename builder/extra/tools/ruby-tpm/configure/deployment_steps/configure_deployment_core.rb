@@ -470,10 +470,29 @@ module ConfigureDeploymentCore
         ds = get_applier_datasource(rs_alias)
         if ds.applier_supports_reset?()
           info("Reset the #{svc} replication service")
+          cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/bin/trepctl -service #{svc} offline")
           cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/bin/trepctl -service #{svc} reset -all -y")
           cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/bin/trepctl -service #{svc} online")
         else
           warning("Unable to reset the #{svc} replication service. It will be left OFFLINE.")
+        end
+      }
+    end
+  end
+  
+  def online_replication_services
+    if is_replicator?() && replicator_is_running?() == true
+      @config.getPropertyOr([REPL_SERVICES], {}).each_key{
+        |rs_alias|
+        if rs_alias == DEFAULTS
+          next
+        end
+
+        svc = @config.getProperty([REPL_SERVICES, rs_alias, DEPLOYMENT_SERVICE])
+        status = JSON.parse(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/bin/trepctl -service #{svc} status -json"))
+        if status["state"] != "ONLINE"
+          info("Put the #{svc} replication service online")
+          cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/bin/trepctl -service #{svc} online")
         end
       }
     end

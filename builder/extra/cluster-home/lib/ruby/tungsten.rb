@@ -1,9 +1,30 @@
 libdir = File.dirname(__FILE__)
 $LOAD_PATH.unshift(libdir) unless $LOAD_PATH.include?(libdir)
 
+unless Object.const_defined?(:JSON)
+  begin
+    # Attempt to load the json.rb file if available
+    require 'json'
+  rescue LoadError
+    # Look for a json ruby gem
+    require 'rubygems'
+    begin
+      require 'json_pure'
+    rescue LoadError
+      begin
+        require 'json-ruby'
+      rescue LoadError
+        require 'json'
+      end
+    end
+  end
+end
+unless Object.const_defined?(:JSON)
+  raise "Could not load JSON; did you install one of json_pure, json-ruby, or the C-based json library?"
+end
+
 require "date"
 require "fileutils"
-require 'json'
 require 'logger'
 require "optparse"
 require "pathname"

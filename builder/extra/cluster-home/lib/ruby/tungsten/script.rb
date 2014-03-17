@@ -7,6 +7,8 @@ module TungstenScript
     begin
       prepare()
       main()
+    rescue CommandError => e
+      TU.debug(e)
     rescue => e
       TU.exception(e)
     end
@@ -67,6 +69,15 @@ module TungstenScript
       
       unless TU.is_valid?()
         cleanup(1)
+      end
+      
+      begin
+        if script_log_path() != nil
+          TU.set_log_path(script_log_path())
+        end
+      rescue => e
+        TU.debug("Unable to set script log path")
+        TU.debug(e)
       end
     
       TU.debug("Command: #{@command}")
@@ -389,18 +400,6 @@ module TungstenScript
   end
   
   def cleanup(code = 0)
-    begin
-      if initialized?() && script_log_path() != nil
-        TU.mkdir_if_absent(File.dirname(script_log_path()))
-        File.open(script_log_path(), "w") {
-          |f|
-          TU.log().rewind()
-          f.puts(TU.log().read())
-        }
-      end
-    rescue
-    end
-    
     TU.debug("Finish #{$0} #{ARGV.join(' ')}")
     TU.debug("RC: #{code}")
     TU.exit(code)

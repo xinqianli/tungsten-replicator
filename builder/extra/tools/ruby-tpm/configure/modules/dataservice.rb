@@ -470,6 +470,39 @@ class ReplicationServiceAutoEnable < ConfigurePrompt
   end
 end
 
+class AutoRecoveryMaxAttempts < ConfigurePrompt
+  include ReplicationServicePrompt
+  include AdvancedPromptModule
+
+  def initialize
+    super(REPL_AUTO_RECOVERY_MAX_ATTEMPTS, 
+      "Number of times to auto-recover after online error",
+      PV_INTEGER, 0)
+  end
+end
+
+class AutoRecoveryResetInterval < ConfigurePrompt
+  include ReplicationServicePrompt
+  include AdvancedPromptModule
+
+  def initialize
+    super(REPL_AUTO_RECOVERY_RESET_INTERVAL,
+      "Length of time online to reset auto-recover count to 0",
+      PV_ANY, "300s")
+  end
+end
+
+class AutoRecoveryDelayInterval < ConfigurePrompt
+  include ReplicationServicePrompt
+  include AdvancedPromptModule
+
+  def initialize
+    super(REPL_AUTO_RECOVERY_DELAY_INTERVAL,
+      "Length of delay before auto-recovering",
+      PV_ANY, "5s")
+  end
+end
+
 class MasterPreferredRole < ConfigurePrompt
   include ReplicationServicePrompt
 
@@ -1418,6 +1451,24 @@ class ReplicationServiceRepositionOnSourceIDChange < ConfigurePrompt
   
   def initialize
     super(REPL_SVC_REPOSITION_ON_SOURCE_ID_CHANGE, "The master will come ONLINE from the current position if the stored source_id does not match the value in the static properties.", PV_BOOLEAN, "true")
+  end
+end
+
+class ReplicationServiceFailOnZeroRowUpdate < ConfigurePrompt
+  include ReplicationServicePrompt
+  
+  def initialize
+    pv = PropertyValidator.new("^stop|warn|ignore$", 
+      "Value must be stop, warn, or ignore")
+    super(REPL_SVC_FAIL_ON_ZERO_ROW_UPDATE, "How should the replicator behave when a Row-Based Replication UPDATE does not affect any rows.", pv, "warn")
+  end
+  
+  def load_default_value
+    super()
+    
+    if @config.getProperty(get_member_key(ENABLE_HETEROGENOUS_SLAVE)) == "true"
+      @default = "stop"
+    end
   end
 end
 

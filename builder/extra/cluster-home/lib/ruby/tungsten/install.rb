@@ -52,8 +52,15 @@ class TungstenInstall
     end
   end
   
+  # Path to the install directory for Continuent Tungsten. This will include 
+  # all previous releases and a symlink to the current running version.
   def root
     @root
+  end
+  
+  # Path to the current running version of Continuent Tungsten.
+  def base_path
+    "#{@root}/#{CURRENT_RELEASE_DIRECTORY}"
   end
   
   def hostname
@@ -79,7 +86,12 @@ class TungstenInstall
     if is_manager?()
       setting("dataservice_name")
     elsif is_replicator?()
-      local_services = TU.cmd_result("egrep -l \"^replicator.service.type=local\" #{@root}/#{CURRENT_RELEASE_DIRECTORY}/tungsten-replicator/conf/static*").split("\n")
+      begin
+        local_services = TU.cmd_result("egrep -l \"^replicator.service.type=local\" #{@root}/#{CURRENT_RELEASE_DIRECTORY}/tungsten-replicator/conf/static*").split("\n")
+      rescue
+        local_services = []
+      end
+      
       if local_services.size() == 0
         dataservices().get(0)
       else
@@ -91,7 +103,11 @@ class TungstenInstall
   end
   
   def replication_services
-    TU.cmd_result("egrep \"^service.name\" #{@root}/#{CURRENT_RELEASE_DIRECTORY}/tungsten-replicator/conf/static-* | awk -F \"=\" '{print $2}'").split("\n")
+    begin
+      TU.cmd_result("egrep \"^service.name\" #{@root}/#{CURRENT_RELEASE_DIRECTORY}/tungsten-replicator/conf/static-* | awk -F \"=\" '{print $2}'").split("\n")
+    rescue
+      []
+    end
   end
   
   def tpm
@@ -141,19 +157,37 @@ class TungstenInstall
       if third == nil
         raise "Unable to create setting key for #{first}.#{second}"
       end
-      "#{first}.#{TU.to_identifier(second)}.#{third}"
+      
+      service_aliases = setting(setting_key(HOSTS, "deployment_dataservice_aliases"))
+      unless service_aliases.has_key?(second)
+        raise "Unable to find a configuration alias for the #{second} service"
+      end
+      
+      "#{first}.#{TU.to_identifier(service_aliases[second])}.#{third}"
     elsif first == HOSTS
       "#{first}.#{TU.to_identifier(hostname())}.#{second}"
     elsif first == MANAGERS
       if third == nil
         raise "Unable to create setting key for #{first}.#{second}"
       end
-      "#{first}.#{TU.to_identifier(second)}_#{TU.to_identifier(hostname())}.#{third}"
+      
+      service_aliases = setting(setting_key(HOSTS, "deployment_dataservice_aliases"))
+      unless service_aliases.has_key?(second)
+        raise "Unable to find a configuration alias for the #{second} service"
+      end
+      
+      "#{first}.#{TU.to_identifier(service_aliases[second])}_#{TU.to_identifier(hostname())}.#{third}"
     elsif first == REPL_SERVICES
       if third == nil
         raise "Unable to create setting key for #{first}.#{second}"
       end
-      "#{first}.#{TU.to_identifier(second)}_#{TU.to_identifier(hostname())}.#{third}"
+      
+      service_aliases = setting(setting_key(HOSTS, "deployment_dataservice_aliases"))
+      unless service_aliases.has_key?(second)
+        raise "Unable to find a configuration alias for the #{second} service"
+      end
+      
+      "#{first}.#{TU.to_identifier(service_aliases[second])}_#{TU.to_identifier(hostname())}.#{third}"
     else
       "#{first}.#{TU.to_identifier(hostname())}.#{second}"
     end

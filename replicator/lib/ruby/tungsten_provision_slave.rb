@@ -171,7 +171,7 @@ class TungstenReplicatorProvisionSlave
     # Inspect the default value for the replication service to identify the 
     # preferred method
     if opt(:mysqldump) == nil && opt(:xtrabackup) == nil
-      if TI.trepctl_property(opt(:service), "replicator.backup.default") == "mysqldump"
+      if TI.setting(TI.setting_key(REPL_SERVICES, opt(:service), "repl_backup_method")) == "mysqldump"
         opt(:mysqldump, true)
       else
         opt(:mysqldump, false)

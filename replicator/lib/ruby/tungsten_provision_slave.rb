@@ -8,6 +8,7 @@ class TungstenReplicatorProvisionSlave
   include OfflineServicesScript
   
   MASTER_BACKUP_POSITION_SQL = "xtrabackup_tungsten_master_backup_position.sql"
+  AUTODETECT = 'autodetect'
   
   def main
     if @options[:mysqldump] == false
@@ -33,7 +34,7 @@ class TungstenReplicatorProvisionSlave
 
         staging_dir = @options[:mysqldatadir]
       else
-        staging_dir = TI.setting("repl_services.#{@options[:service]}.repl_backup_directory") + "/" + id
+        staging_dir = TI.setting(TI.setting_key(REPL_SERVICES, opt(:service), "repl_backup_directory")) + "/" + id
       end
       FileUtils.mkdir_p(staging_dir)
       TU.cmd_result("#{sudo_prefix()}chown -R #{TI.user()} #{staging_dir}")
@@ -85,15 +86,18 @@ class TungstenReplicatorProvisionSlave
       end
 
       # Fix the permissions and restart the service
-      TU.cmd_result("#{sudo_prefix()}chown -RL #{@options[:mysqluser]}: #{@options[:mysqldatadir]}")
-
-      if @options[:mysqlibdatadir].to_s() != ""
-        TU.cmd_result("#{sudo_prefix()}chown -RL #{@options[:mysqluser]}: #{@options[:mysqlibdatadir]}")
-      end
-
-      if @options[:mysqliblogdir].to_s() != ""
-        TU.cmd_result("chown -RL #{@options[:mysqluser]}: #{@options[:mysqliblogdir]}")
-      end
+      [
+        @options[:mysqldatadir],
+        @options[:mysqlibdatadir],
+        @options[:mysqliblogdir]
+      ].uniq().each{
+        |dir|
+        if dir.to_s() == ""
+          next
+        end
+        
+        TU.cmd_result("#{sudo_prefix()}chown -RL #{@options[:mysqluser]}: #{dir}")
+      }
 
       start_mysql_server()
       
@@ -104,12 +108,7 @@ class TungstenReplicatorProvisionSlave
       end
       
       TU.notice("Backup and restore complete")
-
-      if @options[:direct] == false && staging_dir != "" && File.exists?(staging_dir)
-        TU.debug("Cleanup #{staging_dir}")
-        TU.cmd_result("rm -r #{staging_dir}")
-      end
-    rescue => e
+    ensure
       if @options[:direct] == false && staging_dir != "" && File.exists?(staging_dir)
         TU.debug("Remove #{staging_dir} due to the error")
         TU.cmd_result("rm -r #{staging_dir}")
@@ -120,8 +119,6 @@ class TungstenReplicatorProvisionSlave
       if @options[:direct] == true
         TU.cmd_result("#{sudo_prefix()}chown -R #{@options[:mysqluser]}: #{staging_dir}")
       end
-
-      raise e
     end
   end
   
@@ -129,7 +126,7 @@ class TungstenReplicatorProvisionSlave
     begin
       # Create a directory to hold the mysqldump output
       id = build_timestamp_id("provision_mysqldump_")
-      staging_dir = TI.setting("repl_services.#{@options[:service]}.repl_backup_directory") + "/" + id
+      staging_dir = TI.setting(TI.setting_key(REPL_SERVICES, opt(:service), "repl_backup_directory")) + "/" + id
       FileUtils.mkdir_p(staging_dir)
       
       # SSH to the source server and run the backup. It will place the output
@@ -156,18 +153,11 @@ class TungstenReplicatorProvisionSlave
       rescue CommandError => ce
         raise MessageError.new("Unable to load the mysqldump file: #{ce.errors}")
       end
-      
-      if staging_dir != "" && File.exists?(staging_dir)
-        TU.debug("Remove #{staging_dir}")
-        TU.cmd_result("rm -r #{staging_dir}")
-      end
-    rescue => e
+    ensure
       if staging_dir != "" && File.exists?(staging_dir)
         TU.debug("Remove #{staging_dir} due to the error")
         TU.cmd_result("rm -r #{staging_dir}")
       end
-      
-      raise e
     end
   end
   
@@ -175,6 +165,56 @@ class TungstenReplicatorProvisionSlave
     # All replication must be OFFLINE
     unless TI.is_replicator?()
       TU.error("This server is not configured for replication")
+      return
+    end
+    
+    if opt(:source) == AUTODETECT
+      @options[:source] = nil
+      
+      if opt(:service) == nil
+        TU.error("Unable to autodetect a value for --source without --service")
+      else
+        # Find all hosts that are replicating this service
+        available_sources = JSON.parse(TU.cmd_result("#{TI.root()}/#{CURRENT_RELEASE_DIRECTORY}/tungsten-replicator/scripts/multi_trepctl --service=#{opt(:service)} --path=self --output=json"))
+        
+        # Find a non-master service that is ONLINE or OFFLINE:NORMAL
+        available_sources.each{
+          |svc|
+          if svc["host"] == TI.hostname()
+            next
+          end
+          
+          if svc["role"] == "master"
+            next
+          end
+          
+          if svc["state"] == "ONLINE"
+            opt(:source, svc["host"])
+          end
+        }
+        
+        # Accept any master service that is ONLINE
+        if opt(:source) == nil
+          available_sources.each{
+            |svc|
+            if svc["host"] == TI.hostname()
+              next
+            end
+            
+            if svc["role"] != "master"
+              next
+            end
+            
+            if svc["state"] == "ONLINE"
+              opt(:source, svc["host"])
+            end
+          }
+        end
+        
+        if opt(:source) == nil
+          TU.error("Unable to autodetect a value for --source. Make sure that the replicator is running on all other datasources for the #{opt(:service)} replication service.")
+        end
+      end
     end
     
     # This section evaluates :mysqldump and :xtrabackup to determine the best
@@ -192,7 +232,7 @@ class TungstenReplicatorProvisionSlave
     # Inspect the default value for the replication service to identify the 
     # preferred method
     if opt(:mysqldump) == nil && opt(:xtrabackup) == nil
-      if TI.trepctl_property(opt(:service), "replicator.backup.default") == "mysqldump"
+      if TI.setting(TI.setting_key(REPL_SERVICES, opt(:service), "repl_backup_method")) == "mysqldump"
         opt(:mysqldump, true)
       else
         opt(:mysqldump, false)
@@ -205,6 +245,12 @@ class TungstenReplicatorProvisionSlave
     
     unless TU.is_valid?()
       return
+    end
+    
+    if TI && TI.setting(TI.setting_key(DATASERVICES, opt(:service), "dataservice_topology")) == "clustered"
+      opt(:is_clustered, true)
+    else
+      opt(:is_clustered, false)
     end
     
     if @options[:mysqldump] == false
@@ -233,8 +279,8 @@ class TungstenReplicatorProvisionSlave
     
       @options[:mysqlibdatadir] = get_mysql_option("innodb_data_home_dir")
       @options[:mysqliblogdir] = get_mysql_option("innodb_log_group_home_dir")
-      @options[:mysqllogdir] = TI.setting("repl_services.#{@options[:service]}.repl_datasource_log_directory")
-      @options[:mysqllogpattern] = TI.setting("repl_services.#{@options[:service]}.repl_datasource_log_pattern")
+      @options[:mysqllogdir] = TI.setting(TI.setting_key(REPL_SERVICES, opt(:service), "repl_datasource_log_directory"))
+      @options[:mysqllogpattern] = TI.setting(TI.setting_key(REPL_SERVICES, opt(:service), "repl_datasource_log_pattern"))
 
       if @options[:mysqldatadir].to_s() == ""
         TU.error "The configuration file at #{@options[:my_cnf]} does not define a datadir value."
@@ -325,27 +371,25 @@ class TungstenReplicatorProvisionSlave
     set_option_default(:clear_logs, true)
     set_option_default(:offline, true)
     set_option_default(:online, true)
-    
-    if TI && TI.setting("dataservices.#{opt(:service)}.dataservice_topology") == "clustered"
-      opt(:is_clustered, true)
-    else
-      opt(:is_clustered, false)
-    end
   end
   
   def empty_mysql_directory
     stop_mysql_server()
 
-    TU.cmd_result("#{sudo_prefix()}find #{@options[:mysqldatadir]}/ -mindepth 1 | xargs #{sudo_prefix()} rm -rf")
-    TU.cmd_result("#{sudo_prefix()}find #{@options[:mysqllogdir]}/ -name #{@options[:mysqllogpattern]}.*  | xargs #{sudo_prefix()} rm -rf")
+    TU.cmd_result("#{sudo_prefix()}find #{@options[:mysqllogdir]}/ -name #{@options[:mysqllogpattern]}.* -delete")
 
-    if @options[:mysqlibdatadir].to_s() != ""
-      TU.cmd_result("#{sudo_prefix()}find #{@options[:mysqlibdatadir]}/ -mindepth 1 | xargs #{sudo_prefix()} rm -rf")
-    end
-
-    if @options[:mysqliblogdir].to_s() != ""
-      TU.cmd_result("#{sudo_prefix()}find #{@options[:mysqliblogdir]}/ -mindepth 1 | xargs #{sudo_prefix()} rm -rf")
-    end
+    [
+      @options[:mysqldatadir],
+      @options[:mysqlibdatadir],
+      @options[:mysqliblogdir]
+    ].uniq().each{
+      |dir|
+      if dir.to_s() == ""
+        next
+      end
+      
+      TU.cmd_result("#{sudo_prefix()}find #{dir}/ -mindepth 1 -delete")
+    }
   end
 
   def read_property_from_file(property, filename)
@@ -380,5 +424,13 @@ class TungstenReplicatorProvisionSlave
   
   def script_name
     "tungsten_provision_slave"
+  end
+  
+  def script_log_path
+    if TI
+      "#{TI.root()}/service_logs/provision_slave.log"
+    else
+      super()
+    end
   end
 end

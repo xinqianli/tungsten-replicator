@@ -62,7 +62,7 @@ public class ClusterMembershipDigest
      * @param name Name of this member
      * @param configuredMembers Member names from service configuration
      * @param viewMembers Member names from group communications view
-     * @param witnessMember Name of the witness host
+     * @param witnessMembers Names of the witness hosts
      */
     public ClusterMembershipDigest(String name,
             Collection<String> configuredMembers,
@@ -534,17 +534,27 @@ public class ClusterMembershipDigest
      */
     public boolean isValidMembership(boolean verbose)
     {
+        
+        if (verbose)
+        {
+            CLUtils.println("GC VIEW OF CURRENT MEMBERS IS: "
+                    + CLUtils.iterableToCommaSeparatedList(viewMembers));
+            CLUtils.println("REACHABLE CURRENT MEMBERS ARE: "
+                    + CLUtils
+                            .iterableToCommaSeparatedList(getReachableMemberNames()));
+            CLUtils.println("VALIDATED CURRENT MEMBERS ARE: "
+                    + CLUtils
+                            .iterableToCommaSeparatedList(getValidatedMemberNames()));
+            
+            
+        }
+        
         if (viewMembers.size() > 0 && getValidatedMembers().size() > 0
                 && setsAreEqual(viewMembers, getValidatedMembers()))
         {
             if (verbose)
             {
                 CLUtils.println("MEMBERSHIP IS VALID BASED ON VIEW/VALIDATED MEMBERS CONSISTENCY");
-                CLUtils.println("GC VIEW OF CURRENT MEMBERS IS: "
-                        + CLUtils.iterableToCommaSeparatedList(viewMembers));
-                CLUtils.println("VALIDATED CURRENT MEMBERS ARE: "
-                        + CLUtils
-                                .iterableToCommaSeparatedList(getValidatedMemberNames()));
             }
             return true;
         }
@@ -554,22 +564,12 @@ public class ClusterMembershipDigest
             if (verbose)
             {
                 CLUtils.println("MEMBERSHIP IS VALID BASED ON VIEW/REACHABLE MEMBERS CONSISTENCY");
-                CLUtils.println("GC VIEW OF CURRENT MEMBERS IS: "
-                        + CLUtils.iterableToCommaSeparatedList(viewMembers));
-                CLUtils.println("REACHABLE CURRENT MEMBERS ARE: "
-                        + CLUtils
-                                .iterableToCommaSeparatedList(getReachableMemberNames()));
             }
         }
 
         if (verbose)
         {
             CLUtils.println("MEMBERSHIP IS NOT VALID");
-            CLUtils.println("GC VIEW OF CURRENT MEMBERS IS: "
-                    + CLUtils.iterableToCommaSeparatedList(viewMembers));
-            CLUtils.println("VALIDATED CURRENT MEMBERS ARE: "
-                    + CLUtils
-                            .iterableToCommaSeparatedList(getValidatedMemberNames()));
         }
         return false;
     }

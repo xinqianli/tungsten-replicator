@@ -45,14 +45,25 @@ replicator.master.connect.uri=@{REPL_MASTER_URI}
 # use this as their connect URI.
 replicator.master.listen.uri=@{REPL_THL_PROTOCOL}://@{HOST.HOST}:@{REPL_SVC_THL_PORT}/
 
-# Replicator auto-enable.  If true, replicator automatically goes online 
-# at start-up time. 
+# Replicator auto-enable.  If true, replicator service automatically goes 
+# online at start-up time. 
 replicator.auto_enable=@{REPL_AUTOENABLE}
 
-# Determines whether replication service is started up
-# as a thread internal to the ReplicationServiceManager or
-# whether it runs in a separate, detached JVM.
-replicator.detached=false
+# Replicator auto-recovery.  If greater than 0, the replicator service 
+# attempts to go back online up to this number of times before failing. 
+replicator.autoRecoveryMaxAttempts=@{REPL_AUTO_RECOVERY_MAX_ATTEMPTS}
+
+# Replicator auto-recovery delay.  How long to wait before going online. 
+# Settings are milliseconds by default.  You can also apply settings in 
+# seconds, minutes, hours, and days, as in 10s, 30m, 2h, etc. This 
+# setting allows time for resources to clean up or recover after a failure. 
+replicator.autoRecoveryDelayInterval=@{REPL_AUTO_RECOVERY_DELAY_INTERVAL}
+
+# Replicator auto-recover reset interval.  If the replicator is online for 
+# this amount of time, reset the count of auto-recovery attempts.  This value
+# may need to be large for services that commit large blocks as apply errors
+# may take a while to show up after going online again. 
+replicator.autoRecoveryResetInterval=@{REPL_AUTO_RECOVERY_DELAY_INTERVAL}
 
 # Source ID.  Identifies the replication event source.  It must be 
 # unique for each replicator node and normally is the host name.
@@ -194,6 +205,22 @@ replicator.stage.q-to-thl.extractor=queue
 replicator.stage.q-to-thl.applier=autoflush-thl-applier
 replicator.stage.q-to-thl.filters=@{REPL_SVC_THL_FILTERS}
 replicator.stage.q-to-thl.blockCommitRowCount=${replicator.global.buffer.size}
+
+# MASTER-PROVISION PIPELINE:  Two stages with an intervening queue:  
+# extract from database and place events in THL.
+replicator.pipeline.master-provision=prov-db-to-q,prov-q-to-thl
+replicator.pipeline.master-provision.stores=thl,queue
+
+replicator.stage.prov-db-to-q=com.continuent.tungsten.replicator.pipeline.SingleThreadStageTask
+replicator.stage.prov-db-to-q.extractor=parallel-extractor
+replicator.stage.prov-db-to-q.applier=queue
+replicator.stage.prov-db-to-q.filters=@{REPL_SVC_EXTRACTOR_FILTERS}
+
+replicator.stage.prov-q-to-thl=com.continuent.tungsten.replicator.pipeline.SingleThreadStageTask
+replicator.stage.prov-q-to-thl.extractor=queue
+replicator.stage.prov-q-to-thl.applier=thl-applier
+replicator.stage.prov-q-to-thl.filters=
+replicator.stage.prov-q-to-thl.blockCommitRowCount=${replicator.global.buffer.size}
 
 # SLAVE PIPELINE:  three stages:  extract from remote THL to local THL;
 # extract from local THL to queue; apply from queue to DBMS.
@@ -346,6 +373,28 @@ replicator.store.parallel-queue.syncInterval=10000
 
 @{REPL_SVC_EXTRACTOR_CONFIG}
 
+# Parallel extractor
+replicator.extractor.parallel-extractor=com.continuent.tungsten.replicator.extractor.parallel.ParallelExtractor
+replicator.extractor.parallel-extractor.user=${replicator.global.extract.db.user}
+replicator.extractor.parallel-extractor.password=${replicator.global.extract.db.password}
+replicator.extractor.parallel-extractor.url=@{EXTRACTOR.REPL_DBJDBCURL}
+
+# Path to the chunk definition file. If the file is not provided or is not
+# present, all information will be extracted.
+replicator.extractor.parallel-extractor.ChunkDefinitionFile=${replicator.home.dir}/conf/chunks.csv
+
+# How many rows should be handle in one chunk
+replicator.extractor.parallel-extractor.chunk_size=2000
+
+# Should a truncate table statement be added with the first event of the table
+replicator.extractor.parallel-extractor.add_truncate_table=true
+
+# Number of parallel threads to use for extracting from database
+replicator.extractor.parallel-extractor.extract_channels=10
+
+# Number of events that can be buffered inside the parallel extractor
+replicator.extractor.parallel-extractor.queue_size=20
+
 # Local THL extractor. 
 replicator.extractor.thl-extractor=com.continuent.tungsten.replicator.thl.THLStoreExtractor
 replicator.extractor.thl-extractor.storeName=thl
@@ -493,7 +542,7 @@ replicator.applier.failure_policy=stop
 
 # How applier should react when detecting a row update that did not change anything.
 # Possible values are 'stop', 'warn' or 'ignore'. 
-replicator.applier.failOnZeroRowUpdate=warn
+replicator.applier.failOnZeroRowUpdate=@{REPL_SVC_FAIL_ON_ZERO_ROW_UPDATE}
 
 # How to react on consistency check failure.  Possible values are 'stop' or 
 # 'warn'. 

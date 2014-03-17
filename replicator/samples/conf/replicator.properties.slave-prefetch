@@ -33,10 +33,21 @@ replicator.master.connect.uri=@{REPL_MASTER_URI}
 # at start-up time. 
 replicator.auto_enable=@{REPL_AUTOENABLE}
 
-# Determines whether replication service is started up
-# as a thread internal to the ReplicationServiceManager or
-# whether it runs in a separate, detached JVM.
-replicator.detached=false
+# Replicator auto-recovery.  If greater than 0, the replicator service
+# attempts to go back online up to this number of times before failing.
+replicator.autoRecoveryMaxAttempts=@{REPL_AUTO_RECOVERY_MAX_ATTEMPTS}
+
+# Replicator auto-recovery delay.  How long to wait before going online.
+# Settings are milliseconds by default.  You can also apply settings in
+# seconds, minutes, hours, and days, as in 10s, 30m, 2h, etc. This
+# setting allows time for resources to clean up or recover after a failure.
+replicator.autoRecoveryDelayInterval=@{REPL_AUTO_RECOVERY_DELAY_INTERVAL}
+
+# Replicator auto-recover reset interval.  If the replicator is online for
+# this amount of time, reset the count of auto-recovery attempts.  This value
+# may need to be large for services that commit large blocks as apply errors
+# may take a while to show up after going online again.
+replicator.autoRecoveryResetInterval=@{REPL_AUTO_RECOVERY_DELAY_INTERVAL}
 
 # Source ID.  Identifies the replication event source.  It must be 
 # unique for each replicator node and normally is the host name.
@@ -386,6 +397,10 @@ replicator.extractor.failure_policy=stop
 
 # How to react on applier failure. Possible values are 'stop' or 'warn'. 
 replicator.applier.failure_policy=stop
+
+# How applier should react when detecting a row update that did not change anything.
+# Possible values are 'stop', 'warn' or 'ignore'. 
+replicator.applier.failOnZeroRowUpdate=@{REPL_SVC_FAIL_ON_ZERO_ROW_UPDATE}
 
 # How to react on consistency check failure.  Possible values are 'stop' or 
 # 'warn'. 

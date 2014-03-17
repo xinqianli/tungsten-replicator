@@ -1,3 +1,4 @@
+
 --For DEBUG purpose, comment the following 3 lines and uncomment the 4th one
 set feedback off
 set echo off
@@ -102,18 +103,18 @@ IF tableCount > 0 THEN
          IF not v_sync THEN
             DBMS_OUTPUT.PUT_LINE ('Adding supplemental log data');
             BEGIN
-               EXECUTE IMMEDIATE  'ALTER TABLE ' || v_user || '.' || v_table_name || ' DROP SUPPLEMENTAL LOG DATA (ALL) COLUMNS';
+               EXECUTE IMMEDIATE  'ALTER TABLE "' || v_user || '"."' || v_table_name || '" DROP SUPPLEMENTAL LOG DATA (ALL) COLUMNS';
             EXCEPTION WHEN OTHERS THEN
                NULL;
             END;
-            EXECUTE IMMEDIATE  'ALTER TABLE ' || v_user || '.' || v_table_name || ' ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS';
+            EXECUTE IMMEDIATE  'ALTER TABLE "' || v_user || '"."' || v_table_name || '" ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS';
 
             DBMS_OUTPUT.PUT_LINE ('Preparing table instanciation');
-            DBMS_CAPTURE_ADM.PREPARE_TABLE_INSTANTIATION(TABLE_NAME => v_user || '.' || v_table_name );
+            DBMS_CAPTURE_ADM.PREPARE_TABLE_INSTANTIATION(TABLE_NAME => '"' || v_user || '"."' || v_table_name || '"'  );
          END IF;
          
    
-         EXECUTE IMMEDIATE 'GRANT SELECT ON "'|| v_user || '"."' || v_table_name ||'" TO '||v_tungsten_user;
+         EXECUTE IMMEDIATE 'GRANT SELECT,FLASHBACK ON "'|| v_user || '"."' || v_table_name ||'" TO '||v_tungsten_user;
 
       END LOOP;
       CLOSE C;
@@ -132,16 +133,16 @@ ELSE
          IF not v_sync THEN
             DBMS_OUTPUT.PUT_LINE ('Adding supplemental log data');
             BEGIN
-               EXECUTE IMMEDIATE  'ALTER TABLE ' || v_user || '.' || v_table_name || ' DROP SUPPLEMENTAL LOG DATA (ALL) COLUMNS';
+               EXECUTE IMMEDIATE  'ALTER TABLE "' || v_user || '"."' || v_table_name || '" DROP SUPPLEMENTAL LOG DATA (ALL) COLUMNS';
             EXCEPTION WHEN OTHERS THEN
                NULL;
             END;
-            EXECUTE IMMEDIATE  'ALTER TABLE ' || v_user || '.' || v_table_name || ' ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS';
+            EXECUTE IMMEDIATE  'ALTER TABLE "' || v_user || '"."' || v_table_name || '" ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS';
 
             DBMS_OUTPUT.PUT_LINE ('Preparing table instanciation');
-            DBMS_CAPTURE_ADM.PREPARE_TABLE_INSTANTIATION(TABLE_NAME => v_user || '.' || v_table_name );
+            DBMS_CAPTURE_ADM.PREPARE_TABLE_INSTANTIATION(TABLE_NAME => '"' || v_user || '"."' || v_table_name || '"' );
          END IF;
-         EXECUTE IMMEDIATE 'GRANT SELECT ON "'|| v_user || '"."' || v_table_name ||'" TO '||v_tungsten_user;
+         EXECUTE IMMEDIATE 'GRANT SELECT,FLASHBACK ON "'|| v_user || '"."' || v_table_name ||'" TO '||v_tungsten_user;
       END LOOP;
       CLOSE C;
    END;

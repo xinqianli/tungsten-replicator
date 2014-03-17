@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2013 Continuent Inc.
+ * Copyright (C) 2007-2014 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -921,6 +921,22 @@ public abstract class AbstractDatabase implements Database
     /**
      * This function should be implemented in concrete class.
      * 
+     * @param md DatabaseMetaData object.
+     * @param schemaName Schema name.
+     * @param tableName Table name.
+     * @param unique When true, return only indices for unique values; when
+     *            false, return indices regardless of whether unique or not.
+     * @return ResultSet as produced by DatabaseMetaData.getIndexInfo() for a
+     *         given schema and table.
+     * @throws SQLException
+     */
+    protected abstract ResultSet getIndexResultSet(DatabaseMetaData md,
+            String schemaName, String tableName, boolean unique)
+            throws SQLException;
+
+    /**
+     * This function should be implemented in concrete class.
+     * 
      * @param md DatabaseMetaData object
      * @param schemaName schema name
      * @param baseTablesOnly If true, return only base tables, not catalogs or
@@ -986,7 +1002,8 @@ public abstract class AbstractDatabase implements Database
         {
             String colName = rsk.getString("COLUMN_NAME");
             Column column = cm.get(colName);
-            pKey.AddColumn(column);
+            // Adding columns in the primary key order
+            pKey.AddColumn(column, rsk.getShort("KEY_SEQ"));
         }
         rsk.close();
 
@@ -996,7 +1013,63 @@ public abstract class AbstractDatabase implements Database
             table.AddKey(pKey);
         }
 
+        // Find unique indexes.
+        findUniqueIndexes(md, schemaName, tableName, cm, table);
+
         return table;
+    }
+
+    /**
+     * Finds unique indexes from the metadata and adds them to the table.
+     * Primary key is included too, if it exists.
+     * 
+     * @throws SQLException
+     */
+    private void findUniqueIndexes(DatabaseMetaData md, String schemaName,
+            String tableName, Map<String, Column> cm, Table table)
+            throws SQLException
+    {
+        // Find unique indexes.
+        try
+        {
+            ResultSet rsi = getIndexResultSet(md, schemaName, tableName, true);
+            if (rsi.isBeforeFirst())
+            {
+                String lastIdxName = null;
+                Key uIdx = null;
+                while (rsi.next())
+                {
+                    short idxType = rsi.getShort("TYPE");
+                    if (idxType != DatabaseMetaData.tableIndexStatistic)
+                    {
+                        // Results are ordered by NON_UNIQUE, TYPE,
+                        // INDEX_NAME, and ORDINAL_POSITION.
+                        String idxName = rsi.getString("INDEX_NAME");
+                        if (!idxName.equals(lastIdxName))
+                        {
+                            if (uIdx != null)
+                                table.AddKey(uIdx);
+                            uIdx = new Key(Key.Unique);
+                            uIdx.setName(idxName);
+                            lastIdxName = idxName;
+                        }
+
+                        String colName = rsi.getString("COLUMN_NAME");
+                        Column column = cm.get(colName);
+                        uIdx.AddColumn(column);
+                    }
+                }
+                if (uIdx != null)
+                    table.AddKey(uIdx);
+            }
+            rsi.close();
+        }
+        catch (UnsupportedOperationException e)
+        {
+            if (logger.isDebugEnabled())
+                logger.debug("Can't search for unique indexes, because this function is unsupported: "
+                        + e);
+        }
     }
 
     /**

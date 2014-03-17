@@ -631,6 +631,13 @@ public class OracleDatabase extends AbstractDatabase
         return md.getPrimaryKeys(null, schemaName, tableName);
     }
 
+    protected ResultSet getIndexResultSet(DatabaseMetaData md,
+            String schemaName, String tableName, boolean unique)
+            throws SQLException
+    {
+        return md.getIndexInfo(null, schemaName, tableName, unique, true);
+    }
+
     protected ResultSet getTablesResultSet(DatabaseMetaData md,
             String schemaName, boolean baseTablesOnly) throws SQLException
     {
@@ -870,7 +877,7 @@ public class OracleDatabase extends AbstractDatabase
     /**
      * {@inheritDoc}
      * 
-     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#dropTungstenCatalog(java.lang.String)
+     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#dropTungstenCatalog(String, String, String)
      */
     @Override
     public void dropTungstenCatalog(String schemaName,

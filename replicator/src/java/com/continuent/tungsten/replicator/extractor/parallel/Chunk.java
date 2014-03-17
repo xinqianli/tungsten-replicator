@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2009 Continuent Inc.
+ * Copyright (C) 2014 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,86 +22,47 @@
 
 package com.continuent.tungsten.replicator.extractor.parallel;
 
-import java.util.Arrays;
 import java.util.List;
 
+import com.continuent.tungsten.replicator.database.Database;
 import com.continuent.tungsten.replicator.database.Table;
 
 /**
  * @author <a href="mailto:stephane.giron@continuent.com">Stephane Giron</a>
  * @version 1.0
  */
-public class Chunk
+public interface Chunk
 {
-    private long         from;
 
-    private long         to;
-
-    private Table        table;
-
-    private List<String> columns;
+    public Table getTable();
 
     /**
      * Returns the columns value.
      * 
      * @return Returns the columns.
      */
-    protected List<String> getColumns()
-    {
-        return columns;
-    }
-
-    public Chunk(Table table, long from, long to, String[] columns)
-    {
-        this.table = table;
-        this.from = from;
-        this.to = to;
-        if (columns == null)
-            this.columns = null;
-        else
-            this.columns = Arrays.asList(columns);
-    }
-
-    public Chunk(Table table)
-    {
-        this(table, null);
-    }
-
-    public Chunk()
-    {
-        // Generate an empty chunk that will tell threads that work is complete
-        this.table = null;
-    }
-
-    public Chunk(Table table, String[] columns)
-    {
-        this(table, -1, -1, columns);
-    }
+    public List<String> getColumns();
 
     /**
      * Returns the from value.
      * 
      * @return Returns the from.
      */
-    protected long getFrom()
-    {
-        return from;
-    }
-
-    public Table getTable()
-    {
-        return table;
-    }
+    public Object getFrom();
 
     /**
      * Returns the to value.
      * 
      * @return Returns the to.
      */
-    protected long getTo()
-    {
-        return to;
-    }
+    public Object getTo();
+
+    /**
+     * Returns the nbBlocks value.
+     * 
+     * @return Returns the nbBlocks.
+     */
+    public long getNbBlocks();
 
     /**
      * {@inheritDoc}
@@ -109,11 +70,11 @@ public class Chunk
      * @see java.lang.Object#toString()
      */
     @Override
-    public String toString()
-    {
-        return "Chunk for table " + table.getSchema() + "." + table.getName()
-                + " for " + table.getPrimaryKey().getColumns().get(0).getName()
-                + " from " + from + " to " + to;
-    }
+    public String toString();
 
+    public String getQuery(Database connection, String eventId);
+
+    public Object[] getFromValues();
+
+    public Object[] getToValues();
 }

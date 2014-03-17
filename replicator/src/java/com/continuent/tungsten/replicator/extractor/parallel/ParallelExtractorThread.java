@@ -24,15 +24,13 @@ package com.continuent.tungsten.replicator.extractor.parallel;
 
 import java.io.Serializable;
 import java.math.BigInteger;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 
 import oracle.sql.TIMESTAMPTZ;
@@ -68,7 +66,11 @@ public class ParallelExtractorThread extends Thread
     private ArrayBlockingQueue<DBMSEvent> queue;
     private ArrayBlockingQueue<Chunk>     chunks;
 
-    private int                           rowCount   = 200;
+    // TODO : do we need 2 different notions for chunk size (the size of the
+    // select) and rowcount (the maximum number of rows of the event) ?
+    private int                           rowCount   = 10000;
+
+    private String                        eventId    = null;
 
     public ParallelExtractorThread(String url, String user, String password,
             ArrayBlockingQueue<Chunk> chunks,
@@ -116,7 +118,8 @@ public class ParallelExtractorThread extends Thread
 
     private void runTask()
     {
-        String sqlString = null;
+        String sql = null;
+        PreparedStatement pstmt = null;
         try
         {
             connection.connect();
@@ -126,17 +129,6 @@ public class ParallelExtractorThread extends Thread
             // throw new ReplicatorException("Unable to connect to Oracle", e);
         }
 
-        Statement stmt = null;
-        try
-        {
-            stmt = connection.createStatement();
-            stmt.setFetchSize(rowCount);
-        }
-        catch (SQLException e1)
-        {
-            // TODO Auto-generated catch block
-            e1.printStackTrace();
-        }
         while (!cancelled)
         {
             // 1. get a table to process
@@ -166,7 +158,7 @@ public class ParallelExtractorThread extends Thread
             }
 
             // 2.1. Build the statement
-            sqlString = buildSQLStatement(chunk);
+            sql = buildSQLStatement(chunk);
 
             ArrayList<Column> allColumns = chunk.getTable().getAllColumns();
             ArrayList<DBMSData> dataArray = new ArrayList<DBMSData>();
@@ -174,10 +166,57 @@ public class ParallelExtractorThread extends Thread
             ResultSet rs = null;
             try
             {
+                pstmt = connection.prepareStatement(sql);
+                int startValue = 1;
+                StringBuilder str = new StringBuilder();
+
+                if (chunk.getFromValues() != null)
+                {
+                    if (logger.isDebugEnabled())
+                    {
+                        for (int i = 0; i < chunk.getFromValues().length; i++)
+                        {
+                            if (str.length() > 0)
+                                str.append(" / ");
+                            str.append(chunk.getFromValues()[i]);
+                        }
+                    }
+                    startValue = setValues(pstmt, chunk.getFromValues(),
+                            startValue);
+                }
+
+                if (chunk.getToValues() != null)
+                {
+                    if (logger.isDebugEnabled())
+                    {
+                        for (int i = 0; i < chunk.getToValues().length; i++)
+                        {
+                            if (str.length() > 0)
+                                str.append(" / ");
+                            str.append(chunk.getToValues()[i]);
+                        }
+                    }
+                    setValues(pstmt, chunk.getToValues(), startValue);
+                }
+
                 if (logger.isDebugEnabled())
-                    logger.debug("Thread " + this.getName() + " running : "
-                            + sqlString);
-                rs = stmt.executeQuery(sqlString);
+                    if (str.length() > 0)
+                        logger.debug("Thread " + this.getName() + " running : "
+                                + sql + " with parameters " + str.toString());
+                    else
+                        logger.debug("Thread " + this.getName() + " running : "
+                                + sql);
+
+                long start = System.currentTimeMillis();
+                rs = pstmt.executeQuery();
+
+                if (logger.isDebugEnabled())
+                    logger.debug("Thread " + this.getName()
+                            + " executed query in "
+                            + (System.currentTimeMillis() - start) + " ms.");
+
+                start = System.currentTimeMillis();
+
                 if (rs != null)
                 {
                     boolean eventSent;
@@ -185,11 +224,6 @@ public class ParallelExtractorThread extends Thread
                     if (rs.next())
                     {
                         RowChangeData rowChangeData = new RowChangeData();
-                        // StatementData stmtData = new StatementData(
-                        // "TRUNCATE TABLE "
-                        // + chunk.getTable().getSchema() + "."
-                        // + chunk.getTable().getName());
-                        // dataArray.add(stmtData);
                         dataArray.add(rowChangeData);
 
                         int rowIndex = 0;
@@ -311,10 +345,17 @@ public class ParallelExtractorThread extends Thread
                                 eventSent = true;
                                 try
                                 {
-                                    // TODO: what should be the event id ?
-                                    queue.put(new DBMSEvent("PROVISIONNING",
-                                            dataArray, new Timestamp(System
-                                                    .currentTimeMillis())));
+                                    DBMSEvent ev = new DBMSEvent("ora:"
+                                            + eventId, dataArray,
+                                            new Timestamp(
+                                                    System.currentTimeMillis()));
+                                    ev.addMetadataOption("schema", chunk
+                                            .getTable().getSchema());
+                                    ev.addMetadataOption("table", chunk
+                                            .getTable().getName());
+                                    ev.addMetadataOption("nbBlocks",
+                                            String.valueOf(chunk.getNbBlocks()));
+                                    queue.put(ev);
                                 }
                                 catch (InterruptedException e)
                                 {
@@ -338,9 +379,16 @@ public class ParallelExtractorThread extends Thread
 
                             {
                                 // TODO: what should be the event id ?
-                                queue.put(new DBMSEvent("PROVISIONNING",
-                                        dataArray, new Timestamp(System
-                                                .currentTimeMillis())));
+                                DBMSEvent ev = new DBMSEvent("ora:" + eventId,
+                                        dataArray, new Timestamp(
+                                                System.currentTimeMillis()));
+                                ev.addMetadataOption("schema", chunk.getTable()
+                                        .getSchema());
+                                ev.addMetadataOption("table", chunk.getTable()
+                                        .getName());
+                                ev.addMetadataOption("nbBlocks",
+                                        String.valueOf(chunk.getNbBlocks()));
+                                queue.put(ev);
                             }
                             catch (InterruptedException e)
                             {
@@ -348,6 +396,12 @@ public class ParallelExtractorThread extends Thread
                                 e.printStackTrace();
                             }
                         }
+                        if (logger.isDebugEnabled())
+                            logger.debug("Thread " + this.getName()
+                                    + " processed resultset in  "
+                                    + (System.currentTimeMillis() - start)
+                                    + " ms.");
+
                     }
                     else
                     // nothing more
@@ -357,7 +411,7 @@ public class ParallelExtractorThread extends Thread
             }
             catch (SQLException e)
             {
-                logger.error("SQL failed : " + sqlString, e);
+                logger.error("SQL failed : " + sql, e);
             }
             finally
             {
@@ -371,72 +425,51 @@ public class ParallelExtractorThread extends Thread
                         // TODO Auto-generated catch block
                         e.printStackTrace();
                     }
+                if (pstmt != null)
+                    try
+                    {
+                        pstmt.close();
+                        pstmt = null;
+                    }
+                    catch (SQLException e)
+                    {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
             }
             // 3. Get to next available table, if any
         }
     }
 
-    /**
-     * TODO: buildSQLStatement definition.
-     * 
-     * @param chunk
-     * @param allColumns
-     * @return
-     */
-    protected String buildSQLStatement(Chunk chunk)
+    private int setValues(PreparedStatement pstmt, Object[] values,
+            int startValue) throws SQLException
     {
-        StringBuffer sql = new StringBuffer();
-
-        List<String> columns = chunk.getColumns();
-        if (columns == null)
-            for (Column column : chunk.getTable().getAllColumns())
-            {
-                if (sql.length() == 0)
-                {
-                    sql.append("SELECT ");
-                }
-                else
-                {
-                    sql.append(", ");
-                }
-                sql.append(column.getName());
-            }
-        else
-            for (Iterator<String> iterator = columns.iterator(); iterator
-                    .hasNext();)
-            {
-                if (sql.length() == 0)
-                {
-                    sql.append("SELECT ");
-                }
-                else
-                {
-                    sql.append(", ");
-                }
-                sql.append(iterator.next());
-            }
-
-        sql.append(" FROM ");
-        sql.append(connection.getDatabaseObjectName(chunk.getTable()
-                .getSchema()));
-        sql.append('.');
-        sql.append(connection.getDatabaseObjectName(chunk.getTable().getName()));
-        if (chunk.getFrom() > 0)
+        int j = startValue;
+        for (int i = 0; i < values.length; i++)
         {
-            String pkName = chunk.getTable().getPrimaryKey().getColumns()
-                    .get(0).getName();
+            if (i == values.length - 1)
+                pstmt.setObject(j, values[i]);
 
-            sql.append(" WHERE ");
-            sql.append(pkName);
-            sql.append(" >= ");
-            sql.append(chunk.getFrom());
-            sql.append(" AND ");
-            sql.append(pkName);
-            sql.append(" <= ");
-            sql.append(chunk.getTo());
+            else
+            {
+                pstmt.setObject(j, values[i]);
+                j++;
+                pstmt.setObject(j, values[i]);
+            }
+            j++;
         }
 
-        return sql.toString();
+        return j;
+
+    }
+
+    private String buildSQLStatement(Chunk chunk)
+    {
+        if (logger.isDebugEnabled())
+            logger.debug("Got chunk for " + chunk.getTable() + " from "
+                    + chunk.getFrom() + " to " + chunk.getTo());
+
+        return chunk.getQuery(connection, eventId);
     }
 
     private void setTypeFromDatabase(Column column, ColumnSpec spec,
@@ -497,6 +530,11 @@ public class ParallelExtractorThread extends Thread
             connection = null;
         }
 
+    }
+
+    public void setEventId(String eventId)
+    {
+        this.eventId = eventId;
     }
 
 }

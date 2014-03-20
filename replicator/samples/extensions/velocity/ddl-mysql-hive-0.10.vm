@@ -9,13 +9,14 @@
 ## Print header or help above the first table.
 #if ( $counter == 1 )
 #if( $help )
-Velocity template to generate staging tables for Tungsten Replicaotr.
+Velocity template to generate base tables for Tungsten Replicaotr.
  
-Transforms MySQL table definition (DDL) to Hive 0.10 staging tables.
+Transforms MySQL table definition (DDL) to Hive 0.10 base tables.
 Reports errors (ERROR) and warnings (WARN).  Column mappings
 generally map to those used by Tungsten Replicator.
 #else
 #parse("includes/ddl-header-dashed.vm")
+##parse("includes/hive-reserved-words.vm")
 #end
 #end
 ## Stop processing if help requested.

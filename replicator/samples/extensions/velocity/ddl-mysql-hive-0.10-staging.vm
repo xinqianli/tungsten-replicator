@@ -15,6 +15,7 @@ Transforms MySQL table definition (DDL) to Hive 0.10 staging tables.
 Reports errors (ERROR) and warnings (WARN).  Column mappings
 generally map to those used by Tungsten Replicator.
 #else
+##parse("includes/hive-reserved-words.vm")
 #parse("includes/ddl-header-dashed.vm")
 #end
 #end

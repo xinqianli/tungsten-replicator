@@ -19,7 +19,7 @@ INT##
 INT##
 #elseif ( $col.getTypeDescription().startsWith("BIGINT") )
 BIGINT##
-#elseif ( $col.getTypeDescription().startsWith("DECIMAL(") )
+#elseif ( $col.getTypeDescription().startsWith("DECIMAL") )
 STRING##
 #elseif ( $col.getTypeDescription().startsWith("VARCHAR") )
 STRING##

@@ -6,6 +6,14 @@
   Initial developer(s): Robert Hodges, Linas Virbalas
   Contributor(s):
 *##parse("includes/hive-reserved-words.vm")
+## Check for missing table information.
+#if ( !$table )
+{
+  "tables": [
+  ]
+}
+#stop
+#end
 #if ( $first )
 {
   "tables": [

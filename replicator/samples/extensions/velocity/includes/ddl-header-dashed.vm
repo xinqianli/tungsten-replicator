@@ -5,3 +5,8 @@
 -- user = $user
 -- dbName = $dbName
 --
+## Check for missing table information.
+#if ( !$table )
+-- ERROR: no tables found! Are database and tables option specified correctly?
+#stop
+#end

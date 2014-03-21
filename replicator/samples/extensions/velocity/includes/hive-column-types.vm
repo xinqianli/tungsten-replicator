@@ -10,15 +10,31 @@ INT##
 #elseif ( $col.getTypeDescription().contains("TIME") )
 STRING##
 #elseif ( $col.getTypeDescription().startsWith("TINYINT") )
+#if ( $col.isSigned() ) 
 TINYINT##
-#elseif ( $col.getTypeDescription().startsWith("SMALLINT") )
+#else
 SMALLINT##
+#end
+#elseif ( $col.getTypeDescription().startsWith("SMALLINT") )
+#if ( $col.isSigned() ) 
+SMALLINT##
+#else
+INT##
+#end
 #elseif ( $col.getTypeDescription().startsWith("MEDIUMINT") )
 INT##
 #elseif ( $col.getTypeDescription().startsWith("INT") )
+#if ( $col.isSigned() ) 
 INT##
-#elseif ( $col.getTypeDescription().startsWith("BIGINT") )
+#else
 BIGINT##
+#end
+#elseif ( $col.getTypeDescription().startsWith("BIGINT") )
+#if ( $col.isSigned() ) 
+BIGINT##
+#else
+STRING##
+#end
 #elseif ( $col.getTypeDescription().startsWith("DECIMAL") )
 STRING##
 #elseif ( $col.getTypeDescription().startsWith("VARCHAR") )

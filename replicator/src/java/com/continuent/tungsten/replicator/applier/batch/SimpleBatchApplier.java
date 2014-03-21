@@ -60,6 +60,8 @@ import com.continuent.tungsten.replicator.datasource.DataSourceService;
 import com.continuent.tungsten.replicator.datasource.HdfsConnection;
 import com.continuent.tungsten.replicator.datasource.UniversalConnection;
 import com.continuent.tungsten.replicator.datasource.UniversalDataSource;
+import com.continuent.tungsten.replicator.datatypes.MySQLUnsignedNumeric;
+import com.continuent.tungsten.replicator.datatypes.Numeric;
 import com.continuent.tungsten.replicator.dbms.DBMSData;
 import com.continuent.tungsten.replicator.dbms.LoadDataFileFragment;
 import com.continuent.tungsten.replicator.dbms.OneRowChange;
@@ -489,8 +491,9 @@ public class SimpleBatchApplier implements RawApplier
         }
 
         // Load each open CSV file into a request queue. We update the seqno of
-        // this commit in CsvInfo as that helps the batch load scripts generate 
-        // unique file names that associate easily with the trep_commit_seqno position.
+        // this commit in CsvInfo as that helps the batch load scripts generate
+        // unique file names that associate easily with the trep_commit_seqno
+        // position.
         long endSeqno = latestHeader.getSeqno();
         ScriptExecutorService execService = new ScriptExecutorService(
                 "batch-load", loadScriptExecutors, Math.max(1, pendingCsvCount));
@@ -1165,10 +1168,37 @@ public class SimpleBatchApplier implements RawApplier
                 ArrayList<ColumnVal> row = colIterator.next();
                 for (int i = 0; i < row.size(); i++)
                 {
+                    // Get the column and its type value.
                     ColumnVal columnVal = row.get(i);
                     ColumnSpec columnSpec = colSpecs.get(i);
-                    String value = getCsvString(columnVal.getValue(),
-                            columnSpec);
+                    int type = columnSpec.getType();
+                    Object rawValue;
+                    if (type == Types.INTEGER)
+                    {
+                        // Issue 798 - MySQLExtractor extracts UNSIGNED numbers
+                        // in a non-
+                        // platform-independent way. We need to fix data here.
+                        Numeric numeric = new Numeric(columnSpec, columnVal);
+                        if (columnSpec.isUnsigned() && numeric.isNegative())
+                        {
+                            // We assume that if column is unsigned - it's MySQL
+                            // on the
+                            // master side, as Oracle does not have UNSIGNED
+                            // modifier.
+                            rawValue = MySQLUnsignedNumeric
+                                    .negativeToMeaningful(numeric).toString();
+                        }
+                        else
+                        {
+                            rawValue = columnVal.getValue();
+                        }
+                    }
+                    else
+                    {
+                        rawValue = columnVal.getValue();
+                    }
+                    String value = getCsvString(rawValue, columnSpec);
+
                     int colIdx = columnSpec.getIndex();
                     csv.put(colIdx + headerIdx, value);
                 }

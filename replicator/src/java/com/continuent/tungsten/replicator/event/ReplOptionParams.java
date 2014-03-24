@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2011 Continuent Inc.
+ * Copyright (C) 2010-2014 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -103,4 +103,10 @@ public class ReplOptionParams
      * is unsafe. If not defined, it is safe for block commit.
      */
     public static final String UNSAFE_FOR_BLOCK_COMMIT = "unsafe_for_block_commit";
+
+    /**
+     * Indicates that this transaction should force a commit regardless of any
+     * other rules regarding block commit.
+     */
+    public static final String FORCE_COMMIT            = "force_commit";
 }

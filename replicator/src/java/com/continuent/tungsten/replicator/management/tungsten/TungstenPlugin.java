@@ -1194,6 +1194,11 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
                     props.put("blockCommitRowCount",
                             new Integer(stage.getBlockCommitRowCount())
                                     .toString());
+                    double intervalSecs = (double) stage
+                            .getBlockCommitInterval().longValue() / 1000.0;
+                    props.put("blockCommitInterval",
+                            new Double(intervalSecs).toString() + "s");
+                    props.put("blockCommitPolicy", stage.getBlockCommitPolicy());
 
                     // Add stage components.
                     props.put("applier.name", stage.getApplierSpec().getName());

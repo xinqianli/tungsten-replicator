@@ -81,7 +81,7 @@ function apply(csvinfo)
         runtime.exec('hadoop fs -rm ' + hadoop_file);
     }
     catch (err) {
-        logger.info('Warning: removing a file failed, may not have existed: ' + fulldir);
+        logger.info('Warning: removing a file failed, may not have existed: ');
     }
 
     // Load file to HDFS.

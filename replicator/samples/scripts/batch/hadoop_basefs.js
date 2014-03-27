@@ -77,7 +77,12 @@ function apply(csvinfo)
 
     // Remove any previous file with this name.  That takes care of restart
     // by wiping out earlier loads of the same data.
-    runtime.exec('hadoop fs -rm ' + hadoop_file);
+    try {
+        runtime.exec('hadoop fs -rm ' + hadoop_file);
+    }
+    catch (err) {
+        logger.info('Warning: removing a file failed, may not have existed: ' + fulldir);
+    }
 
     // Load file to HDFS.
     runtime.exec('hadoop fs -put ' + csv_file + ' ' + hadoop_file);

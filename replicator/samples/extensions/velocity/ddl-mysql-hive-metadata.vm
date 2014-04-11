@@ -37,7 +37,7 @@
 #foreach ( $col in $table.getAllColumns() )
       {"name": "##
 #if ( $reservedWordsHiveQL.contains($col.getName().toUpperCase()) )
-$col.getName()_##
+_$col.getName()##
 #else
 $col.getName()##
 #end

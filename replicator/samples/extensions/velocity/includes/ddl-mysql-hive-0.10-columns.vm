@@ -8,7 +8,7 @@
 ## Print column name. 
 #if ( $reservedWordsHiveQL.contains($col.getName().toUpperCase()) )
 #set ( $colReserved = true )
-  $col.getName()_ ##
+  _$col.getName() ##
 #else
   $col.getName() ##
 #end

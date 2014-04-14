@@ -75,6 +75,21 @@ public class ReplOptionParams
     public static String       JAVA_CHARSET_NAME       = "##charset";
 
     /**
+     * Schema name. This is a statement option.
+     */
+    public static String       SCHEMA_NAME             = "##schema";
+
+    /**
+     * Table name. This is a statement option.
+     */
+    public static String       TABLE_NAME              = "##table";
+
+    /**
+     * DDL operation name. This is a statement option.
+     */
+    public static String       OPERATION_NAME          = "##operation";
+
+    /**
      * ServerId. This is a statement option.
      */
     public static String       SERVER_ID               = "mysql_server_id";
@@ -109,4 +124,9 @@ public class ReplOptionParams
      * other rules regarding block commit.
      */
     public static final String FORCE_COMMIT            = "force_commit";
+
+    /**
+     * Indicates that this transaction contains a schema change.
+     */
+    public static final String SCHEMA_CHANGE           = "schema_change";
 }

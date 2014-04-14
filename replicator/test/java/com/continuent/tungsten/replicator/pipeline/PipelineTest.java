@@ -679,7 +679,7 @@ public class PipelineTest extends TestCase
         {
             ReplDBMSEvent event = helper.createEvent(seqno, "db01");
             event.getDBMSEvent().setMetaDataOption(
-                    ReplOptionParams.UNSAFE_FOR_BLOCK_COMMIT, "true");
+                    ReplOptionParams.UNSAFE_FOR_BLOCK_COMMIT, "");
             events.add(event);
         }
 

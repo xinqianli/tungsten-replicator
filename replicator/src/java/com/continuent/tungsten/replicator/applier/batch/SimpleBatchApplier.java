@@ -593,6 +593,10 @@ public class SimpleBatchApplier implements RawApplier
 
         // Clear the CSV file cache.
         this.openCsvSets.clear();
+        
+        // Clear the metadata cache.  Otherwise we will get errors if there is a 
+        // schema change between commits. 
+        fullMetadataCache.invalidateAll();
 
         // Clear the load directories if desired.
         if (cleanUpFiles)
@@ -1244,7 +1248,7 @@ public class SimpleBatchApplier implements RawApplier
     private Table getTableMetadata(String schema, String name,
             List<ColumnSpec> colSpecs, List<ColumnSpec> keySpecs)
     {
-        // In the cache first.
+        // Look in the cache first.
         Table t = fullMetadataCache.retrieve(schema, name);
 
         // Create if missing and add to cache.

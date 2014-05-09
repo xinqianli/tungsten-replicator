@@ -19,7 +19,7 @@ class FileDatabasePlatform < ConfigureDatabasePlatform
   end
 
   def get_default_port
-    1
+    nil
   end
 
   def get_default_start_script

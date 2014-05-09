@@ -136,6 +136,10 @@ class DatasourceDBPort < ConfigurePrompt
     super()
   end
   
+  def required?
+    super() && get_datasource().get_default_port() != nil
+  end
+  
   PortForConnectors.register(REPL_SERVICES, REPL_DBPORT)
   PortForManagers.register(REPL_SERVICES, REPL_DBPORT)
 end
@@ -363,6 +367,10 @@ class DirectDatasourceDBPort < ConfigurePrompt
 
   def load_default_value
     @default = @config.getProperty(get_member_key(REPL_DBPORT))
+  end
+  
+  def required?
+    super() && get_datasource().get_default_port() != nil
   end
 
   PortForConnectors.register(REPL_SERVICES, EXTRACTOR_REPL_DBPORT)

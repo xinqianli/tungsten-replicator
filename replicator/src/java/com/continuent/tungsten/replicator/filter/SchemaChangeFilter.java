@@ -40,11 +40,21 @@ import com.continuent.tungsten.replicator.plugin.PluginContext;
 
 /**
  * Implements a filter to detect schema changes by parsing statements and create
- * permanent annotations on the statements.
+ * permanent annotations on the statements. This filter also detects truncate
+ * statements. Here is the general behavior.
+ * <ol>
+ * <li>Any statement that affects the logical schema of the table, such as
+ * CREATE/DROP SCHEMA, CREATE/DROP TABLE, or ALTER causes the annotation
+ * ##schema_change to be added to the event metadata.</li>
+ * <li>Similarly any statement that is a table TRUNCATE operate causes the
+ * annotation ##truncate to be added to the event metadata</li>
+ * <li>In both cases the operation type, schema name, and table name (if
+ * appropriate) are added to the statement metadata.</li>
+ * </ol>
  */
 public class SchemaChangeFilter implements Filter
 {
-    private static Logger            logger = Logger.getLogger(ReplicateFilter.class);
+    private static Logger            logger = Logger.getLogger(SchemaChangeFilter.class);
 
     private String                   tungstenSchema;
     private final SqlStatementParser parser = SqlStatementParser.getParser();
@@ -66,7 +76,10 @@ public class SchemaChangeFilter implements Filter
     public ReplDBMSEvent filter(ReplDBMSEvent event)
             throws ReplicatorException, InterruptedException
     {
+        // Assume we do not have any interesting operations to report.
         boolean schemaChange = false;
+        boolean truncate = false;
+
         ArrayList<DBMSData> data = event.getData();
         String dbmsType;
         if (event.getDBMSEvent() == null)
@@ -172,15 +185,26 @@ public class SchemaChangeFilter implements Filter
                         annotate(sdata, schema, table, "ALTER TABLE");
                         schemaChange = true;
                     }
+                    else if (operation == SqlOperation.TRUNCATE)
+                    {
+                        annotate(sdata, schema, table, "TRUNCATE");
+                        truncate = true;
+                    }
                 }
             }
         }
 
-        // Annotate a schema change.
+        // Annotate events with schema change and truncate markers if such were
+        // found.
         if (schemaChange)
         {
             event.getDBMSEvent().setMetaDataOption(
                     ReplOptionParams.SCHEMA_CHANGE, "");
+        }
+        if (truncate)
+        {
+            event.getDBMSEvent().setMetaDataOption(ReplOptionParams.TRUNCATE,
+                    "");
         }
 
         return event;
@@ -207,7 +231,7 @@ public class SchemaChangeFilter implements Filter
     public void configure(PluginContext context) throws ReplicatorException,
             InterruptedException
     {
-        if (tungstenSchema == null)
+        if (tungstenSchema == null && context != null)
         {
             tungstenSchema = context.getReplicatorProperties().getString(
                     ReplicatorConf.METADATA_SCHEMA);

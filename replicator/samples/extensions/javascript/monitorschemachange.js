@@ -19,25 +19,6 @@
  */
  
 /**
- * Called on every filtered event. See replicator's javadoc for more details
- * on accessible classes. Also, JavaScriptFilter's javadoc contains description
- * about how to define a script like this.
- *
- * @param event Filtered com.continuent.tungsten.replicator.event.ReplDBMSEvent
- *
- * @see com.continuent.tungsten.replicator.filter.JavaScriptFilter
- * @see com.continuent.tungsten.replicator.event.ReplDBMSEvent
- * @see com.continuent.tungsten.replicator.dbms.DBMSData
- * @see com.continuent.tungsten.replicator.dbms.StatementData
- * @see com.continuent.tungsten.replicator.dbms.RowChangeData
- * @see com.continuent.tungsten.replicator.dbms.OneRowChange
- * @see com.continuent.tungsten.replicator.dbms.RowChangeData.ActionType
- * @see com.continuent.tungsten.replicator.thl.THLManagerCtrl#printRowChangeData(StringBuilder, RowChangeData, String, boolean, int)
- * @see java.lang.Thread
- * @see org.apache.log4j.Logger
- */
-
-/**
  * Called once when JavaScriptFilter corresponding to this script is prepared.
  */
 function prepare()
@@ -61,7 +42,8 @@ function filter(event)
     data = event.getData();
 
     // If there is no schema change marked, we don't have to do anything. 
-    if (dbmsEvent.getMetadataOptionValue("schema_change") == null)
+    if (dbmsEvent.getMetadataOptionValue("schema_change") == null &&
+        dbmsEvent.getMetadataOptionValue("truncate") == null)
     {
       //logger.info("Nothing to do: seqno=" + event.getSeqno());
       return;
@@ -72,7 +54,7 @@ function filter(event)
     {
         // Get com.continuent.tungsten.replicator.dbms.DBMSData
         d = data.get(i);
-    
+
         // We only care about statements in this filter. 
         if(d instanceof com.continuent.tungsten.replicator.dbms.StatementData)
         {
@@ -84,7 +66,7 @@ function filter(event)
               schema = d.getOption("##schema");
               table = d.getOption("##table");
               sql = d.getQuery();
-              logger.info("SCHEMA CHANGE: seqno=" + event.getSeqno() 
+              logger.info("TABLE CHANGE: seqno=" + event.getSeqno() 
                 + " schema=" + schema + " table=" + table 
                 + " operation=" + operation + " sql=[" + sql + "]");
             }
@@ -95,7 +77,7 @@ function filter(event)
     // current and any downstream stages. 
     if (doCommit)
     {
-      logger.info("Forcing commit due to schema change: seqno=" 
+      logger.info("Forcing commit due to table change: seqno=" 
         + event.getSeqno());
       dbmsEvent.setMetaDataOption("force_commit","");
     }

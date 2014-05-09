@@ -129,4 +129,9 @@ public class ReplOptionParams
      * Indicates that this transaction contains a schema change.
      */
     public static final String SCHEMA_CHANGE           = "schema_change";
+
+    /**
+     * Indicates that this transaction contains a table truncate command.
+     */
+    public static final String TRUNCATE                = "truncate";
 }

@@ -14,6 +14,9 @@ Velocity template to generate base tables for Tungsten Replicaotr.
 Transforms MySQL table definition (DDL) to Hive 0.10 base tables.
 Reports errors (ERROR) and warnings (WARN).  Column mappings
 generally map to those used by Tungsten Replicator.
+
+  -opt schemaPrefix - Prefix for schema name (Defaults to null)
+  -opt tablePrefix - Prefix for table name (Defaults to null)
 #else
 #parse("includes/ddl-header-dashed.vm")
 ##parse("includes/hive-reserved-words.vm")
@@ -24,12 +27,19 @@ generally map to those used by Tungsten Replicator.
 #stop
 #end
 
+#if ( ! $schemaPrefix )
+#set ( $schemaPrefix = "" )
+#end
+#if ( ! $tablePrefix )
+#set ( $tablePrefix = "" )
+#end
+
 DROP TABLE IF EXISTS ##
-$table.getSchema().$table.getName()##
+${schemaPrefix}${table.getSchema()}.${tablePrefix}$table.getName()##
 ;
 
 CREATE TABLE ##
-$table.getSchema().$table.getName()##
+${schemaPrefix}${table.getSchema()}.${tablePrefix}$table.getName()##
 #if ( $table.getName().substring(0, 1).matches("[0-9]") ) /* ERROR: table starts with a number, use rename option and a filter */ #end
 
 (

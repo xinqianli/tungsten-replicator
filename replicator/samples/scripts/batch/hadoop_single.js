@@ -4,22 +4,17 @@
  * Contact: tungsten@continuent.org
  *
  * Load script for HDFS using hadoop utility.  Tables load to corresponding
- * directories in HDFS.  
- * 
- * This script handles data loading from multiple replication services by 
- * ensuring that each script includes the replication service name in the 
- * HDFS directory.  The target directory format is the following: 
- * 
- *   /user/tungsten/staging/<service name>
+ * directories in HDFS.  This script does not take into account the replication
+ * service name, so data from multiple replication services may collide. 
+ * If you are doing fan-in replication, please use hadoop.js instead. 
  */
 
 // Called once when applier goes online. 
 function prepare()
 {
-  // Ensure target directory exists.  This must contain the service name. 
+  // Ensure target directory exists. 
   logger.info("Executing hadoop connect script to create data directory");
-  service_name = runtime.getContext().getServiceName();
-  hadoop_base = '/user/tungsten/staging/' + service_name;
+  hadoop_base = '/user/tungsten/staging';
   runtime.exec('hadoop fs -mkdir -p ' + hadoop_base);
 }
 

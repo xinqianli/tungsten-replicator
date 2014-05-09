@@ -9,11 +9,17 @@
 ## Print header or help above the first table.
 #if ( $counter == 1 )
 #if( $help )
-Velocity template to generate staging tables for Tungsten Replicaotr. 
+Velocity template to generate staging tables for Tungsten Replicator. 
   
 Transforms MySQL table definition (DDL) to Hive 0.10 staging tables. 
 Reports errors (ERROR) and warnings (WARN).  Column mappings
 generally map to those used by Tungsten Replicator.
+
+Options: 
+  -opt hdfsStagingDir - HDFS directory in which external tables are located
+       (Defaults to /user/tungsten/staging)
+  -opt schemaPrefix - Prefix for schema name (Defaults to null)
+  -opt tablePrefix - Prefix for table name (Defaults to stage_xxx_)
 #else
 ##parse("includes/hive-reserved-words.vm")
 #parse("includes/ddl-header-dashed.vm")
@@ -24,12 +30,22 @@ generally map to those used by Tungsten Replicator.
 #stop
 #end
 
+#if ( ! $hdfsStagingDir )
+#set ( $hdfsStagingDir = "/user/tungsten/staging" )
+#end
+#if ( ! $schemaPrefix )
+#set ( $schemaPrefix = "" )
+#end
+#if ( ! $tablePrefix )
+#set ( $tablePrefix = "stage_xxx_" )
+#end
+
 DROP TABLE IF EXISTS ##
-${table.getSchema()}.stage_xxx_$table.getName()##
+${schemaPrefix}${table.getSchema()}.${tablePrefix}$table.getName()##
 ;
 
 CREATE EXTERNAL TABLE ##
-${table.getSchema()}.stage_xxx_$table.getName()##
+${schemaPrefix}${table.getSchema()}.${tablePrefix}$table.getName()##
 #if ( $table.getName().substring(0, 1).matches("[0-9]") ) /* ERROR: table starts with a number, use rename option and a filter */ #end
 
 (
@@ -44,5 +60,5 @@ ${table.getSchema()}.stage_xxx_$table.getName()##
 ) 
 ROW FORMAT DELIMITED FIELDS TERMINATED BY '\001' ESCAPED BY '\\'
 LINES TERMINATED BY '\n'
-STORED AS TEXTFILE LOCATION '/user/tungsten/staging/$table.getSchema()/$table.getName()' ##
+STORED AS TEXTFILE LOCATION '$hdfsStagingDir/$table.getSchema()/$table.getName()' ##
 ;

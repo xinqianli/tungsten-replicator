@@ -43,3 +43,8 @@ replicator.applier.dbms.partitionByFormat='commit_hour='yyyy-MM-dd-HH
 
 # Clear files after each transaction.  
 replicator.applier.dbms.cleanUpFiles=true
+
+# If true, use update opcode (U) instead of splitting updates into insert
+# followed by delete.  This setting is not recommended for standard batch
+# loading as it may not work for row changes that do not have keys. 
+replicator.applier.dbms.useUpdateOpcode=false

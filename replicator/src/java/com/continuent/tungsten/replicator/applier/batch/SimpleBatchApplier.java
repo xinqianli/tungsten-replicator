@@ -105,6 +105,12 @@ public class SimpleBatchApplier implements RawApplier
      */
     public static String                DELETE              = "D";
 
+    /**
+     * Denotes an update operation. Updates are normally represented as DELETE
+     * followed by INSERT unless update opcodes are enabled.
+     */
+    public static String                UPDATE              = "U";
+
     // Names of staging header columns. These are prefixed when writing data.
     public static String                OPCODE              = "opcode";
     public static String                SEQNO               = "seqno";
@@ -130,6 +136,7 @@ public class SimpleBatchApplier implements RawApplier
     protected String                    partitionByClass;
     protected String                    partitionByFormat;
     protected int                       parallelization     = 1;
+    protected boolean                   useUpdateOpcode     = false;
 
     // Replication context
     PluginContext                       context;
@@ -286,6 +293,15 @@ public class SimpleBatchApplier implements RawApplier
     }
 
     /**
+     * If true use 'U' opcode for update operations. Otherwise updates are split
+     * into delete followed by insert.
+     */
+    public void setUseUpdateOpcode(boolean useUpdateOpcode)
+    {
+        this.useUpdateOpcode = useUpdateOpcode;
+    }
+
+    /**
      * Applies row updates using a batch loading scheme. Statements are
      * discarded. {@inheritDoc}
      * 
@@ -398,11 +414,23 @@ public class SimpleBatchApplier implements RawApplier
                         Table tableMetadata = this.getTableMetadata(schema,
                                 table, colSpecs, keySpecs);
 
-                        // Write keys for deletion and columns for insert.
-                        writeValues(seqno, commitTimestamp, service,
-                                tableMetadata, keySpecs, keyValues, DELETE);
-                        writeValues(seqno, commitTimestamp, service,
-                                tableMetadata, colSpecs, colValues, INSERT);
+                        // Write the update.
+                        if (useUpdateOpcode)
+                        {
+                            // Write update as a single operation using column
+                            // values.
+                            writeValues(seqno, commitTimestamp, service,
+                                    tableMetadata, colSpecs, colValues, UPDATE);
+                        }
+                        else
+                        {
+                            // Split update into delete followed by update.
+                            // Write keys for deletion and columns for insert.
+                            writeValues(seqno, commitTimestamp, service,
+                                    tableMetadata, keySpecs, keyValues, DELETE);
+                            writeValues(seqno, commitTimestamp, service,
+                                    tableMetadata, colSpecs, colValues, INSERT);
+                        }
                     }
                     else if (action.equals(ActionType.DELETE))
                     {
@@ -593,9 +621,9 @@ public class SimpleBatchApplier implements RawApplier
 
         // Clear the CSV file cache.
         this.openCsvSets.clear();
-        
-        // Clear the metadata cache.  Otherwise we will get errors if there is a 
-        // schema change between commits. 
+
+        // Clear the metadata cache. Otherwise we will get errors if there is a
+        // schema change between commits.
         fullMetadataCache.invalidateAll();
 
         // Clear the load directories if desired.

@@ -170,11 +170,12 @@ class Configurator
     @options.output_threshold = Logger::NOTICE
     @options.stream_output = false
     @options.fake_tty = false
-    @options.ssh_options = {
+    @options.default_ssh_options = {
       :timeout => 5,
       :auth_methods => ["publickey", "hostbased"],
       :paranoid => false
     }
+    @options.ssh_options = {}
     @options.config = nil
     @options.log_name = nil
     
@@ -300,7 +301,7 @@ class Configurator
       arguments = arguments.map{|arg|
         newarg = ''
         arg.split("").each{|b| 
-          unless b.getbyte(0)<33 || b.getbyte(0)>127 then 
+          unless b.getbyte(0)<32 || b.getbyte(0)>127 then 
             newarg.concat(b) 
           end
         }
@@ -654,6 +655,10 @@ class Configurator
   end
   
   def write(content="", level=Logger::INFO, hostname = nil, add_prefix = true)
+    if forced?() && level == Logger::ERROR
+      level = Logger::WARN
+    end
+    
     unless content == "" || level == nil || add_prefix == false
       content = "#{get_log_level_prefix(level, hostname)}#{content}"
     end
@@ -1338,6 +1343,8 @@ class Configurator
       
       Object.constants.each{
         |symbol|
+        next if symbol.to_s == "Config"
+        
         @constant_map[Object.const_get(symbol)] = symbol
       }
     end
@@ -1363,7 +1370,16 @@ class Configurator
   end
   
   def get_ssh_options
-    @options.ssh_options
+    @options.default_ssh_options.merge(@options.ssh_options)
+  end
+  
+  def get_ssh_command_options
+    opts = ["-A", "-oStrictHostKeyChecking=no"]
+    @options.ssh_options.each{
+      |k,v|
+      opts << "-o#{k.to_s()}=#{v}"
+    }
+    return opts.join(" ")
   end
   
   def get_ssh_user(user = nil)
@@ -1372,15 +1388,6 @@ class Configurator
       ssh_options[:user]
     else
       user
-    end
-  end
-  
-  def get_ssh_port(port = 22)
-    ssh_options = get_ssh_options
-    if ssh_options.has_key?(:port) && ssh_options[:port].to_s != ""
-      ssh_options[:port]
-    else
-      port
     end
   end
   
@@ -1414,6 +1421,9 @@ class Configurator
       |klass|
       extra_options << "--enable-validation-warnings=#{klass}"
     }
+    if forced?()
+      extra_options << "-f"
+    end
     
     extra_options
   end

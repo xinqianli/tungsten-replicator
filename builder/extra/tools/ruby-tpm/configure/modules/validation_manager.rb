@@ -120,8 +120,12 @@ class PingSyntaxCheck < ConfigureValidationCheck
     end
     
     begin
-      cmd = Escape.shell_command(cmd_array).to_s
-      cmd_result(cmd)
+      Timeout::timeout(5) do
+        cmd = Escape.shell_command(cmd_array).to_s
+        cmd_result(cmd)
+      end
+    rescue Timeout::Error
+      error("It is taking longer than 5 seconds to ping localhost")
     rescue CommandError
       error("Unable to run the ping utility with '#{cmd}'")
     end
@@ -163,6 +167,10 @@ class ManagerWitnessNeededCheck < ConfigureValidationCheck
     if @config.getProperty(ENABLE_ACTIVE_WITNESSES) == "false" && witnesses != ""
       warning("This dataservice is using a passive witness. Continuent Tungsten has support for active witnesses that improve stability over passive witnesses. Visit http://docs.continuent.com/ct/host-types for more information.")
     end
+  end
+  
+  def enabled?
+    super() && (@config.getProperty(MGR_VALIDATE_WITNESS) == "true")
   end
 end
 
@@ -236,5 +244,24 @@ class ManagerWitnessAvailableCheck < ConfigureValidationCheck
     super() && (@config.getProperty(DATASERVICE_WITNESSES).to_s() != "") &&
       (@config.getProperty(ENABLE_ACTIVE_WITNESSES) == "false") &&
       (@config.getProperty(MGR_VALIDATE_WITNESS) == "true")
+  end
+end
+
+class ManagerHeapThresholdCheck < ConfigureValidationCheck
+  include ManagerCheck
+  
+  def set_vars
+    @title = "Manager Java Heap threshold check"
+  end
+  
+  def validate
+    mem = @config.getProperty(get_member_key(MGR_JAVA_MEM_SIZE))
+    threshold = @config.getProperty(get_member_key(MGR_HEAP_THRESHOLD))
+    
+    if threshold.to_i() <= 0
+      error("The value for --mgr-heap-threshold must be greater than zero")
+    elsif threshold.to_i() >= mem.to_i()
+      error("The value for --mgr-heap-threshold must be less than --mgr-java-mem-size")
+    end
   end
 end

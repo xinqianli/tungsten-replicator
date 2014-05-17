@@ -28,6 +28,9 @@ module TungstenScript
     # Does this script required to run against an installed Tungsten directory
     @require_installed_directory = true
     
+    # Should unparsed arguments cause an error
+    @allow_unparsed_arguments = false
+    
     # Definition of each command that this script will support
     @command_definitions = {}
     
@@ -118,12 +121,6 @@ module TungstenScript
       :help => "Only run the script validation"
     })
     
-    add_option(:force, {
-      :on => "--force",
-      :default => false,
-      :help => "Continue operation even if script validation fails"
-    })
-    
     add_option(:autocomplete, {
       :on => "--autocomplete",
       :default => false,
@@ -137,6 +134,15 @@ module TungstenScript
     end
     
     return @options[option_key]
+  end
+  
+  # Set the value for option_key if it has not been set
+  def opt_default(option_key, default_value)
+    if opt(option_key) == nil
+      opt(option_key, default_value)
+    end
+    
+    opt(option_key)
   end
   
   def add_command(command_key, definition)
@@ -275,6 +281,12 @@ module TungstenScript
       end
     end
     
+    unless allow_unparsed_arguments?()
+      unless TU.remaining_arguments.size == 0
+        TU.error("Unable to parse the following arguments: #{TU.remaining_arguments.join(' ')}")
+      end
+    end
+    
     if require_command?() && @command_definitions.size() > 0 && @command == nil
       TU.error("A command was not given for this script. Valid commands are #{@command_definitions.keys().join(', ')} and must be the first argument.")
     end
@@ -377,6 +389,14 @@ module TungstenScript
     end
     
     @require_installed_directory
+  end
+  
+  def allow_unparsed_arguments?(v = nil)
+    if (v != nil)
+      @allow_unparsed_arguments = v
+    end
+    
+    @allow_unparsed_arguments
   end
   
   def require_command?

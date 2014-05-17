@@ -1076,7 +1076,7 @@ class MySQLConfigFileCheck < ConfigureValidationCheck
         end
       end
     else
-      warning("Unable to check the MySQL config file '#{conf_file}'")
+      debug("Unable to check the MySQL config file '#{conf_file}'")
     end
   end
 end
@@ -1123,7 +1123,7 @@ class MySQLApplierServerIDCheck < ConfigureValidationCheck
         error("The MySQL config file '#{conf_file}' is not readable")
       end
     else
-      warning("Unable to check for a configured server-id in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
+      debug("Unable to check for a configured server-id in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
     end
   end
 end
@@ -1141,7 +1141,7 @@ class MySQLApplierPortCheck < ConfigureValidationCheck
     
     conf_file = @config.getProperty(get_applier_key(REPL_MYSQL_CONF))
     unless Configurator.instance.is_localhost?(@config.getProperty(get_applier_key(REPL_DBHOST)))
-      warning("Unable to check for a configured port in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
+      debug("Unable to check for a configured port in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
       return
     end
     
@@ -1218,7 +1218,7 @@ class MySQLApplierLogsCheck < ConfigureValidationCheck
     dir = @config.getProperty(get_applier_key(REPL_MASTER_LOGDIR))
     
     unless Configurator.instance.is_localhost?(@config.getProperty(get_applier_key(REPL_DBHOST)))
-      warning("Unable to check the configured log directory in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
+      debug("Unable to check the configured log directory in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
       return
     end
     
@@ -1309,6 +1309,12 @@ class MySQLSettingsCheck < ConfigureValidationCheck
     max_allowed_packet = get_applier_datasource.get_value("show variables like 'max_allowed_packet'", "Value")
     if max_allowed_packet == nil || max_allowed_packet.to_i() < (48*1024*1024)
       warning("We suggest adding \"max_allowed_packet=52m\" or greater to the MySQL configuration file for #{get_applier_datasource.get_connection_summary()}")
+    end
+
+    info("Checking innodb_log_file_size")
+    innodb_log_file_size = get_applier_datasource.get_value("show variables like 'innodb_log_file_size'", "Value")
+    if innodb_log_file_size.to_i == 5242880
+      warning("innodb_log_file_size is set to the default value (5mb), this setting may need reviewing and setting to an appropriate value for #{get_applier_datasource.get_connection_summary()}")
     end
     
     info("Checking open_files_limit")

@@ -238,19 +238,6 @@ class TungstenUtil
 
     return
   end
-  
-  # A wrapper for running another Tungsten script. This will automatically
-  # forward messages to the console and add any TungstenScript options to 
-  # the command.
-  def tungsten_cmd_result(command)
-    original_fwd_state = forward_cmd_results?()
-    begin
-      forward_cmd_results?(true)
-      return cmd_result("#{command} #{get_tungsten_command_options()}")
-    ensure
-      forward_cmd_results?(original_fwd_state)
-    end
-  end
 
   # Run a standard check to see if SSH connectivity to the host works
   def test_ssh(host, user)
@@ -389,7 +376,7 @@ class TungstenUtil
   end
   
   def get_ssh_command_options
-    opts = ["-A", "-oStrictHostKeyChecking=no", "-oUserKnownHostsFile=/dev/null"]
+    opts = ["-A", "-oStrictHostKeyChecking=no"]
     @ssh_options.each{
       |k,v|
       opts << "-o#{k.to_s()}=#{v}"
@@ -411,6 +398,11 @@ class TungstenUtil
       |k,v|
       opts << "--net-ssh-option=#{k.to_s()}=#{v}"
     }
+    
+    if @force == true
+      opts << "--force"
+    end
+    
     return opts.join(" ")
   end
   
@@ -420,15 +412,6 @@ class TungstenUtil
       ssh_options[:user]
     else
       user
-    end
-  end
-  
-  def get_ssh_port(port = 22)
-    ssh_options = get_ssh_options
-    if ssh_options.has_key?(:port) && ssh_options[:port].to_s != ""
-      ssh_options[:port]
-    else
-      port
     end
   end
   

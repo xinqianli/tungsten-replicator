@@ -479,6 +479,20 @@ class AutoRecoveryMaxAttempts < ConfigurePrompt
       "Number of times to auto-recover after online error",
       PV_INTEGER, 0)
   end
+  
+  def load_default_value
+    if get_topology().is_a?(ClusterSlaveTopology)
+      # Load the value from the cluster-slave prompt
+      @default = @config.getProperty(get_member_key(CLUSTER_SLAVE_REPL_AUTO_RECOVERY_MAX_ATTEMPTS))
+      
+      # Revert to the default method if no value is returned
+      if @default == nil
+        super()
+      end
+    else
+      super()
+    end
+  end
 end
 
 class AutoRecoveryResetInterval < ConfigurePrompt
@@ -490,6 +504,20 @@ class AutoRecoveryResetInterval < ConfigurePrompt
       "Length of time online to reset auto-recover count to 0",
       PV_ANY, "300s")
   end
+  
+  def load_default_value
+    if get_topology().is_a?(ClusterSlaveTopology)
+      # Load the value from the cluster-slave prompt
+      @default = @config.getProperty(get_member_key(CLUSTER_SLAVE_REPL_AUTO_RECOVERY_RESET_INTERVAL))
+      
+      # Revert to the default method if no value is returned
+      if @default == nil
+        super()
+      end
+    else
+      super()
+    end
+  end
 end
 
 class AutoRecoveryDelayInterval < ConfigurePrompt
@@ -500,6 +528,65 @@ class AutoRecoveryDelayInterval < ConfigurePrompt
     super(REPL_AUTO_RECOVERY_DELAY_INTERVAL,
       "Length of delay before auto-recovering",
       PV_ANY, "5s")
+  end
+  
+  def load_default_value
+    if get_topology().is_a?(ClusterSlaveTopology)
+      # Load the value from the cluster-slave prompt
+      @default = @config.getProperty(get_member_key(CLUSTER_SLAVE_REPL_AUTO_RECOVERY_DELAY_INTERVAL))
+      
+      # Revert to the default method if no value is returned
+      if @default == nil
+        super()
+      end
+    else
+      super()
+    end
+  end
+end
+
+class ClusterSlaveAutoRecoveryMaxAttempts < ConfigurePrompt
+  include ReplicationServicePrompt
+  include AdvancedPromptModule
+
+  def initialize
+    super(CLUSTER_SLAVE_REPL_AUTO_RECOVERY_MAX_ATTEMPTS, 
+      "Default value for --auto-recovery-max-attempts when --topology=cluster-slave",
+      PV_INTEGER, 2)
+  end
+  
+  def required?
+    false
+  end
+end
+
+class ClusterSlaveAutoRecoveryResetInterval < ConfigurePrompt
+  include ReplicationServicePrompt
+  include AdvancedPromptModule
+
+  def initialize
+    super(CLUSTER_SLAVE_REPL_AUTO_RECOVERY_RESET_INTERVAL,
+      "Default value for --auto-recovery-reset-interval when --topology=cluster-slave",
+      PV_ANY)
+  end
+  
+  def required?
+    false
+  end
+end
+
+class ClusterSlaveAutoRecoveryDelayInterval < ConfigurePrompt
+  include ReplicationServicePrompt
+  include AdvancedPromptModule
+
+  def initialize
+    super(CLUSTER_SLAVE_REPL_AUTO_RECOVERY_DELAY_INTERVAL,
+      "Default value for --auto-recovery-delay-interval when --topology=cluster-slave",
+      PV_ANY)
+  end
+  
+  def required?
+    false
   end
 end
 
@@ -1550,5 +1637,152 @@ class ReplicationServiceGlobalProperties < ConfigurePrompt
     else
       return args
     end
+  end
+end
+
+class ReplicationServiceExtractorInitScript < ConfigurePrompt
+  include ReplicationServicePrompt
+  include NoStoredServerConfigValue
+  include HiddenValueModule
+  
+  def initialize
+    super(REPL_SVC_DATASOURCE_EXTRACTOR_INIT_SCRIPT, "SQL commands to run when connecting to the datasource extractor", PV_FILENAME)
+  end
+  
+  def get_template_value(transform_values_method)
+    v = get_value()
+    
+    if v.to_s() != ""
+      "#{@config.getProperty(get_host_key(HOME_DIRECTORY))}/share/#{File.basename(v)}"
+    else
+      ""
+    end
+  end
+  
+  def required?
+    false
+  end
+  
+  def validate_value(value)
+    super(value)
+    if is_valid?() && value != ""
+      unless File.exists?(value)
+        error("The file #{value} does not exist")
+      end
+    end
+    
+    is_valid?()
+  end
+  
+  DeploymentFiles.register(REPL_SVC_DATASOURCE_EXTRACTOR_INIT_SCRIPT, GLOBAL_REPL_SVC_DATASOURCE_EXTRACTOR_INIT_SCRIPT, REPL_SERVICES)
+end
+
+class GlobalReplicationServiceExtractorInitScript < ConfigurePrompt
+  include ReplicationServicePrompt
+  include ConstantValueModule
+  include NoStoredServerConfigValue
+  include HiddenValueModule
+  
+  def initialize
+    super(GLOBAL_REPL_SVC_DATASOURCE_EXTRACTOR_INIT_SCRIPT, "Staging path to the datasource extractor init script", 
+      PV_FILENAME)
+  end
+end
+
+class ReplicationServiceApplierInitScript < ConfigurePrompt
+  include ReplicationServicePrompt
+  include NoStoredServerConfigValue
+  include HiddenValueModule
+  
+  def initialize
+    super(REPL_SVC_DATASOURCE_APPLIER_INIT_SCRIPT, "SQL commands to run when connecting to the datasource applier", PV_FILENAME)
+  end
+  
+  def get_template_value(transform_values_method)
+    v = get_value()
+    
+    if v.to_s() != ""
+      "#{@config.getProperty(get_host_key(HOME_DIRECTORY))}/share/#{File.basename(v)}"
+    else
+      ""
+    end
+  end
+  
+  def required?
+    false
+  end
+  
+  def validate_value(value)
+    super(value)
+    if is_valid?() && value != ""
+      unless File.exists?(value)
+        error("The file #{value} does not exist")
+      end
+    end
+    
+    is_valid?()
+  end
+  
+  DeploymentFiles.register(REPL_SVC_DATASOURCE_APPLIER_INIT_SCRIPT, GLOBAL_REPL_SVC_DATASOURCE_APPLIER_INIT_SCRIPT, REPL_SERVICES)
+end
+
+class GlobalReplicationServiceApplierInitScript < ConfigurePrompt
+  include ReplicationServicePrompt
+  include ConstantValueModule
+  include NoStoredServerConfigValue
+  include HiddenValueModule
+  
+  def initialize
+    super(GLOBAL_REPL_SVC_DATASOURCE_APPLIER_INIT_SCRIPT, "Staging path to the datasource applier init script", 
+      PV_FILENAME)
+  end
+end
+
+class ReplicationServiceTHLInitScript < ConfigurePrompt
+  include ReplicationServicePrompt
+  include NoStoredServerConfigValue
+  include HiddenValueModule
+  
+  def initialize
+    super(REPL_SVC_DATASOURCE_THL_INIT_SCRIPT, "SQL commands to run when connecting to the datasource thl", PV_FILENAME)
+  end
+  
+  def get_template_value(transform_values_method)
+    v = get_value()
+    
+    if v.to_s() != ""
+      "#{@config.getProperty(get_host_key(HOME_DIRECTORY))}/share/#{File.basename(v)}"
+    else
+      ""
+    end
+  end
+  
+  def required?
+    false
+  end
+  
+  def validate_value(value)
+    super(value)
+    if is_valid?() && value != ""
+      unless File.exists?(value)
+        error("The file #{value} does not exist")
+      end
+    end
+    
+    is_valid?()
+  end
+  
+  DeploymentFiles.register(REPL_SVC_DATASOURCE_THL_INIT_SCRIPT, GLOBAL_REPL_SVC_DATASOURCE_THL_INIT_SCRIPT, REPL_SERVICES)
+end
+
+class GlobalReplicationServiceTHLInitScript < ConfigurePrompt
+  include ReplicationServicePrompt
+  include ConstantValueModule
+  include NoStoredServerConfigValue
+  include HiddenValueModule
+  
+  def initialize
+    super(GLOBAL_REPL_SVC_DATASOURCE_THL_INIT_SCRIPT, "Staging path to the datasource thl init script", 
+      PV_FILENAME)
   end
 end

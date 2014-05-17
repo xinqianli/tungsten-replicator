@@ -74,6 +74,8 @@ public abstract class AbstractDatabase implements Database
     protected static Map<String, Class<?>> drivers       = new HashMap<String, Class<?>>();
     protected boolean                      connected     = false;
 
+    protected String                       initScript    = null;
+
     /**
      * Create a new database instance. To use the database instance you must at
      * minimum set the url, host, and password properties.
@@ -777,6 +779,17 @@ public abstract class AbstractDatabase implements Database
     /**
      * {@inheritDoc}
      * 
+     * @see com.continuent.tungsten.replicator.database.Database#setInitScript(java.lang.String)
+     */
+    @Override
+    public void setInitScript(String pathToScript)
+    {
+        this.initScript = pathToScript;
+    }
+
+    /**
+     * {@inheritDoc}
+     * 
      * @see com.continuent.tungsten.replicator.database.Database#createTable(com.continuent.tungsten.replicator.database.Table,
      *      boolean)
      */
@@ -952,10 +965,10 @@ public abstract class AbstractDatabase implements Database
      * {@inheritDoc}
      * 
      * @see com.continuent.tungsten.replicator.database.Database#findTable(java.lang.String,
-     *      java.lang.String)
+     *      java.lang.String, boolean)
      */
-    public Table findTable(String schemaName, String tableName)
-            throws SQLException
+    public Table findTable(String schemaName, String tableName,
+            boolean withUniqueIndex) throws SQLException
     {
         DatabaseMetaData md = this.getDatabaseMetaData();
         Table table = null;
@@ -1014,9 +1027,23 @@ public abstract class AbstractDatabase implements Database
         }
 
         // Find unique indexes.
-        findUniqueIndexes(md, schemaName, tableName, cm, table);
+        if (withUniqueIndex)
+            findUniqueIndexes(md, schemaName, tableName, cm, table);
 
         return table;
+    }
+
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.database.Database#findTable(java.lang.String,
+     *      java.lang.String)
+     */
+    @Override
+    public Table findTable(String schemaName, String tableName)
+            throws SQLException
+    {
+        return findTable(schemaName, tableName, false);
     }
 
     /**
@@ -1076,9 +1103,10 @@ public abstract class AbstractDatabase implements Database
      * Implement ability to fetch tables. {@inheritDoc}
      * 
      * @see com.continuent.tungsten.replicator.database.Database#getTables(java.lang.String,
-     *      boolean)
+     *      boolean, boolean)
      */
-    public ArrayList<Table> getTables(String schemaName, boolean baseTablesOnly)
+    public ArrayList<Table> getTables(String schemaName,
+            boolean baseTablesOnly, boolean withUniqueIndex)
             throws SQLException
     {
         DatabaseMetaData md = this.getDatabaseMetaData();
@@ -1092,7 +1120,8 @@ public abstract class AbstractDatabase implements Database
                 while (rst.next())
                 {
                     String tableName = rst.getString("TABLE_NAME");
-                    Table table = findTable(schemaName, tableName);
+                    Table table = findTable(schemaName, tableName,
+                            withUniqueIndex);
                     if (table != null)
                     {
                         tables.add(table);
@@ -1106,6 +1135,19 @@ public abstract class AbstractDatabase implements Database
         }
 
         return tables;
+    }
+
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.database.Database#getTables(java.lang.String,
+     *      boolean)
+     */
+    @Override
+    public ArrayList<Table> getTables(String schema, boolean baseTablesOnly)
+            throws SQLException
+    {
+        return getTables(schema, baseTablesOnly, false);
     }
 
     // this is part of TREP-232 workaround

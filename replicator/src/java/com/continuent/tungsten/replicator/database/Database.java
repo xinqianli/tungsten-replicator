@@ -309,6 +309,18 @@ public interface Database extends UniversalConnection
             throws SQLException;
 
     /**
+     * Return the Table with all its accompanying Columns.
+     * 
+     * @param schemaName name of schema containing the table
+     * @param tableName name of the table
+     * @param withUniqueIndex should unique indexes be fetched or not ?
+     * @return a Table if matching was found
+     * @throws SQLException if an error occurs
+     */
+    public Table findTable(String schemaName, String tableName,
+            boolean withUniqueIndex) throws SQLException;
+
+    /**
      * Returns a query that can be used to set the timestamp.
      * 
      * @param timestamp A Java time value consisting of milliseconds since
@@ -389,6 +401,11 @@ public interface Database extends UniversalConnection
     public Statement createStatement() throws SQLException;
 
     /**
+     * Provides a script file to be executed when initializing connection.
+     */
+    public void setInitScript(String pathToScript);
+
+    /**
      * Return a place holder in a prepared statement for a column of type
      * ColumnSpec. Typically "?" as is INSERT INTO FOO VALUES(?)
      */
@@ -447,6 +464,19 @@ public interface Database extends UniversalConnection
      * @throws SQLException
      */
     public ArrayList<String> getSchemas() throws SQLException;
+
+    /**
+     * Returns a list of tables available in the schema
+     * 
+     * @param schema Name of the schema
+     * @param baseTablesOnly If true, only return real tables and not catalogs
+     *            or views
+     * @param withUniqueIndex should unique indexes be fetched or not ?
+     * @return list of tables in the schema
+     * @throws SQLException
+     */
+    public ArrayList<Table> getTables(String schema, boolean baseTablesOnly,
+            boolean withUniqueIndex) throws SQLException;
 
     /**
      * Returns a list of tables available in the schema

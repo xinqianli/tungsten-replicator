@@ -337,6 +337,12 @@ public class MySQLPacket
     {
         return byteBuffer;
     }
+    
+    public void setByteBuffer(byte[] newByteBuffer)
+    {
+        this.byteBuffer = newByteBuffer;
+        this.dataLength = newByteBuffer.length - HEADER_LENGTH;
+    }
 
     /**
      * Returns the packet number.
@@ -1514,6 +1520,27 @@ public class MySQLPacket
         }
         byteBuffer = newBytes;
         dataLength = newSize;
+    }
+
+    /**
+     * 
+     * Close inputstream if we have one.
+     * 
+     * @throws IOException
+     */
+    public void close() throws IOException
+    {
+        if (inputStream != null)
+        {
+            try
+            {
+                inputStream.close();
+            }
+            finally
+            {
+                inputStream = null;
+            }
+        }
     }
 
     @Override

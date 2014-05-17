@@ -1,5 +1,6 @@
 # Batch applier basic configuration information. 
 replicator.applier.dbms=com.continuent.tungsten.replicator.applier.batch.SimpleBatchApplier
+@{#(APPLIER.REPL_SVC_DATASOURCE_APPLIER_INIT_SCRIPT)}replicator.applier.dbms.initScript=@{APPLIER.REPL_SVC_DATASOURCE_APPLIER_INIT_SCRIPT}
 
 # Data source to which to apply. 
 replicator.applier.dbms.dataSource=applier

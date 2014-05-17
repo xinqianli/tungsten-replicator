@@ -39,7 +39,7 @@ replicator.autoRecoveryDelayInterval=@{REPL_AUTO_RECOVERY_DELAY_INTERVAL}
 # this amount of time, reset the count of auto-recovery attempts.  This value
 # may need to be large for services that commit large blocks as apply errors
 # may take a while to show up after going online again.
-replicator.autoRecoveryResetInterval=@{REPL_AUTO_RECOVERY_DELAY_INTERVAL}
+replicator.autoRecoveryResetInterval=@{REPL_AUTO_RECOVERY_RESET_INTERVAL}
 
 # Source ID.  Identifies the replication event source.  It must be 
 # unique for each replicator node and normally is the host name.
@@ -59,6 +59,7 @@ service.name=@{SERVICE.DEPLOYMENT_SERVICE}
 # Used by manager to create datasources dynamically
 replicator.resourceJdbcUrl=@{APPLIER.REPL_DBJDBCURL}
 replicator.resourceJdbcDriver=@{APPLIER.REPL_DBJDBCDRIVER}
+@{#(APPLIER.REPL_SVC_DATASOURCE_APPLIER_INIT_SCRIPT)}replicator.resourceJdbcInitScript=@{APPLIER.REPL_SVC_DATASOURCE_APPLIER_INIT_SCRIPT}
 replicator.resourceVendor=@{APPLIER.REPL_DBJDBCVENDOR}
 replicator.resourcePrecedence=99
 

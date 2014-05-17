@@ -22,6 +22,7 @@
 
 package com.continuent.tungsten.common.config.cluster;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -30,6 +31,7 @@ import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.RandomAccessFile;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -46,21 +48,23 @@ public class ClusterConfiguration
     /**
      * Logger
      */
-    private static Logger     logger               = Logger.getLogger(ClusterConfiguration.class);
+    private static Logger                logger               = Logger.getLogger(ClusterConfiguration.class);
 
-    public static String      clusterHomeName      = null;
+    public static String                 clusterHomeName      = null;
 
-    private String            clusterName;
+    private String                       clusterName;
 
     /**
      * The source of the properties for this configuration. getClusterHome
      */
-    public TungstenProperties props                = null;
+    public TungstenProperties            props                = null;
 
-    private File              clusterConfigDir     = null;
-    private File              clusterConfigRootDir = null;
+    private File                         clusterConfigDir     = null;
+    private File                         clusterConfigRootDir = null;
 
-    private String            configFileNameInUse  = null;
+    private String                       configFileNameInUse  = null;
+
+    private Map<String, FileInputStream> loadStreamMap        = new HashMap<String, FileInputStream>();
 
     public ClusterConfiguration(String clusterName)
     {
@@ -89,7 +93,7 @@ public class ClusterConfiguration
      * @param resourceType
      * @throws ConfigurationException
      */
-    public static synchronized Map<String, Map<String, TungstenProperties>> loadClusterConfiguration(
+    public synchronized Map<String, Map<String, TungstenProperties>> loadClusterConfiguration(
             ResourceType resourceType) throws ConfigurationException
     {
         if (getClusterHome() == null)
@@ -124,7 +128,7 @@ public class ClusterConfiguration
      * @param resourceType
      * @throws ConfigurationException
      */
-    public static synchronized Map<String, TungstenProperties> loadConfiguration(
+    public synchronized Map<String, TungstenProperties> loadConfiguration(
             String clusterName, ResourceType resourceType)
             throws ConfigurationException
     {
@@ -154,20 +158,51 @@ public class ClusterConfiguration
 
             for (File resourceConf : resources.listFiles(propFilter))
             {
-                InputStream is = null;
                 TungstenProperties resourceProps = null;
+                RandomAccessFile resourceFile = null;
+                InputStream byteStream = null;
+
                 try
                 {
-                    is = new FileInputStream(resourceConf);
+                    resourceFile = new RandomAccessFile(
+                            resourceConf.getAbsolutePath(), "r");
+
+                    resourceFile.seek(0);
+
+                    byte[] bytes = new byte[(int) resourceConf.length()];
+
+                    resourceFile.read(bytes);
+                    byteStream = new ByteArrayInputStream(bytes);
+                    resourceFile.close();
+                    resourceFile = null;
+
                     resourceProps = new TungstenProperties();
-                    resourceProps.load(is);
+
+                    resourceProps.load(byteStream);
+                    byteStream.close();
+                    byteStream = null;
+
+                }
+                catch (IOException i)
+                {
+                    throw new ConfigurationException(String.format(
+                            "Unable to load resource %s\n%s",
+                            resourceConf.getAbsolutePath(), i.getMessage()));
                 }
                 finally
                 {
-                    if (is != null)
+                    if (resourceFile != null)
                     {
-                        is.close();
+                        resourceFile.close();
+                        resourceFile = null;
                     }
+                    
+                    if (byteStream != null)
+                    {
+                        byteStream.close();
+                        byteStream = null;
+                    }
+                    
                 }
 
                 if (resourceProps.getString("name") == null)

@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Stephane Giron
- * Contributor(s):
+ * Contributor(s): Linas Virbalas
  */
 
 package com.continuent.tungsten.replicator.extractor.parallel;
@@ -113,16 +113,31 @@ public class ParallelExtractor implements RawExtractor
         this.queueSize = queueSize;
     }
 
+    /**
+     * Sets the url value.
+     * 
+     * @param url The url to set.
+     */
     public void setUrl(String url)
     {
         this.url = url;
     }
 
+    /**
+     * Sets the user value.
+     * 
+     * @param user The user to set.
+     */
     public void setUser(String user)
     {
         this.user = user;
     }
 
+    /**
+     * Sets the password value.
+     * 
+     * @param password The password to set.
+     */
     public void setPassword(String password)
     {
         this.password = password;
@@ -255,8 +270,12 @@ public class ParallelExtractor implements RawExtractor
                 }
                 else
                 {
-                    event.getData().add(0,
-                            new StatementData("TRUNCATE TABLE " + entry));
+                    // Issue 842 - do not hardcode schema name in SQL text.
+                    // Instead, set it as default schema parameter.
+                    StatementData sd = new StatementData("TRUNCATE TABLE "
+                            + event.getMetadataOptionValue("table"), null,
+                            event.getMetadataOptionValue("schema"));
+                    event.getData().add(0, sd);
 
                     blk = Long
                             .valueOf(event.getMetadataOptionValue("nbBlocks"));
@@ -295,6 +314,11 @@ public class ParallelExtractor implements RawExtractor
         return null;
     }
 
+    /**
+     * Sets the path to the chunk definition file.
+     * 
+     * @param chunkDefinitionFile Chunk definition file to use.
+     */
     public void setChunkDefinitionFile(String chunkDefinitionFile)
     {
         this.chunkDefinitionFile = chunkDefinitionFile;

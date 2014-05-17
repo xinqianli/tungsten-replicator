@@ -433,6 +433,8 @@ public class ClusterMembershipDigest
                             .iterableToCommaSeparatedList(getPotentialQuorumMembersSetNames()));
             CLUtils.println("SIMPLE MAJORITY SIZE: "
                     + this.getSimpleMajoritySize());
+            CLUtils.println("GC VIEW OF CURRENT MEMBERS IS: "
+                    + CLUtils.iterableToCommaSeparatedList(viewMembers));
             CLUtils.println("VALIDATED MEMBERS ARE: "
                     + CLUtils
                             .iterableToCommaSeparatedList(getValidatedMemberNames()));
@@ -491,7 +493,7 @@ public class ClusterMembershipDigest
          * could end up with a partition in which one partition sees one witness
          * and the other partition sees another etc.
          */
-        if (validated == simpleMajority - 1)
+        if (validated >= simpleMajority - 1 || reachable >= simpleMajority - 1)
         {
             boolean witnessesOk = witnessSet.size() > 0
                     && (witnessSet.size() == reachableWitnessesCount);
@@ -534,7 +536,7 @@ public class ClusterMembershipDigest
      */
     public boolean isValidMembership(boolean verbose)
     {
-        
+
         if (verbose)
         {
             CLUtils.println("GC VIEW OF CURRENT MEMBERS IS: "
@@ -545,10 +547,9 @@ public class ClusterMembershipDigest
             CLUtils.println("VALIDATED CURRENT MEMBERS ARE: "
                     + CLUtils
                             .iterableToCommaSeparatedList(getValidatedMemberNames()));
-            
-            
+
         }
-        
+
         if (viewMembers.size() > 0 && getValidatedMembers().size() > 0
                 && setsAreEqual(viewMembers, getValidatedMembers()))
         {
@@ -565,6 +566,8 @@ public class ClusterMembershipDigest
             {
                 CLUtils.println("MEMBERSHIP IS VALID BASED ON VIEW/REACHABLE MEMBERS CONSISTENCY");
             }
+
+            return true;
         }
 
         if (verbose)

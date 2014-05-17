@@ -186,6 +186,13 @@ public class TungstenProperties implements Serializable
         if (doSubstitutions)
             substituteSystemValues(props);
         load(props);
+
+        /*
+         * props ends up holding a reference to the InputStream. So even
+         * though the Properties instance should be eligible for collection on
+         * method exit, give GC a hand and null out the props here.
+         */
+        props = null;
     }
 
     /**

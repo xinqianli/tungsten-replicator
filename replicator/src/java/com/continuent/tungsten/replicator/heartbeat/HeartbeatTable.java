@@ -88,7 +88,7 @@ public class HeartbeatTable
     private void initialize(String schema)
     {
         hbTable = new Table(schema, TABLE_NAME);
-        hbId = new Column("id", Types.BIGINT);
+        hbId = new Column("id", Types.BIGINT, true); // true => isNotNull
         hbSeqno = new Column("seqno", Types.BIGINT);
         hbEventId = new Column("eventid", Types.VARCHAR, 128);
         hbSourceTstamp = new Column("source_tstamp", Types.TIMESTAMP);
@@ -214,12 +214,14 @@ public class HeartbeatTable
      * Wrapper for startHeartbeat() call.
      */
     public void startHeartbeat(String url, String user, String password,
-            String name) throws SQLException
+            String name, String initScript) throws SQLException
     {
         Database db = null;
         try
         {
             db = DatabaseFactory.createDatabase(url, user, password);
+            if (initScript != null)
+                db.setInitScript(initScript);
             db.connect();
             startHeartbeat(db, name);
         }

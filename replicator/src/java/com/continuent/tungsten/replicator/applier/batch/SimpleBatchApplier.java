@@ -414,11 +414,37 @@ public class SimpleBatchApplier implements RawApplier
                         Table tableMetadata = this.getTableMetadata(schema,
                                 table, colSpecs, keySpecs);
 
-                        // Write the update.
+                        // If we are programmed to use a U opcode, see if it
+                        // is safe to do a single line update.
+                        boolean updateOpcode;
                         if (useUpdateOpcode)
                         {
-                            // Write update as a single operation using column
-                            // values.
+                            updateOpcode = true;
+
+                            if (keySpecs.size() == colSpecs.size())
+                            {
+                                // Having equal-sized arrays indicates there is
+                                // no primary key and updates are a full-row
+                                // match. We must delete followed by insert.
+                                updateOpcode = false;
+                            }
+                            else
+                            {
+                                // The key values may have changed. If not, we
+                                // can use the U opcode.
+                                updateOpcode = this.keysUnchanged(keySpecs,
+                                        keyValues, colSpecs, colValues);
+                            }
+                        }
+                        else
+                        {
+                            updateOpcode = false;
+                        }
+
+                        // Now write the update.
+                        if (updateOpcode)
+                        {
+                            // It is safe to write a U value.
                             writeValues(seqno, commitTimestamp, service,
                                     tableMetadata, colSpecs, colValues, UPDATE);
                         }
@@ -439,6 +465,13 @@ public class SimpleBatchApplier implements RawApplier
                         List<ColumnSpec> colSpecs = orc.getColumnSpec();
                         ArrayList<ArrayList<ColumnVal>> keyValues = orc
                                 .getKeyValues();
+
+                        // If the colspecs are empty, use keyspecs. This
+                        // gets around an upstream bug in column metadata
+                        // generation for tables without primary keys (Issue
+                        // 916).
+                        if (colSpecs.size() == 0)
+                            colSpecs = keySpecs;
 
                         // Get information about the table definition.
                         Table tableMetadata = this.getTableMetadata(schema,
@@ -476,6 +509,64 @@ public class SimpleBatchApplier implements RawApplier
         this.latestHeader = header;
         if (doCommit)
             commit();
+    }
+
+    /**
+     * Determines whether keys have changed. This is a relatively costly and
+     * complex call that is only undertaken when using the U opcode. This code
+     * is copied from the OptimizeUpdatesFilter class.
+     * 
+     * @see OptimizeUpdatesFilter
+     */
+    private boolean keysUnchanged(List<ColumnSpec> keySpecs,
+            ArrayList<ArrayList<ColumnVal>> keyValues,
+            List<ColumnSpec> colSpecs, ArrayList<ArrayList<ColumnVal>> colValues)
+    {
+        // Iterate over the key values.
+        for (int k = 0; k < keySpecs.size(); k++)
+        {
+            // Find the key and matching column specifications.
+            ColumnSpec keySpec = keySpecs.get(k);
+            int keyIndex = keySpec.getIndex() - 1;
+            ColumnSpec colSpec = null;
+            if (keyIndex < colSpecs.size())
+            {
+                colSpec = colSpecs.get(keyIndex);
+            }
+            else
+            {
+                // We can't find the column value for this key,
+                // so we give up.
+                return false;
+            }
+
+            // Iterate through multiple rows being updated.
+            for (int row = 0; row < colValues.size() || row < keyValues.size(); row++)
+            {
+                ColumnVal keyValue = keyValues.get(row).get(keyIndex);
+
+                // Is corresponding column value different from key value?
+                ColumnVal colValue = colValues.get(row).get(k);
+                if (!(keySpec.getType() == colSpec.getType()
+                        && keySpec.getIndex() == colSpec.getIndex() && ((keyValue
+                        .getValue() == null && colValue.getValue() == null) || (keyValue
+                        .getValue() != null && keyValue.getValue().equals(
+                        colValue.getValue())))))
+                {
+                    // Value is different, so we note that and return.
+                    return false;
+                }
+                else
+                {
+                    logger.debug("Col " + colSpec.getIndex() + " @ Row " + row
+                            + " is static: " + keyValue.getValue() + " = "
+                            + colValue.getValue());
+                }
+            }
+        }
+
+        // If we get here the key value did not change.
+        return true;
     }
 
     /**

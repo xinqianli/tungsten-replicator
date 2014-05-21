@@ -27,12 +27,16 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Map;
+
+import javax.sql.rowset.serial.SerialException;
 
 import org.apache.log4j.Logger;
 import org.json.simple.JSONArray;
@@ -42,6 +46,7 @@ import org.json.simple.parser.ParseException;
 
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.conf.ReplicatorConf;
+import com.continuent.tungsten.replicator.database.DatabaseHelper;
 import com.continuent.tungsten.replicator.dbms.DBMSData;
 import com.continuent.tungsten.replicator.dbms.OneRowChange;
 import com.continuent.tungsten.replicator.dbms.StatementData;
@@ -49,6 +54,7 @@ import com.continuent.tungsten.replicator.dbms.RowChangeData;
 import com.continuent.tungsten.replicator.dbms.OneRowChange.ColumnSpec;
 import com.continuent.tungsten.replicator.dbms.OneRowChange.ColumnVal;
 import com.continuent.tungsten.replicator.event.ReplDBMSEvent;
+import com.continuent.tungsten.replicator.extractor.mysql.SerialBlob;
 import com.continuent.tungsten.replicator.plugin.PluginContext;
 
 /**
@@ -212,7 +218,7 @@ public class NetworkClientFilter implements Filter
                                                                         .getValue());
 
                                                     // Send to server.
-                                                    String newValue = sendToFilter(
+                                                    Object newValue = sendToFilter(
                                                             transformation,
                                                             event.getSeqno(),
                                                             row,
@@ -220,7 +226,7 @@ public class NetworkClientFilter implements Filter
                                                             orc.getTableName(),
                                                             colSpec.getName(),
                                                             colValue.getValue());
-                                                    colValue.setValue(newValue);
+                                                    colValue.setValue((Serializable) newValue);
 
                                                     if (logger.isDebugEnabled())
                                                         logger.debug("Received value: "
@@ -271,7 +277,7 @@ public class NetworkClientFilter implements Filter
                                                                         .getValue());
 
                                                     // Send to server.
-                                                    String newValue = sendToFilter(
+                                                    Object newValue = sendToFilter(
                                                             transformation,
                                                             event.getSeqno(),
                                                             row,
@@ -279,7 +285,7 @@ public class NetworkClientFilter implements Filter
                                                             orc.getTableName(),
                                                             keySpec.getName(),
                                                             keyValue.getValue());
-                                                    keyValue.setValue(newValue);
+                                                    keyValue.setValue((Serializable) newValue);
 
                                                     if (logger.isDebugEnabled())
                                                         logger.debug("Received value: "
@@ -542,17 +548,92 @@ public class NetworkClientFilter implements Filter
     }
 
     /**
+     * Converts underlying data type value to string. Exception is thrown if
+     * type is unsupported.
+     */
+    private String valueToString(Object value) throws ReplicatorException
+    {
+        if (value instanceof String)
+        {
+            return value.toString();
+        }
+        else if (value instanceof Integer)
+        {
+            return value.toString();
+        }
+        else if (value instanceof SerialBlob)
+        {
+            try
+            {
+                SerialBlob blob = (SerialBlob) value;
+                return new String(blob.getBytes(1, (int) blob.length()));
+            }
+            catch (SerialException e)
+            {
+                throw new ReplicatorException(
+                        "Unable to convert SerialBlob to String: " + e, e);
+            }
+        }
+        else
+        {
+            // For other data types using cast instead of toString() on purpose.
+            // This way we get an exception if cast is unsupported, while
+            // toString() would just return a JAVA class name in such cases.
+            return (String) value;
+        }
+    }
+
+    /**
+     * Converts string back to correct (previous) data type.
+     * 
+     * @throws ReplicatorException
+     */
+    private Object stringToValue(Object oldValue, String newValue)
+            throws ReplicatorException
+    {
+        if (oldValue instanceof String)
+        {
+            return newValue;
+        }
+        else if (oldValue instanceof Integer)
+        {
+            return Integer.valueOf(newValue);
+        }
+        else if (oldValue instanceof SerialBlob)
+        {
+            try
+            {
+                return DatabaseHelper.getSafeBlob(newValue.getBytes());
+            }
+            catch (SQLException e)
+            {
+                throw new ReplicatorException(
+                        "Unable to convert back from String to SerialBlob: "
+                                + e, e);
+            }
+        }
+        else
+        {
+            // TODO: convert numeric and other types.
+            return newValue;
+        }
+    }
+
+    /**
      * Sends column/key value to the server and receives filtered result.
      */
-    private String sendToFilter(String transformation, long seqno, int row,
+    private Object sendToFilter(String transformation, long seqno, int row,
             String schema, String table, String column, Object value)
             throws ReplicatorException
     {
         try
         {
+            // Convert various data types to string for transfer.
+            String str = valueToString(value);
+
             // Send filter message.
             String send = messageGenerator.filter(transformation, seqno, row,
-                    schema, table, column, (String) value);
+                    schema, table, column, str);
             toServer.print(send);
             toServer.flush();
 
@@ -604,7 +685,8 @@ public class NetworkClientFilter implements Filter
                         + table + ", but server sent " + newTable
                         + " instead: " + header + payload);
 
-            return payload;
+            // Convert result back to correct data type.
+            return stringToValue(value, payload);
         }
         catch (ParseException e)
         {
@@ -753,12 +835,19 @@ public class NetworkClientFilter implements Filter
 
         try
         {
-            logger.info("Disconnecting from the server "
-                    + socket.getRemoteSocketAddress());
-            sendRelease();
-            toServer.close();
-            fromServer.close();
-            socket.close();
+            if (socket != null)
+            {
+                logger.info("Disconnecting from the server "
+                        + socket.getRemoteSocketAddress());
+                sendRelease();
+            }
+            if (toServer != null)
+                toServer.close();
+            if (fromServer != null)
+                fromServer.close();
+            if (socket != null)
+                socket.close();
+
         }
         catch (IOException e)
         {

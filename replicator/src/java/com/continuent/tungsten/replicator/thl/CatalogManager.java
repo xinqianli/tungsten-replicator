@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2011-2013 Continuent Inc.
+ * Copyright (C) 2011-2014 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -47,7 +47,7 @@ import com.continuent.tungsten.replicator.shard.ShardTable;
  */
 public class CatalogManager
 {
-    private static Logger     logger = Logger.getLogger(CatalogManager.class);
+    private static Logger     logger     = Logger.getLogger(CatalogManager.class);
 
     private ReplicatorRuntime runtime;
     private String            url;
@@ -63,7 +63,7 @@ public class CatalogManager
 
     // Dummy task ID. This is used for updates of the trep_commit_seqno when
     // operating as a master.
-    private int               taskId = 0;
+    private int               taskId     = 0;
 
     private String            initScript = null;
 
@@ -172,7 +172,7 @@ public class CatalogManager
                         && !runtime.logReplicatorUpdates())
                 {
                     logger.info("Suppressing logging on privileged slave");
-                    conn.controlSessionLevelLogging(false);
+                    conn.controlSessionLevelLogging(true);
                 }
             }
 

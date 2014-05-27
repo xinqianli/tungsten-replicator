@@ -543,15 +543,15 @@ public class SimpleBatchApplier implements RawApplier
             // Iterate through multiple rows being updated.
             for (int row = 0; row < colValues.size() || row < keyValues.size(); row++)
             {
-                ColumnVal keyValue = keyValues.get(row).get(keyIndex);
+                ColumnVal keyValueHolder = keyValues.get(row).get(k);
+                Object keyValue = keyValueHolder.getValue();
 
                 // Is corresponding column value different from key value?
-                ColumnVal colValue = colValues.get(row).get(k);
+                ColumnVal colValueHolder = colValues.get(row).get(keyIndex);
+                Object colValue = colValueHolder.getValue();
                 if (!(keySpec.getType() == colSpec.getType()
-                        && keySpec.getIndex() == colSpec.getIndex() && ((keyValue
-                        .getValue() == null && colValue.getValue() == null) || (keyValue
-                        .getValue() != null && keyValue.getValue().equals(
-                        colValue.getValue())))))
+                        && keySpec.getIndex() == colSpec.getIndex() && ((keyValue == null && colValue == null) || (keyValue != null && keyValue
+                        .equals(colValue)))))
                 {
                     // Value is different, so we note that and return.
                     return false;
@@ -559,8 +559,8 @@ public class SimpleBatchApplier implements RawApplier
                 else
                 {
                     logger.debug("Col " + colSpec.getIndex() + " @ Row " + row
-                            + " is static: " + keyValue.getValue() + " = "
-                            + colValue.getValue());
+                            + " is static: " + keyValue.toString() + " = "
+                            + colValue.toString());
                 }
             }
         }

@@ -512,6 +512,17 @@ public class EnumToStringFilter implements Filter
                         + " - Removing table metadata from cache");
             Table newTable = conn.findTable(orc.getSchemaName(),
                     orc.getTableName(), false);
+            // If we cannot find the table, it is possible it has been deleted, 
+            // in which case there is nothing to be done. 
+            if (newTable == null)
+            {
+                if (logger.isDebugEnabled())
+                {
+                    logger.debug("Ignored a missing table: name="
+                            + orc.getSchemaName() + "." + tableName);
+                }
+                return;
+            }
             newTable.setTableId(orc.getTableId());
             dbCache.put(tableName, new TableWithEnums(newTable));
         }

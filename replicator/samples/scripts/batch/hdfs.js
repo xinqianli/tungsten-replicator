@@ -3,15 +3,25 @@
  * Copyright (C) 2013-2014 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
- * Load script for Hadoop data that uses direct connection to HDFS.  
+ * Load script for Hadoop data that uses direct connection to HDFS.  Note 
+ * that this script requires Hadoop JAR files to be in the replicator 
+ * path and is not tested for all distributions.  To avoid problems with 
+ * JAR dependencies use the hadoop.js script. 
+ *
+ * This script handles data loading from multiple replication services by
+ * ensuring that each script includes the replication service name in the
+ * HDFS directory.  The target directory format is the following:
+ *
+ *   /user/tungsten/staging/<service name>
  */
 
 // Called once when applier goes online. 
 function prepare()
 {
-  // Ensure target directory exists. 
+  // Ensure target directory exists.  This must contain the service name.
   logger.info("Ensuring data directory is created");
-  hadoop_base = "/user/tungsten/staging";
+  service_name = runtime.getContext().getServiceName();
+  hadoop_base = '/user/tungsten/staging/' + service_name;
   hdfs.mkdir(hadoop_base, true);
 }
 

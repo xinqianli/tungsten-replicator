@@ -23,16 +23,27 @@
  */
 function prepare()
 {
-    commit = filterProperties.getString("commit");
-    if (commit != null)
+    // Check to see if we should commit when schema changes occur. 
+    doCommit = filterProperties.getBoolean("commit");
+    if (doCommit)
     { 
-      doCommit = true;
       logger.info("monitorschemachange: will commit on schema change");
     }  
-    else
-    {
-      doCommit = false;
-    }
+
+    // Check to see if we should generate a notification on a schema change. 
+    doNotify = filterProperties.getBoolean("notify");
+    if (doNotify)
+    { 
+      logger.info("monitorschemachange: will notify on schema change");
+
+      // We need a notification directory as well.  Try to create it. 
+      notifyDirname = filterProperties.getString("notifyDir");
+      notifyDir = new java.io.File(notifyDirname);
+      if (! notifyDir.exists())
+      {
+        notifyDir.mkdirs();
+      }
+    }  
 }
 
 function filter(event)
@@ -65,10 +76,35 @@ function filter(event)
             {
               schema = d.getOption("##schema");
               table = d.getOption("##table");
+              if (table == null)
+              {
+                table = "-none-";
+              }
               sql = d.getQuery();
-              logger.info("TABLE CHANGE: seqno=" + event.getSeqno() 
+              logger.info("SCHEMA CHANGE: sourceId=" + event.getSourceId() 
+                + " seqno=" + event.getSeqno() 
+                + " commitTimestamp=" + event.getExtractedTstamp()
                 + " schema=" + schema + " table=" + table 
                 + " operation=" + operation + " sql=[" + sql + "]");
+
+              // If notifications are enabled, generate a file for this
+              // schema change.  
+              if (doNotify)
+              {
+                notifyName = schema + "." + table;
+                notifyFile = new java.io.File(notifyDir, notifyName);
+                writer = new java.io.PrintWriter(new java.io.BufferedWriter(new java.io.FileWriter(notifyFile)));
+                writer.println("# Schema change notification");
+                writer.println("sourceId=" + event.getSourceId());
+                writer.println("seqno=" + event.getSeqno());
+                writer.println("commitTimestamp=" + event.getExtractedTstamp());
+                writer.println("schema=" + schema);
+                writer.println("table=" + table);
+                writer.println("operation=" + operation);
+                writer.println("sql=" + sql);
+                writer.flush();
+                writer.close();
+              }
             }
         }
     }

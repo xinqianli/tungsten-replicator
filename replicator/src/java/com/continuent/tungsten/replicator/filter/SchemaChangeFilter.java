@@ -185,6 +185,11 @@ public class SchemaChangeFilter implements Filter
                         annotate(sdata, schema, table, "ALTER TABLE");
                         schemaChange = true;
                     }
+                    else if (operation == SqlOperation.RENAME)
+                    {
+                        annotate(sdata, schema, table, "RENAME TABLE");
+                        schemaChange = true;
+                    }
                     else if (operation == SqlOperation.TRUNCATE)
                     {
                         annotate(sdata, schema, table, "TRUNCATE");

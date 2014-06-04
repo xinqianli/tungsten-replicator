@@ -43,6 +43,7 @@ public class DefaultCsvDataFormat implements CsvDataFormat
 
     // Formatting support.
     private SimpleDateFormat dateFormatter;
+    private SimpleDateFormat datetimeFormatter;
     private SimpleDateFormat timestampFormatter;
     private SimpleDateFormat timeFormatter;
 
@@ -68,6 +69,12 @@ public class DefaultCsvDataFormat implements CsvDataFormat
         dateFormatter.setTimeZone(timezone);
         dateFormatter.applyPattern("yyyy-MM-dd");
 
+        // Datetimes are formatted with date and time.
+        // Note that there is no subsecond precision yet
+        datetimeFormatter = new SimpleDateFormat();
+        datetimeFormatter.setTimeZone(timezone);
+        datetimeFormatter.applyPattern("yyyy-MM-dd HH:mm:ss");
+
         // Timestamps are formatted to full precision.
         timestampFormatter = new SimpleDateFormat();
         timestampFormatter.setTimeZone(timezone);
@@ -88,8 +95,8 @@ public class DefaultCsvDataFormat implements CsvDataFormat
     public String csvString(Object value, int javaType, boolean isBlob)
             throws ReplicatorException
     {
-    	// For examples of calling conventions for this method see class 
-    	// SimplBatchApplier. 
+        // For examples of calling conventions for this method see class
+        // SimplBatchApplier.
         if (value == null)
         {
             return null;
@@ -102,7 +109,7 @@ public class DefaultCsvDataFormat implements CsvDataFormat
             }
             else if (javaType == Types.DATE)
             {
-                return dateFormatter.format((Timestamp) value);
+                return datetimeFormatter.format((Timestamp) value);
             }
             else
             {

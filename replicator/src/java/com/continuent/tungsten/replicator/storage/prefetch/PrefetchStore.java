@@ -196,7 +196,7 @@ public class PrefetchStore extends InMemoryQueueStore
                 + slaveCatalogSchema);
         // Load defaults for connection
         if (url == null)
-            url = context.getJdbcUrl("tungsten_" + context.getServiceName());
+            url = context.getJdbcUrl(null);
         if (user == null)
             user = context.getJdbcUser();
         if (password == null)

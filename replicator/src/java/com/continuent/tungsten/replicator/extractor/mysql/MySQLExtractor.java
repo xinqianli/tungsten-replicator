@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2013 Continuent Inc.
+ * Copyright (C) 2007-2014 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -130,7 +130,11 @@ public class MySQLExtractor implements RawExtractor
 
     private HashMap<Integer, String>        loadDataSchemas;
 
+    // Header for JDBC, which allows us to switch driver.
     private String                          jdbcHeader;
+
+    // JDBC URL options.
+    private String                          urlOptions;
 
     private int                             bufferSize              = 32768;
 
@@ -306,6 +310,16 @@ public class MySQLExtractor implements RawExtractor
     public void setJdbcHeader(String jdbcHeader)
     {
         this.jdbcHeader = jdbcHeader;
+    }
+
+    public String getUrlOptions()
+    {
+        return urlOptions;
+    }
+
+    public void setUrlOptions(String urlOptions)
+    {
+        this.urlOptions = urlOptions;
     }
 
     public String getBinlogMode()
@@ -1185,6 +1199,9 @@ public class MySQLExtractor implements RawExtractor
         sb.append(":");
         sb.append(port);
         sb.append("/");
+        sb.append(context.getReplicatorSchemaName());
+        if (urlOptions != null)
+            sb.append(urlOptions);
         url = sb.toString();
 
         // See if we are operating in native slave takeover mode.

@@ -147,7 +147,7 @@ public class ShardFilter implements Filter
         // Read shard catalog
         // Load defaults for connection
         if (url == null)
-            url = context.getJdbcUrl("tungsten_" + context.getServiceName());
+            url = context.getJdbcUrl(null);
         if (user == null)
             user = context.getJdbcUser();
         if (password == null)

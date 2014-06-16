@@ -124,7 +124,7 @@ public class PrimaryKeyFilter implements Filter
 
         // Load defaults for connection
         if (url == null)
-            url = context.getJdbcUrl("tungsten_" + context.getServiceName());
+            url = context.getJdbcUrl(null);
         if (user == null || user.compareTo("") == 0)
             user = context.getJdbcUser();
         if (password == null || password.compareTo("") == 0)

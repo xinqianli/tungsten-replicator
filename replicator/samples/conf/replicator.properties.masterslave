@@ -147,7 +147,7 @@ replicator.global.apply.channels=@{REPL_SVC_CHANNELS}
 replicator.shard.default.db=@{REPL_SVC_SHARD_DEFAULT_DB}
 
 # Used by manager to create datasources dynamically
-replicator.resourceJdbcUrl=@{APPLIER.REPL_DBJDBCURL}
+replicator.resourceJdbcUrl=@{APPLIER.REPL_DBJDBCURL}${replicator.global.db.sslOptions}
 replicator.resourceJdbcDriver=@{APPLIER.REPL_DBJDBCDRIVER}
 @{#(APPLIER.REPL_SVC_DATASOURCE_APPLIER_INIT_SCRIPT)}replicator.resourceJdbcInitScript=@{APPLIER.REPL_SVC_DATASOURCE_APPLIER_INIT_SCRIPT}
 replicator.resourceVendor=@{APPLIER.REPL_DBJDBCVENDOR}

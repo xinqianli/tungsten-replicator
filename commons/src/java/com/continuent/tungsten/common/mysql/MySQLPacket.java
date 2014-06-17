@@ -125,7 +125,7 @@ public class MySQLPacket
      * @return a MySQLPacket object or null if the MySQL packet cannot be read
      */
     public static MySQLPacket readPacket(InputStream in,
-            boolean dropLargePackets)
+            boolean dropLargePackets, boolean consistentAvailability)
     {
         try
         {
@@ -206,9 +206,12 @@ public class MySQLPacket
      * @param in the data input stream from where we read the MySQL packet
      * @param timeoutMillis Number of milliseconds we will pause while waiting
      *            for data from the the network during a packet.
+     * @param consistentAvailability If false the availability() result cannot
+     *            be trusted
      * @return a MySQLPacket object or null if the MySQL packet cannot be read
      */
-    public static MySQLPacket readPacket(InputStream in, long timeoutMillis)
+    public static MySQLPacket readPacket(InputStream in, long timeoutMillis,
+            boolean consistentAvailability)
     {
         try
         {
@@ -248,7 +251,7 @@ public class MySQLPacket
                 // Issue 281. Wait until at least one byte is available to avoid
                 // a possible out of data condition when reading from the
                 // network.
-                if (in.available() == 0)
+                if (in.available() < 0 && consistentAvailability)
                 {
                     long readStartTime = System.currentTimeMillis();
                     long delay = -1;
@@ -323,11 +326,14 @@ public class MySQLPacket
      * timeout of 5 seconds.
      * 
      * @param in the data input stream from where we read the MySQL packet
+     * @param consistentAvailability If false the availability() result cannot
+     *            be trusted
      * @return a MySQLPacket object or null if the MySQL packet cannot be read
      */
-    public static MySQLPacket readPacket(InputStream in)
+    public static MySQLPacket readPacket(InputStream in,
+            boolean consistentAvailability)
     {
-        return readPacket(in, 10000);
+        return readPacket(in, 10000, consistentAvailability);
     }
 
     /**
@@ -337,7 +343,7 @@ public class MySQLPacket
     {
         return byteBuffer;
     }
-    
+
     public void setByteBuffer(byte[] newByteBuffer)
     {
         this.byteBuffer = newByteBuffer;
@@ -1492,11 +1498,11 @@ public class MySQLPacket
         }
         // Read all packets into an array list
         ArrayList<MySQLPacket> nextPackets = new ArrayList<MySQLPacket>();
-        MySQLPacket nextPacket = readPacket(getInputStream());
+        MySQLPacket nextPacket = readPacket(getInputStream(), true);
         while (nextPacket.getDataLength() == MAX_LENGTH)
         {
             nextPackets.add(nextPacket);
-            nextPacket = readPacket(getInputStream());
+            nextPacket = readPacket(getInputStream(), true);
         }
         nextPackets.add(nextPacket);
         // get the new size
@@ -1523,7 +1529,6 @@ public class MySQLPacket
     }
 
     /**
-     * 
      * Close inputstream if we have one.
      * 
      * @throws IOException

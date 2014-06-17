@@ -90,6 +90,7 @@ public class MySQLExtractor implements RawExtractor
     private boolean                         useRelayLogs            = false;
     private long                            relayLogWaitTimeout     = 0;
     private long                            relayLogReadTimeout     = 0;
+    private boolean                         consistentAvailability  = true;
     private int                             relayLogRetention       = 3;
     private String                          relayLogDir             = null;
     private int                             serverId                = 1;
@@ -1204,6 +1205,13 @@ public class MySQLExtractor implements RawExtractor
             sb.append(urlOptions);
         url = sb.toString();
 
+        // If url options include ssl, the stream's availability() method cannot
+        // be trusted.
+        if (urlOptions != null && urlOptions.toLowerCase().contains("ssl"))
+        {
+            this.consistentAvailability = false;
+        }
+
         // See if we are operating in native slave takeover mode.
         nativeSlaveTakeover = context.nativeSlaveTakeover();
         if (nativeSlaveTakeover)
@@ -1460,6 +1468,7 @@ public class MySQLExtractor implements RawExtractor
         relayClient.setServerId(serverId);
         relayClient.setLogQueue(relayLogQueue);
         relayClient.setReadTimeout(relayLogReadTimeout);
+        relayClient.setConsistentAvailability(consistentAvailability);
         relayClient.connect();
 
         // Start the relay log task.

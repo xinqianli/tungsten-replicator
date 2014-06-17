@@ -63,6 +63,7 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
       tmp << "user=#{@username}\n"
       tmp << "password=#{@password}\n"
       tmp << "port=#{@port}\n"
+      tmp << "!include /etc/tungsten/my.cnf\n"
       tmp.flush
       
       Timeout.timeout(5) {
@@ -94,6 +95,7 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
       tmp << "user=#{@username}\n"
       tmp << "password=#{@password}\n"
       tmp << "port=#{@port}\n"
+      tmp << "!include /etc/tungsten/my.cnf\n"
       tmp.flush
       
       Timeout.timeout(5) {

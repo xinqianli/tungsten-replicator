@@ -36,6 +36,8 @@ import java.util.GregorianCalendar;
 
 import org.apache.log4j.Logger;
 
+import com.continuent.tungsten.common.io.WrappedInputStream;
+
 /**
  * A MySQL packet with helper functions to ease the reading and writting of
  * bytes, integers, long integers, strings...
@@ -206,12 +208,9 @@ public class MySQLPacket
      * @param in the data input stream from where we read the MySQL packet
      * @param timeoutMillis Number of milliseconds we will pause while waiting
      *            for data from the the network during a packet.
-     * @param consistentAvailability If false the availability() result cannot
-     *            be trusted
      * @return a MySQLPacket object or null if the MySQL packet cannot be read
      */
-    public static MySQLPacket readPacket(InputStream in, long timeoutMillis,
-            boolean consistentAvailability)
+    public static MySQLPacket readPacket(InputStream in, long timeoutMillis)
     {
         try
         {
@@ -242,6 +241,14 @@ public class MySQLPacket
             packetData[2] = (byte) packetLen3;
             packetData[3] = (byte) packetNumber;
 
+            // See if we can trust the availability from this stream.
+            boolean deterministicAvailability = true;
+            if (in instanceof WrappedInputStream)
+            {
+                deterministicAvailability = ((WrappedInputStream) in)
+                        .isDeterministic();
+            }
+
             // read() returns the number of actual bytes read, which might be
             // less that the desired length this loop ensures that the whole
             // packet is read
@@ -251,7 +258,7 @@ public class MySQLPacket
                 // Issue 281. Wait until at least one byte is available to avoid
                 // a possible out of data condition when reading from the
                 // network.
-                if (in.available() < 0 && consistentAvailability)
+                if (deterministicAvailability && in.available() == 0)
                 {
                     long readStartTime = System.currentTimeMillis();
                     long delay = -1;
@@ -326,14 +333,11 @@ public class MySQLPacket
      * timeout of 5 seconds.
      * 
      * @param in the data input stream from where we read the MySQL packet
-     * @param consistentAvailability If false the availability() result cannot
-     *            be trusted
      * @return a MySQLPacket object or null if the MySQL packet cannot be read
      */
-    public static MySQLPacket readPacket(InputStream in,
-            boolean consistentAvailability)
+    public static MySQLPacket readPacket(InputStream in)
     {
-        return readPacket(in, 10000, consistentAvailability);
+        return readPacket(in, 10000);
     }
 
     /**
@@ -1498,11 +1502,11 @@ public class MySQLPacket
         }
         // Read all packets into an array list
         ArrayList<MySQLPacket> nextPackets = new ArrayList<MySQLPacket>();
-        MySQLPacket nextPacket = readPacket(getInputStream(), true);
+        MySQLPacket nextPacket = readPacket(getInputStream());
         while (nextPacket.getDataLength() == MAX_LENGTH)
         {
             nextPackets.add(nextPacket);
-            nextPacket = readPacket(getInputStream(), true);
+            nextPacket = readPacket(getInputStream());
         }
         nextPackets.add(nextPacket);
         // get the new size

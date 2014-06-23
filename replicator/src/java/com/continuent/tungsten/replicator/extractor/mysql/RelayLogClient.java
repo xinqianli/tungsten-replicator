@@ -39,6 +39,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 import org.apache.log4j.Logger;
 
+import com.continuent.tungsten.common.io.WrappedInputStream;
 import com.continuent.tungsten.common.mysql.MySQLConstants;
 import com.continuent.tungsten.common.mysql.MySQLIOs;
 import com.continuent.tungsten.common.mysql.MySQLPacket;
@@ -56,25 +57,25 @@ import com.continuent.tungsten.replicator.extractor.ExtractorException;
  */
 public class RelayLogClient
 {
-    private static Logger             logger                 = Logger.getLogger(RelayLogClient.class);
+    private static Logger             logger          = Logger.getLogger(RelayLogClient.class);
 
     // Magic number for MySQL binlog files.
-    private static byte[]             magic                  = {(byte) 0xfe,
-            0x62, 0x69, 0x6e                                 };
+    private static byte[]             magic           = {(byte) 0xfe, 0x62,
+            0x69, 0x6e                                };
 
     // Options.
-    private String                    url                    = "jdbc:mysql:thin://localhost:3306/";
-    private String                    login                  = "tungsten";
-    private String                    password               = "secret";
-    private String                    binlog                 = null;
-    private String                    binlogPrefix           = "mysql-bin";
-    private long                      offset                 = 4;
-    private String                    binlogDir              = ".";
-    private boolean                   autoClean              = true;
-    private int                       serverId               = 1;
-    private long                      readTimeout            = 60;
-    private boolean                   consistentAvailability = false;
-    private LinkedBlockingQueue<File> logQueue               = null;
+    private String                    url             = "jdbc:mysql:thin://localhost:3306/";
+    private String                    login           = "tungsten";
+    private String                    password        = "secret";
+    private String                    binlog          = null;
+    private String                    binlogPrefix    = "mysql-bin";
+    private long                      offset          = 4;
+    private String                    binlogDir       = ".";
+    private boolean                   autoClean       = true;
+    private int                       serverId        = 1;
+    private long                      readTimeout     = 60;
+    private boolean                   deterministicIo = false;
+    private LinkedBlockingQueue<File> logQueue        = null;
 
     // Relay storage and positioning information.
     private File                      relayLog;
@@ -82,13 +83,13 @@ public class RelayLogClient
     private File                      binlogIndex;
     private OutputStream              relayOutput;
     private long                      relayBytes;
-    private RelayLogPosition          logPosition            = new RelayLogPosition();
+    private RelayLogPosition          logPosition     = new RelayLogPosition();
 
     // Database connection information.
     private Connection                conn;
-    private InputStream               input                  = null;
-    private OutputStream              output                 = null;
-    private String                    checksum               = null;
+    private InputStream               input           = null;
+    private OutputStream              output          = null;
+    private String                    checksum        = null;
 
     /** Create new relay log client instance. */
     public RelayLogClient()
@@ -180,9 +181,9 @@ public class RelayLogClient
         this.serverId = serverId;
     }
 
-    public void setConsistentAvailability(boolean consistentAvailability)
+    public void setDeterministicIo(boolean deterministicIo)
     {
-        this.consistentAvailability = consistentAvailability;
+        this.deterministicIo = deterministicIo;
     }
 
     public synchronized LinkedBlockingQueue<File> getLogQueue()
@@ -321,7 +322,7 @@ public class RelayLogClient
         try
         {
             MySQLIOs io = MySQLIOs.getMySQLIOs(conn);
-            input = io.getInput();
+            input = new WrappedInputStream(io.getInput(), deterministicIo);
             output = io.getOutput();
         }
         catch (Exception e)
@@ -438,8 +439,7 @@ public class RelayLogClient
     public boolean processEvent() throws ReplicatorException,
             InterruptedException
     {
-        MySQLPacket packet = MySQLPacket.readPacket(input, readTimeout * 1000,
-                consistentAvailability);
+        MySQLPacket packet = MySQLPacket.readPacket(input, readTimeout * 1000);
         if (packet == null)
         {
             if (logger.isDebugEnabled())
@@ -633,8 +633,7 @@ public class RelayLogClient
             // this is a packet longer than 16m. Data will be send over several
             // packets so we need to read/write the next packets blindly until a
             // packet smaller than 16m is found
-            packet = MySQLPacket.readPacket(input, readTimeout * 1000,
-                    consistentAvailability);
+            packet = MySQLPacket.readPacket(input, readTimeout * 1000);
             if (logger.isDebugEnabled())
             {
                 logger.debug("Read extended packet: number="

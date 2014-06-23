@@ -72,6 +72,9 @@ tpm_#{cmd.tr('-', '_')}=\"#{klass_options.join(' ')}\"
   fi
 }
 complete -o nospace -F _tpm tpm
+if [ "$EXECUTABLE_PREFIX" != "" ]; then
+	complete -F _tpm ${EXECUTABLE_PREFIX}_tpm
+fi
 EOF
 
       scripts = [
@@ -81,6 +84,7 @@ EOF
         "cluster-home/bin/cluster_backup",
         "tungsten-replicator/scripts/tungsten_provision_slave",
         "tungsten-replicator/scripts/tungsten_read_master_events",
+        "tungsten-replicator/scripts/tungsten_get_position",
         "tungsten-replicator/scripts/tungsten_set_position",
         "tungsten-replicator/scripts/xtrabackup_to_slave",
         "tungsten-replicator/scripts/mysqldump_to_slave",
@@ -110,6 +114,9 @@ EOF
 }
 EOF
           file.printf("complete -o nospace -F #{id} #{basename}\n")
+          file.printf("if [ \"$EXECUTABLE_PREFIX\" != \"\" ]; then\n")
+          file.printf("  complete -F #{id} ${EXECUTABLE_PREFIX}_#{basename}\n")
+        	file.printf("fi\n")
         end
       }
     end

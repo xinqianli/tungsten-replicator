@@ -33,7 +33,6 @@ class OpensslLibraryCheck < ConfigureValidationCheck
     @title = "OpenSSL Library Check"
     @description = "Look for the Ruby OpenSSL library needed to connecto to remote hosts"
     @fatal_on_error = true
-    @weight = -10
   end
   
   def validate
@@ -59,7 +58,6 @@ class SSHLoginCheck < ConfigureValidationCheck
     @description = "Ensure that the configuration host can login to each member of the dataservice via SSH"
     @properties << USERID
     @fatal_on_error = true
-    @weight = -5
   end
   
   def validate
@@ -219,37 +217,31 @@ class InstallationScriptCheck < ConfigureValidationCheck
   end
 end
 
-class HomeDirectoryCheck < ConfigureValidationCheck
+class MatchingHomeDirectoryCheck < ConfigureValidationCheck
   include ClusterHostCheck
   
   def set_vars
-    @title = "home directory"
+    @title = "Home directory matches current directory"
     @properties << HOME_DIRECTORY
+    @fatal_on_error = true
   end
   
   def validate
-    debug "Checking #{@config.getProperty(HOME_DIRECTORY)} is the same as $CONTINUENT_ROOT"
-    if ENV['CONTINUENT_ROOT'] != nil
-      unless ENV['CONTINUENT_ROOT'].to_s() == @config.getProperty(HOME_DIRECTORY).to_s()
-        unless File.identical?(ENV['CONTINUENT_ROOT'].to_s(), @config.getProperty(HOME_DIRECTORY).to_s())
-          # Throw an error if we are not installing to $CONTINUENT_ROOT and
-          # nothing is installed in $CONTINUENT_ROOT. This prevents installing 
-          # to the wrong home directory but allows multiple replicators.
-          root_symlink = "#{ENV['CONTINUENT_ROOT'].to_s()}/tungsten"
-          unless File.exist?(root_symlink)
-            error("The setting for home-directory (#{@config.getProperty(HOME_DIRECTORY)}) is different to the Environment Variable CONTINUENT_ROOT (#{ENV['CONTINUENT_ROOT']})")
-            help("Remove the environment variable CONTINUENT_ROOT to continue")
-          end
-        end
+    debug "Checking #{@config.getProperty(HOME_DIRECTORY)} matches the current running directory"
+    
+    unless File.exists?("#{@config.getProperty(HOME_DIRECTORY)}/tungsten")
+      error("You are running from a configured directory but the new configuration does not update the current directory.")
+    else
+      unless File.readlink("#{@config.getProperty(HOME_DIRECTORY)}/tungsten") == Configurator.instance.get_base_path()
+        error("You are running from a configured directory but the new configuration does not update the current directory.")
       end
     end
   end
   
   def enabled?
-    super() && @config.getProperty(HOME_DIRECTORY) != nil
+    super() && (@config.getProperty(HOME_DIRECTORY) != nil) && Configurator.instance.is_locked?()
   end
 end
-
 
 class WriteableHomeDirectoryCheck < ConfigureValidationCheck
   include ClusterHostCheck
@@ -301,32 +293,6 @@ class WriteableHomeDirectoryCheck < ConfigureValidationCheck
   
   def enabled?
     @config.getProperty(HOME_DIRECTORY) != nil
-  end
-end
-
-class DeploymentPackageCheck < ConfigureValidationCheck
-  include ClusterHostCheck
-  include LocalValidationCheck
-  
-  def set_vars
-    @title = "Deployment package"
-  end
-  
-  def validate
-    uri = URI::parse(@config.getProperty(GLOBAL_DEPLOY_PACKAGE_URI))
-    if uri.scheme == "file" && (uri.host == nil || uri.host == "localhost")
-      debug("Send deployment package to #{@config.getProperty(HOST)}")
-      user = @config.getProperty(USERID)
-      ssh_user = Configurator.instance.get_ssh_user(user)
-      cmd_result("rsync -Caze ssh --delete #{uri.path} #{ssh_user}@#{@config.getProperty(HOST)}:#{@config.getProperty(TEMP_DIRECTORY)}")
-      if user != ssh_user
-        ssh_result("chown -R #{user} #{@config.getProperty(TEMP_DIRECTORY)}/#{File.basename(uri.path)}", @config.getProperty(HOST), ssh_user)
-      end
-    end
-  end
-  
-  def enabled?
-    @config.getProperty(DEPLOY_PACKAGE_URI) && !(Configurator.instance.is_localhost?(@config.getProperty(HOST)))
   end
 end
 
@@ -556,28 +522,6 @@ class HostnameCheck < ConfigureValidationCheck
       error "Hostname must be #{@config.getProperty(HOST)}, or change the configuration to use #{Configurator.instance.hostname()}"
     else
       debug "Hostname is OK"
-    end
-  end
-end
-
-class PackageDownloadCheck < ConfigureValidationCheck
-  include ClusterHostCheck
-  
-  def set_vars
-    @title = "Package download check"
-  end
-  
-  def validate
-    if @config.getProperty(DEPLOY_PACKAGE_URI) != nil
-      uri = URI::parse(@config.getProperty(DEPLOY_PACKAGE_URI))
-      if uri.scheme == "http" || uri.scheme == "https"
-        success_lines_count = cmd_result("curl -I -s -k #{@config.getProperty(DEPLOY_PACKAGE_URI)} | grep HTTP | grep 200 | wc -l")
-        if success_lines_count.to_i() == 1
-          info("The package download link is accessible")
-        else
-          error("The package download link is not accessible")
-        end
-      end
     end
   end
 end
@@ -1181,7 +1125,9 @@ class HostsFileCheck < ConfigureValidationCheck
         
         return_addresses = {}
         return_addresses[ds_alias] = {}
-        @config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_MEMBERS], "").split(",").each{
+        members = @config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_MEMBERS], "").split(",")
+
+        members.each{
           |h_alias|
           h_name = @config.getProperty([HOSTS, h_alias, HOST])
           # grep (case-insensitive) (whole word) hostname | grep (does not begin with #)
@@ -1202,7 +1148,9 @@ class HostsFileCheck < ConfigureValidationCheck
               help("Eliminate any loopback addresses associated with #{h_name} from /etc/hosts")
             else
               line_parts = line.split(/\s/)
-              return_addresses[ds_alias][h_alias] = line_parts[0]
+              if members.include?(@config.getProperty(HOST))
+                return_addresses[ds_alias][h_alias] = line_parts[0]
+              end
             end
           else
             error("There are multiple entries for #{h_name} in the /etc/hosts file")

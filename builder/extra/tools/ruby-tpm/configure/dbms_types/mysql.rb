@@ -21,20 +21,28 @@ REPL_MYSQL_USE_BYTES_FOR_STRING = "repl_mysql_use_bytes_for_string"
 REPL_MYSQL_CONF = "repl_datasource_mysql_conf"
 REPL_MYSQL_COMMAND = "repl_datasource_mysql_command"
 REPL_MYSQL_SERVICE_CONF = "repl_datasource_mysql_service_conf"
+EXTRACTOR_REPL_MYSQL_SERVICE_CONF = "repl_direct_datasource_mysql_service_conf"
 
 class MySQLDatabasePlatform < ConfigureDatabasePlatform
   def get_uri_scheme
     DBMS_MYSQL
   end
   
+  def get_innobackupex_path
+    path = cmd_result("which innobackupex-1.5.1 2>/dev/null", true)
+    if path.empty?
+      path = cmd_result("which innobackupex 2>/dev/null", true)
+    end
+    return path
+  end
+  
   def get_default_backup_method
-    path_to_xtrabackup = cmd_result("which innobackupex-1.5.1", true)
-	  
-	  if path_to_xtrabackup.to_s() != "" && @config.getProperty(ROOT_PREFIX) != "false"
-	    "xtrabackup-full"
-	  else
-	    "mysqldump"
-	  end
+    innobackupex_path = get_innobackupex_path()
+    if innobackupex_path.to_s() != "" && @config.getProperty(ROOT_PREFIX) != "false"
+      "xtrabackup-full"
+    else
+      "mysqldump"
+    end
   end
   
   def get_valid_backup_methods
@@ -254,6 +262,10 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
     end
   end
 
+  def getJdbcQueryUrl()
+    "jdbc:mysql://#{@host}:#{@port}"
+  end
+  
   def getJdbcDriver()
     if @config.getProperty(MYSQL_DRIVER) == "drizzle"
       "org.drizzle.jdbc.DrizzleDriver"
@@ -324,7 +336,7 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
 	
 	def get_backup_agents()
 	  agent = @config.getProperty(REPL_BACKUP_METHOD)
-	  path_to_xtrabackup = cmd_result("which innobackupex-1.5.1", true)
+	  path_to_xtrabackup = get_innobackupex_path()
 	  
 	  if agent == "script"
 	    agents = ["script"]
@@ -351,7 +363,7 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
 	end
 	
 	def get_default_backup_agent()
-    path_to_xtrabackup = cmd_result("which innobackupex-1.5.1", true)
+    path_to_xtrabackup = get_innobackupex_path()
 	  
 	  if path_to_xtrabackup.to_s() != ""
 	    "xtrabackup-full"
@@ -410,7 +422,7 @@ class MySQLDriver < ConfigurePrompt
     end
   end
   
-  def get_template_value(transform_values_method)
+  def get_template_value
     if get_value() == "drizzle"
       "mysql:thin"
     elsif get_value() == "mariadb"
@@ -612,6 +624,19 @@ class MySQLServiceConfigFile < ConfigurePrompt
   
   def load_default_value
     @default = @config.getProperty(get_host_key(HOME_DIRECTORY)) + "/share/.my.#{@config.getProperty(get_member_key(DEPLOYMENT_SERVICE))}.cnf"
+  end
+end
+
+class DirectMySQLServiceConfigFile < ConfigurePrompt
+  include ReplicationServicePrompt
+  include ConstantValueModule
+  
+  def initialize
+    super(EXTRACTOR_REPL_MYSQL_SERVICE_CONF, "Path to my.cnf file customized for this service", PV_FILENAME)
+  end
+  
+  def load_default_value
+    @default = @config.getProperty(get_host_key(HOME_DIRECTORY)) + "/share/.my.#{@config.getProperty(get_member_key(DEPLOYMENT_SERVICE))}.direct.cnf"
   end
 end
 
@@ -1475,12 +1500,20 @@ class XtrabackupAvailableCheck < ConfigureValidationCheck
     @title = "Xtrabackup availability check"
   end
   
+  def get_innobackupex_path
+    path = cmd_result("which innobackupex-1.5.1 2>/dev/null", true)
+    if path.empty?
+      path = cmd_result("which innobackupex 2>/dev/null", true)
+    end
+    return path
+  end
+  
   def validate
-    begin
-      path = cmd_result("which innobackupex-1.5.1")
-      info("xtrabackup found at #{path}")
-    rescue
-      error("Unable to find the innobackupex-1.5.1 script for backup")
+    innobackupex_path = get_innobackupex_path()
+    if innobackupex_path.empty?
+      error("Unable to find the innobackupex script for backup")
+    else
+      info("xtrabackup found at #{innobackupex_path}")
     end
   end
   
@@ -1660,16 +1693,25 @@ module ConfigureDeploymentStepMySQL
           file.puts("datadir=#{@config.getProperty(get_service_key(REPL_MYSQL_DATADIR))}")
         end
       }
-      watch_file(@config.getProperty(get_service_key(REPL_MYSQL_SERVICE_CONF)))
+      WatchFiles.watch_file(@config.getProperty(get_service_key(REPL_MYSQL_SERVICE_CONF)), @config)
     end
     
+    if @config.getProperty(get_service_key(REPL_ROLE)) == REPL_ROLE_DI
+      eds = get_extractor_datasource()
+      if eds.is_a?(MySQLDatabasePlatform)
+        File.open(@config.getProperty(get_service_key(EXTRACTOR_REPL_MYSQL_SERVICE_CONF)), "w") {
+          |file|
+          file.puts("[client]")
+          file.puts("user=#{eds.username}")
+          file.puts("password=#{eds.password}")
+        }
+        WatchFiles.watch_file(@config.getProperty(get_service_key(EXTRACTOR_REPL_MYSQL_SERVICE_CONF)), @config)
+      end
+	  end
+    
     if is_manager?() && (get_applier_datasource().is_a?(MySQLDatabasePlatform) || get_extractor_datasource().is_a?(MySQLDatabasePlatform))
-      transformer = Transformer.new(
-  		  "#{get_deployment_basedir()}/tungsten-manager/samples/conf/checker.mysqlserver.properties.tpl",
-  			"#{get_deployment_basedir()}/tungsten-manager/conf/checker.mysqlserver.properties", "#")
-  	  transformer.transform_values(method(:transform_replication_dataservice_values))
-      transformer.output
-      watch_file(transformer.get_filename())
+      transform_service_template("tungsten-manager/conf/checker.mysqlserver.properties",
+        "tungsten-manager/samples/conf/checker.mysqlserver.properties.tpl")
       
       write_svc_properties("mysql", @config.getProperty(REPL_BOOT_SCRIPT))
       
@@ -1677,13 +1719,11 @@ module ConfigureDeploymentStepMySQL
         FileUtils.cp("#{get_deployment_basedir()}/tungsten-manager/rules-ext/mysql_readonly.service.properties", 
           "#{get_deployment_basedir()}/cluster-home/conf/cluster/#{@config.getProperty(DATASERVICENAME)}/service/mysql_readonly.properties")
     
-        transformer = Transformer.new(
-    		  "#{get_deployment_basedir()}/tungsten-manager/samples/conf/mysql_readonly.tpl",
-    			"#{get_deployment_basedir()}/cluster-home/bin/mysql_readonly", "#")
-    	  transformer.transform_values(method(:transform_replication_dataservice_values))
-        transformer.output
-        watch_file(transformer.get_filename())
-        File.chmod(0750, "#{get_deployment_basedir()}/cluster-home/bin/mysql_readonly")
+        service_transformer("cluster-home/bin/mysql_readonly") {
+          |t|
+          t.mode(0750)
+          t.set_template("tungsten-manager/samples/conf/mysql_readonly.tpl")
+        }
       else
         FileUtils.rm_f("#{get_deployment_basedir()}/cluster-home/conf/cluster/#{@config.getProperty(DATASERVICENAME)}/service/mysql_readonly.properties")
         FileUtils.rm_f("#{get_deployment_basedir()}/cluster-home/bin/mysql_readonly")

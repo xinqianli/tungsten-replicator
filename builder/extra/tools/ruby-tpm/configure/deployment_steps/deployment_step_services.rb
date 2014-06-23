@@ -1,19 +1,19 @@
 module ConfigureDeploymentStepServices
   def get_methods
     [
-      ConfigureCommitmentMethod.new("set_maintenance_policy", ConfigureDeployment::FIRST_GROUP_ID, ConfigureDeployment::FIRST_STEP_WEIGHT),
+      ConfigureCommitmentMethod.new("set_maintenance_policy", ConfigureDeploymentStepMethod::FIRST_GROUP_ID, ConfigureDeploymentStepMethod::FIRST_STEP_WEIGHT),
       ConfigureCommitmentMethod.new("stop_replication_services", -1, 0),
-      ConfigureDeploymentMethod.new("apply_config_services", 0, ConfigureDeployment::FINAL_STEP_WEIGHT),
+      ConfigureDeploymentMethod.new("apply_config_services", 0, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT),
       ConfigureCommitmentMethod.new("update_metadata", 1, 0),
       ConfigureCommitmentMethod.new("deploy_services", 1, 1),
-      ConfigureCommitmentMethod.new("start_replication_services_unless_provisioning", 2, ConfigureDeployment::FINAL_STEP_WEIGHT-1, false),
-      ConfigureCommitmentMethod.new("wait_for_manager", 2, ConfigureDeployment::FINAL_STEP_WEIGHT, false),
+      ConfigureCommitmentMethod.new("start_replication_services_unless_provisioning", 2, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT-1, false),
+      ConfigureCommitmentMethod.new("wait_for_manager", 2, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT, false),
       ConfigureCommitmentMethod.new("set_automatic_policy", 3, 0),
       ConfigureCommitmentMethod.new("start_connector", 4, 1, false),
       ConfigureCommitmentMethod.new("set_original_policy", 4, 2),
       ConfigureCommitmentMethod.new("provision_server", 5, 1),
-      ConfigureCommitmentMethod.new("report_services", ConfigureDeployment::FINAL_GROUP_ID, ConfigureDeployment::FINAL_STEP_WEIGHT-1, false),
-      ConfigureCommitmentMethod.new("check_ping", ConfigureDeployment::FINAL_GROUP_ID, ConfigureDeployment::FINAL_STEP_WEIGHT)
+      ConfigureCommitmentMethod.new("report_services", ConfigureDeploymentStepMethod::FINAL_GROUP_ID, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT-1, false),
+      ConfigureCommitmentMethod.new("check_ping", ConfigureDeploymentStepMethod::FINAL_GROUP_ID, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT)
     ]
   end
   module_function :get_methods
@@ -28,30 +28,6 @@ module ConfigureDeploymentStepServices
     write_undeployall()
     write_startall()
     write_stopall()
-    
-    prepare_dir = get_deployment_basedir()
-    out = File.open(prepare_dir + "/.watchfiles", "w")
-    
-    @watchfiles.uniq().each{
-      |file|
-      
-      FileUtils.cp(file, get_original_watch_file(file))
-      if file =~ /#{prepare_dir}/
-        file_to_watch = file.sub(prepare_dir, "")
-        if file_to_watch[0, 1] == "/"
-          file_to_watch.slice!(0)
-        end 
-      else
-        file_to_watch = file
-      end
-      out.puts file_to_watch
-      
-      if @config.getProperty(PROTECT_CONFIGURATION_FILES) == "true"
-        cmd_result("chmod o-rwx #{file}")
-        cmd_result("chmod o-rwx #{get_original_watch_file(file)}")
-      end
-    }
-    out.close
   end
   
   def deploy_services

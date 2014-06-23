@@ -25,11 +25,9 @@ class DeleteReplicationServiceCommand
   def validate_commit
     super()
    
-    # Load option values.
-    @promotion_settings.props.each_key{
-      |h_alias|
-      @promotion_settings.setProperty([h_alias, DELETE_REPLICATION_POSITION], (@keep_position == false))
-    }
+   include_promotion_setting(DELETE_REPLICATION_POSITION, (@keep_position == false))
+   
+   is_valid?()
   end
   
   def parsed_options?(arguments)
@@ -129,12 +127,12 @@ end
 module DeleteReplicationServiceDeploymentStep
   def get_methods
     [
-      ConfigureCommitmentMethod.new("set_maintenance_policy", ConfigureDeployment::FIRST_GROUP_ID, 0),
+      ConfigureCommitmentMethod.new("set_maintenance_policy", ConfigureDeploymentStepMethod::FIRST_GROUP_ID, 0),
       ConfigureCommitmentMethod.new("stop_replication_services", -1, 0),
       ConfigureCommitmentMethod.new("delete_replication_service", 0, 0),
-      ConfigureCommitmentMethod.new("start_replication_services", 1, ConfigureDeployment::FINAL_STEP_WEIGHT),
+      ConfigureCommitmentMethod.new("start_replication_services", 1, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT),
       ConfigureCommitmentMethod.new("set_original_policy", 4, 2),
-      ConfigureCommitmentMethod.new("report_services", ConfigureDeployment::FINAL_GROUP_ID, ConfigureDeployment::FINAL_STEP_WEIGHT, false)
+      ConfigureCommitmentMethod.new("report_services", ConfigureDeploymentStepMethod::FINAL_GROUP_ID, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT, false)
     ]
   end
   module_function :get_methods
@@ -164,8 +162,8 @@ module DeleteReplicationServiceDeploymentStep
         if File.exist?(@config.getProperty([REPL_SERVICES, rs_alias, REPL_SVC_CONFIG_FILE]))
           FileUtils.rm_f(@config.getProperty([REPL_SERVICES, rs_alias, REPL_SVC_CONFIG_FILE]))
         end
-        if File.exist?(get_original_watch_file(@config.getProperty([REPL_SERVICES, rs_alias, REPL_SVC_CONFIG_FILE])))
-          FileUtils.rm_f(get_original_watch_file(@config.getProperty([REPL_SERVICES, rs_alias, REPL_SVC_CONFIG_FILE])))
+        if File.exist?(WatchFiles.get_original_watch_file(@config.getProperty([REPL_SERVICES, rs_alias, REPL_SVC_CONFIG_FILE])))
+          FileUtils.rm_f(WatchFiles.get_original_watch_file(@config.getProperty([REPL_SERVICES, rs_alias, REPL_SVC_CONFIG_FILE])))
         end
         if File.exist?(@config.getProperty([REPL_SERVICES, rs_alias, REPL_SVC_DYNAMIC_CONFIG]))
           FileUtils.rm_f(@config.getProperty([REPL_SERVICES, rs_alias, REPL_SVC_DYNAMIC_CONFIG]))

@@ -176,6 +176,19 @@ class DatasourceDBPassword < ConfigurePrompt
   end
 end
 
+class DatasourceEnableDBSSL < ConfigurePrompt
+  include DatasourcePrompt
+
+  def initialize
+    super(REPL_ENABLE_DBSSL, "Enable SSL connection to DBMS server",
+      PV_BOOLEAN, "false")
+  end
+
+  def required?
+    false
+  end
+end
+
 class DatasourceInitScript < ConfigurePrompt
   include DatasourcePrompt
   include AdvancedPromptModule
@@ -476,6 +489,19 @@ class DatasourceJDBCURL < ConfigurePrompt
   
   def get_template_value(transform_values_method)
     get_datasource().getJdbcUrl()
+  end
+end
+
+class DatasourceJDBCSSLOptions < ConfigurePrompt
+  include DatasourcePrompt
+  include ConstantValueModule
+ 
+  def initialize
+    super(REPL_DBJDBCURLSSLOPTIONS, "Datasource JDBC URL SSL options")
+  end
+ 
+  def get_template_value(transform_values_method)
+    get_datasource().getJdbcUrlSSLOptions()
   end
 end
 

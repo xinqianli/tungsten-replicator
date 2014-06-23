@@ -134,4 +134,15 @@ public class ReplOptionParams
      * Indicates that this transaction contains a table truncate command.
      */
     public static final String TRUNCATE                = "truncate";
+
+    /**
+     * This is the domain id from the GTID (if any). GTID is composed of domain
+     * id, server id and seqno.
+     */
+    public static final String GTID_DOMAIN_ID          = "gtid_domain_id";
+
+    /**
+     * This is the seqno from the GTID (if any)
+     */
+    public static final String GTID_SEQNO              = "gtid_seqno";
 }

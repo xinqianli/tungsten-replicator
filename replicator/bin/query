@@ -1,20 +1,18 @@
 #!/bin/sh
 # Tungsten Replicator @VERSION@
-# (c) 2009 Continuent, Inc.  All rights reserved. 
+# (c) 2014 Continuent, Inc.  All rights reserved. 
 #
 # Replicator *nix thl utility's startup script
 #
 # Environmental variables accepted by this script: 
 #   JAVA_HOME - Java release directory
 #   JVM_OPTIONS - Java VM options (e.g. -Xmx=1024M)
-#   REPLICATOR_LOG_DIR - Replicator log directory (defaults to $RPHOME/log)
-#   REPLICATOR_RMI_PORT - Port used for JMX administration calls
 
-# THL utility main class. 
-THL_CTRL=com.continuent.tungsten.replicator.thl.THLManagerCtrl
+# DSQUERY utility main class. 
+DSQUERY_CTRL=com.continuent.tungsten.replicator.util.DsQueryCtrl
 
-# Log4j properties to use for THL utility.
-THL_CTRL_LOG4J=log4j-utils.properties
+# Log4j properties to use for DataScan utility.
+DATA_CTRL_LOG4J=log4j-utils.properties
 
 # Find home. 
 RPBIN=`dirname $0`
@@ -34,7 +32,6 @@ done
 CP=$CP:$RPHOME/conf
 # Add cluster-home/lib to class path
 CP=$CP:$CLUSTER_HOME/lib/*
-
 
 # Find Java.
 if [ -z "$JAVA_HOME" ]; then
@@ -63,9 +60,5 @@ if [ ! -z "$REPLICATOR_RMI_PORT" ]; then
   JVM_OPTIONS="${JVM_OPTIONS} -Dreplicator.rmi_port=$REPLICATOR_RMI_PORT"
 fi
 
-# Uncomment to debug replicator THL client. 
-#REPLICATOR_JVMDEBUG_PORT=54002
-#JVM_OPTIONS="${JVM_OPTIONS} -enableassertions -Xdebug -Xnoagent -Djava.compiler=none -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=$REPLICATOR_JVMDEBUG_PORT"
-
 # Run the utility. 
-$JAVA -cp $CP -Dreplicator.home.dir=$RPHOME -Dlog4j.configuration=$THL_CTRL_LOG4J $JVM_OPTIONS $THL_CTRL $*
+$JAVA -cp $CP  -Dreplicator.home.dir=$RPHOME -Dlog4j.configuration=$DATA_CTRL_LOG4J $JVM_OPTIONS $DSQUERY_CTRL $*

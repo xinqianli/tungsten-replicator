@@ -248,6 +248,7 @@ replicator.stage.remote-to-thl.filters=
 replicator.stage.thl-to-q=com.continuent.tungsten.replicator.pipeline.SingleThreadStageTask
 replicator.stage.thl-to-q.extractor=thl-extractor
 replicator.stage.thl-to-q.applier=parallel-q-applier
+replicator.stage.thl-to-q.filters=
 replicator.stage.thl-to-q.blockCommitRowCount=${replicator.global.buffer.size}
 
 replicator.stage.q-to-dbms=com.continuent.tungsten.replicator.pipeline.SingleThreadStageTask
@@ -384,7 +385,7 @@ replicator.store.parallel-queue.syncInterval=10000
 # EXTRACTORS #
 ##############
 
-@{REPL_SVC_EXTRACTOR_CONFIG}
+@{include(REPL_SVC_EXTRACTOR_CONFIG)}
 
 # Parallel extractor
 replicator.extractor.parallel-extractor=com.continuent.tungsten.replicator.extractor.parallel.ParallelExtractor
@@ -451,7 +452,7 @@ replicator.extractor.parallel-q-extractor.storeName=parallel-queue
 # APPLIERS #
 ############
 
-@{REPL_SVC_APPLIER_CONFIG}
+@{include(REPL_SVC_APPLIER_CONFIG)}}
 
 # Durable THL applier. This applier does not auto-flush hence only makes
 # fully durable transactions visible to downstream clients.  This is the 
@@ -480,7 +481,7 @@ replicator.applier.parallel-q-applier.storeName=parallel-queue
 # FILTERS # 
 ###########
 
-@{REPL_SVC_FILTER_CONFIG}
+@{includeAll(REPL_SVC_FILTER_CONFIG)}
 
 #####################
 # PIPELINE SERVICES #
@@ -527,7 +528,7 @@ replicator.backup.agents=@{APPLIER.REPL_DBBACKUPAGENTS}
 # Default backup agent.
 replicator.backup.default=@{REPL_BACKUP_METHOD}
 
-@{REPL_SVC_BACKUP_CONFIG}
+@{includeAll(REPL_SVC_BACKUP_CONFIG)}
 
 # List of configured storage agents.  Uncomment appropriately for your site. 
 replicator.storage.agents=fs

@@ -29,6 +29,7 @@ import java.io.IOException;
 import java.text.MessageFormat;
 
 import org.apache.commons.configuration.PropertiesConfiguration;
+import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.common.config.TungstenProperties;
@@ -48,14 +49,13 @@ public class SecurityHelper
     private static final Logger logger = Logger.getLogger(SecurityHelper.class);
 
     /*
-     * Defines the type of application requesting Security information.
-     * This allows module specific configuration of security.
+     * Defines the type of application requesting Security information. This
+     * allows module specific configuration of security.
      */
     // TUC-1872
     public static enum TUNGSTEN_APPLICATION_NAME
     {
-        CONNECTOR,
-        ANY;
+        CONNECTOR, ANY;
     }
 
     /**
@@ -255,6 +255,9 @@ public class SecurityHelper
             }
 
             // Retrieve properties
+            boolean connectorUseSSL = securityProperties.getBoolean(
+                    SecurityConf.CONNECTOR_USE_SSL, "false", false);
+
             String parentFileLocation = securityProperties
                     .getString(SecurityConf.SECURITY_PROPERTIES_PARENT_FILE_LOCATION);
             String passwordFileLocation = securityProperties
@@ -263,16 +266,23 @@ public class SecurityHelper
                     .getString(SecurityConf.SECURITY_ACCESS_FILE_LOCATION);
             String keystoreLocation = securityProperties
                     .getString(security_keystore_location);
+            keystoreLocation = (keystoreLocation != null && StringUtils
+                    .isNotBlank(keystoreLocation)) ? keystoreLocation : null;
             String keystorePassword = securityProperties
                     .getString(security_keystore_password);
             String truststoreLocation = securityProperties
                     .getString(security_truststore_location);
+            truststoreLocation = (truststoreLocation != null && StringUtils
+                    .isNotBlank(truststoreLocation))
+                    ? truststoreLocation
+                    : null;
             String truststorePassword = securityProperties
                     .getString(security_truststore_password);
             String userName = securityProperties.getString(
                     SecurityConf.SECURITY_JMX_USERNAME, null, false);
 
             // Populate return object
+            authInfo.setConnectorUseSSL(connectorUseSSL);
             authInfo.setParentPropertiesFileLocation(parentFileLocation);
             authInfo.setAuthenticationNeeded(useAuthentication);
             authInfo.setUseTungstenAuthenticationRealm(useTungstenAuthenticationRealm);
@@ -285,12 +295,13 @@ public class SecurityHelper
             authInfo.setTruststoreLocation(truststoreLocation);
             authInfo.setTruststorePassword(truststorePassword);
             authInfo.setUsername(userName);
+            authInfo.setParentProperties(securityProperties);
 
             // --- Check information is correct ---
+            // Checks authentication and encryption parameters
+            // file exists, ...
             if (doConsistencyChecks)
-                authInfo.checkAuthenticationInfo(tungstenApplicationName); // Checks authentication and
-                                                    // encryption parameters:
-                                                    // file exists, ...
+                authInfo.checkAndCleanAuthenticationInfo(tungstenApplicationName);
 
             // --- Set critical properties as System Properties ---
             SecurityHelper.setSecurityProperties(authInfo, false);
@@ -337,7 +348,7 @@ public class SecurityHelper
             CLUtils.println("Setting system property: name=" + name + " value="
                     + value);
         }
-        if (value!=null)
+        if (value != null)
             System.setProperty(name, value);
     }
 
@@ -367,10 +378,10 @@ public class SecurityHelper
         File securityPropertiesFile;
         if (propertiesFileLocation == null) // Get from default location
         {
-            ClusterConfiguration clusterConf = new ClusterConfiguration("Dummy");
-            File clusterConfDirectory = clusterConf.getDir(ClusterConfiguration
-                    .getGlobalConfigDirName(ClusterConfiguration
-                            .getClusterHome()));
+            File clusterConfDirectory = ClusterConfiguration
+                    .getDir(ClusterConfiguration
+                            .getGlobalConfigDirName(ClusterConfiguration
+                                    .getClusterHome()));
             securityPropertiesFile = new File(clusterConfDirectory.getPath(),
                     SecurityConf.SECURITY_PROPERTIES_FILE_NAME);
         }
@@ -386,8 +397,7 @@ public class SecurityHelper
             securityProps = new TungstenProperties();
             securityConfigurationFileInputStream = new FileInputStream(
                     securityPropertiesFile);
-            securityProps.load(securityConfigurationFileInputStream,
-                    true);
+            securityProps.load(securityConfigurationFileInputStream, true);
             closeSecurityConfigurationFileInputStream(securityConfigurationFileInputStream);
         }
         catch (FileNotFoundException e)
@@ -426,8 +436,8 @@ public class SecurityHelper
     }
 
     /**
-     * Close the security.properties input stream once it's been used.
-     * Best effort
+     * Close the security.properties input stream once it's been used. Best
+     * effort
      * 
      * @param fis
      */

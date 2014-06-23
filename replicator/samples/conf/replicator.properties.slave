@@ -184,6 +184,7 @@ replicator.stage.remote-to-thl.filters=
 replicator.stage.thl-to-q=com.continuent.tungsten.replicator.pipeline.SingleThreadStageTask
 replicator.stage.thl-to-q.extractor=thl-extractor
 replicator.stage.thl-to-q.applier=parallel-q-applier
+replicator.stage.thl-to-q.filters=
 replicator.stage.thl-to-q.blockCommitRowCount=${replicator.global.buffer.size}
 
 replicator.stage.q-to-dbms=com.continuent.tungsten.replicator.pipeline.SingleThreadStageTask
@@ -351,7 +352,7 @@ replicator.extractor.parallel-q-extractor.storeName=parallel-queue
 # APPLIERS #
 ############
 
-@{REPL_SVC_APPLIER_CONFIG}
+@{include(REPL_SVC_APPLIER_CONFIG)}
 
 # Local THL applier. 
 replicator.applier.thl-applier=com.continuent.tungsten.replicator.thl.THLStoreApplier
@@ -369,7 +370,7 @@ replicator.applier.parallel-q-applier.storeName=parallel-queue
 # FILTERS # 
 ###########
 
-@{REPL_SVC_FILTER_CONFIG}
+@{includeAll(REPL_SVC_FILTER_CONFIG)}
 
 #####################
 # PIPELINE SERVICES #
@@ -395,7 +396,7 @@ replicator.service.datasource=com.continuent.tungsten.replicator.datasource.Data
 # Data sources we know about. 
 replicator.datasources=applier
 
-@{REPL_SVC_APPLIER_DATASOURCE_CONFIG}
+@{include(REPL_SVC_APPLIER_DATASOURCE_CONFIG)}
 
 ################################
 # BACKUP/RESTORE CONFIGURATION #
@@ -407,7 +408,7 @@ replicator.backup.agents=@{APPLIER.REPL_DBBACKUPAGENTS}
 # Default backup agent.
 replicator.backup.default=@{REPL_BACKUP_METHOD}
 
-@{REPL_SVC_BACKUP_CONFIG}
+@{includeAll(REPL_SVC_BACKUP_CONFIG)}
 
 # List of configured storage agents.  Uncomment appropriately for your site. 
 replicator.storage.agents=fs

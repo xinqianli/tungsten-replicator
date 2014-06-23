@@ -43,19 +43,10 @@ import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.plugin.PluginContext;
 
 /**
- * Represents a class to execute a Javascript batch load script. Batch load
- * scripts have the following methods:
- * <p/>
- * <ul>
- * <li>prepare (optional) - Prepare the script to run.
- * <li>begin (optional) - Called at the beginning of new transaction
- * <li>apply (required) - Called to apply data for a single table within a
- * transaction
- * <li>commit (optional) - Called when transaction commits
- * </ul>
- * This class is a partial copy/paste from logic in class JavaScriptFilter,
- * which integrates Rhino Javascript for filters.
- * <p/>
+ * Implements a generic script executor for Javascript and that encapsulates
+ * Rhino integration with the replicator. It supplies a standard environment and
+ * is designed to be reusable across multiple use cases, such as batch merge
+ * scripts or filters.
  * 
  * @see com.continuent.tungsten.replicator.filter.JavaScriptFilter
  */

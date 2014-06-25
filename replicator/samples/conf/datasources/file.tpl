@@ -17,6 +17,7 @@ replicator.datasource.applier.csv.fieldSeparator=,
 replicator.datasource.applier.csv.RecordSeparator=\\n
 replicator.datasource.applier.csv.nullValue=\\N
 replicator.datasource.applier.csv.useQuotes=true
+replicator.datasource.applier.csv.useHeaders=false
 
 # CSV data formatter.  This is the class responsible for translating
 # from Java objects to CSV strings.  The data format can vary independently

@@ -137,7 +137,7 @@ public class CsvSpecification
     /**
      * Returns true if CSV contains column headers in first row.
      */
-    public boolean isUseHeaders()
+    public synchronized boolean isUseHeaders()
     {
         return useHeaders;
     }
@@ -145,7 +145,7 @@ public class CsvSpecification
     /**
      * If set to true first row must contain column headers.
      */
-    public void setUseHeaders(boolean useHeaders)
+    public synchronized void setUseHeaders(boolean useHeaders)
     {
         this.useHeaders = useHeaders;
     }

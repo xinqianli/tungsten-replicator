@@ -139,7 +139,7 @@ public class MySQLPacket
         }
         catch (IOException e)
         {
-            logger.error("I/O error while reading from client socket");
+            logger.error("I/O error while reading from socket");
         }
 
         return null;

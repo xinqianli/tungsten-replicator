@@ -1307,26 +1307,8 @@ public class MySQLExtractor implements RawExtractor
     {
         runtime = (ReplicatorRuntime) context;
 
-        // Compute our MySQL dbms URL.
-        StringBuffer sb = new StringBuffer();
-        if (jdbcHeader == null)
-            sb.append("jdbc:mysql://");
-        else
-            sb.append(jdbcHeader);
-        sb.append(host);
-        sb.append(":");
-        sb.append(port);
-        sb.append("/");
-        sb.append(context.getReplicatorSchemaName());
-        if (urlOptions != null && urlOptions.length() > 0)
-        {
-            // Prepend ? if needed to make the URL options syntactically
-            // correct, then add the option string.
-            if (!urlOptions.startsWith("?"))
-                sb.append("?");
-            sb.append(urlOptions);
-        }
-        url = sb.toString();
+        // Compute our MySQL DBMS URL.
+        url = generateUrl(false);
 
         // If url options include ssl, the stream's availability() method cannot
         // be trusted.
@@ -1416,6 +1398,46 @@ public class MySQLExtractor implements RawExtractor
     }
 
     /**
+     * Generates a URL with or without the createDB=true option. This option
+     * should *only* be used the first time we connect.
+     */
+    private String generateUrl(boolean createDB)
+    {
+        // Compute our MySQL DBMS URL.
+        StringBuffer sb = new StringBuffer();
+        if (jdbcHeader == null)
+            sb.append("jdbc:mysql:thin://");
+        else
+            sb.append(jdbcHeader);
+        sb.append(host);
+        sb.append(":");
+        sb.append(port);
+        sb.append("/");
+        sb.append(runtime.getReplicatorSchemaName());
+        if (urlOptions != null && urlOptions.length() > 0)
+        {
+            // Prepend ? if needed to make the URL options syntactically
+            // correct, then add the option string.
+            if (!urlOptions.startsWith("?"))
+                sb.append("?");
+            sb.append(urlOptions);
+
+            if (createDB)
+            {
+                sb.append("&createDB=true");
+            }
+        }
+        else
+        {
+            if (createDB)
+            {
+                sb.append("?createDB=true");
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
      * If strictVersionChecking is enabled we ensure this database is a
      * supported version. {@inheritDoc}
      * 
@@ -1439,7 +1461,9 @@ public class MySQLExtractor implements RawExtractor
 
         try
         {
-            conn = DatabaseFactory.createDatabase(url, user, password, true);
+            String firstUrl = generateUrl(true);
+            conn = DatabaseFactory.createDatabase(firstUrl, user, password,
+                    true);
             conn.connect();
 
             String version = getDatabaseVersion(conn);

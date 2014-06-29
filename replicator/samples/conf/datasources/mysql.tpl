@@ -12,7 +12,7 @@ replicator.datasource.applier.password=@{APPLIER.REPL_DBPASSWORD}
 replicator.datasource.applier.schema=${replicator.schema}
 
 # MySQL-specific JDBC URL for drizzle JDBC driver. 
-replicator.datasource.applier.url=jdbc:mysql:thin://${replicator.datasource.applier.host}:${replicator.datasource.applier.port}/${replicator.schema}?createDB=true
+replicator.datasource.applier.url=jdbc:mysql:thin://${replicator.datasource.applier.host}:${replicator.datasource.applier.port}/${replicator.schema}
 
 # CSV specification type.  This is the conventions for writing CSV files,
 # which tend to be slightly different for each data source.  If set to 

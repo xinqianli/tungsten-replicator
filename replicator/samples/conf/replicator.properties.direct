@@ -433,8 +433,7 @@ replicator.datasource.sink.host=logos1
 replicator.datasource.sink.port=3306
 replicator.datasource.sink.user=tungsten
 replicator.datasource.sink.password=secret
-replicator.datasource.sink.url=jdbc:mysql:thin://${replicator.datasource.sink.host}:${replicator.datasource.sink.port}/${replicator.schema}?createDB=true
-
+replicator.datasource.sink.url=jdbc:mysql:thin://${replicator.datasource.sink.host}:${replicator.datasource.sink.port}/${replicator.schema}
 
 ################################
 # BACKUP/RESTORE CONFIGURATION #

@@ -178,7 +178,7 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
     h_alias = to_identifier(@host)
     if @config.getProperty([HOSTS, h_alias]) != nil
       begin
-        logbin = ssh_result("my_print_defaults --config-file=#{@config.getProperty(@prefix + [REPL_MYSQL_CONF])} mysqld | grep '^--log[_-]bin'", @host, @config.getProperty([HOSTS, h_alias, USERID])).split("=")[-1].strip()
+        logbin = ssh_result("my_print_defaults --config-file=#{@config.getProperty(@prefix + [REPL_MYSQL_CONF])} mysqld | grep '^--log[_-]bin='", @host, @config.getProperty([HOSTS, h_alias, USERID])).split("=")[-1].strip()
 
         if logbin.to_s() != ""
           logdir = File.dirname(logbin)
@@ -1270,12 +1270,12 @@ class MySQLApplierLogsCheck < ConfigureValidationCheck
   def validate
     dir = @config.getProperty(get_applier_key(REPL_MASTER_LOGDIR))
     
+    conf_file = @config.getProperty(get_applier_key(REPL_MYSQL_CONF))
     unless Configurator.instance.is_localhost?(@config.getProperty(get_applier_key(REPL_DBHOST)))
       debug("Unable to check the configured log directory in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
       return
     end
     
-    conf_file = @config.getProperty(get_applier_key(REPL_MYSQL_CONF))
     unless File.exists?(conf_file) && File.readable?(conf_file)
       error("The MySQL config file '#{conf_file}' is not readable")
       return
@@ -1288,7 +1288,7 @@ class MySQLApplierLogsCheck < ConfigureValidationCheck
     end
     
     begin
-      conf_file_results = cmd_result("#{my_print_defaults} --config-file=#{conf_file} mysqld | grep '^--log[_-]bin'").split("=")[-1].strip()
+      conf_file_results = cmd_result("#{my_print_defaults} --config-file=#{conf_file} mysqld | grep '^--log[_-]bin='").split("=")[-1].strip()
     rescue CommandError
     end
     

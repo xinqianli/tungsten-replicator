@@ -290,14 +290,9 @@ class TungstenReplicatorProvisionSlave
         end
       end
     
-      path = TU.cmd_result("which innobackupex-1.5.1 2>/dev/null", true)
+      path = get_innobackupex_path()
       if path == ""
-        TU.error("Unable to find the innobackupex-1.5.1 script")
-      elsif sudo_prefix() != ""
-        path = TU.cmd_result("#{sudo_prefix()}which innobackupex-1.5.1 2>/dev/null", true)
-        if path == ""
-          TU.error("Unable to find the innobackupex-1.5.1 script using sudo")
-        end
+        TU.error("Unable to find the innobackupex script")
       end
     
       # If the InnoDB files are stored somewhere other than datadir we are

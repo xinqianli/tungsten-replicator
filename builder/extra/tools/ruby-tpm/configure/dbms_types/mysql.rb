@@ -27,16 +27,23 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
     DBMS_MYSQL
   end
   
-  def get_default_backup_method
-    path_to_xtrabackup = cmd_result("which innobackupex-1.5.1", true)
-	  
-	  if path_to_xtrabackup.to_s() != "" && @config.getProperty(ROOT_PREFIX) != "false"
-	    "xtrabackup-full"
-	  else
-	    "mysqldump"
-	  end
+  def get_innobackupex_path
+    path = cmd_result("which innobackupex-1.5.1 2>/dev/null", true)
+    if path.empty?
+      path = cmd_result("which innobackupex 2>/dev/null", true)
+    end
+    return path
   end
-  
+
+  def get_default_backup_method
+    innobackupex_path = get_innobackupex_path()
+    if innobackupex_path.to_s() != "" && @config.getProperty(ROOT_PREFIX) != "false"
+      "xtrabackup-full"
+    else
+      "mysqldump"
+    end
+  end
+
   def get_valid_backup_methods
     "none|mysqldump|xtrabackup|xtrabackup-incremental|script"
   end
@@ -296,8 +303,7 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
 	
 	def get_backup_agents()
 	  agent = @config.getProperty(REPL_BACKUP_METHOD)
-	  path_to_xtrabackup = cmd_result("which innobackupex-1.5.1", true)
-	  
+	  path_to_xtrabackup = get_innobackupex_path()
 	  if agent == "script"
 	    agents = ["script"]
 	  else
@@ -323,7 +329,7 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
 	end
 	
 	def get_default_backup_agent()
-    path_to_xtrabackup = cmd_result("which innobackupex-1.5.1", true)
+          path_to_xtrabackup = get_innobackupex_path()
 	  
 	  if path_to_xtrabackup.to_s() != ""
 	    "xtrabackup-full"
@@ -1441,15 +1447,23 @@ class XtrabackupAvailableCheck < ConfigureValidationCheck
     @title = "Xtrabackup availability check"
   end
   
+  def get_innobackupex_path
+    path = cmd_result("which innobackupex-1.5.1 2>/dev/null", true)
+    if path.empty?
+      path = cmd_result("which innobackupex 2>/dev/null", true)
+    end
+    return path
+  end
+
   def validate
-    begin
-      path = cmd_result("which innobackupex-1.5.1")
-      info("xtrabackup found at #{path}")
-    rescue
-      error("Unable to find the innobackupex-1.5.1 script for backup")
+    innobackupex_path = get_innobackupex_path()
+    if innobackupex_path.empty?
+      error("Unable to find the innobackupex script for backup")
+    else
+      info("xtrabackup found at #{innobackupex_path}")
     end
   end
-  
+
   def enabled?
     super() && ["xtrabackup","xtrabackup-full","xtrabackup-incremental"].include?(@config.getProperty(get_member_key(REPL_BACKUP_METHOD)))
   end

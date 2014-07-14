@@ -1387,6 +1387,26 @@ class MySQLDefaultTableTypeCheck < ConfigureValidationCheck
   end
 end
 
+class MySQLBinlogDoDbCheck < ConfigureValidationCheck
+  include ReplicationServiceValidationCheck
+
+  def set_vars
+    @title = "MySQL binlog-do-db Check"
+  end
+
+  def validate
+    do_db = get_applier_datasource.get_value("SHOW MASTER STATUS", "Binlog_Do_DB")
+    unless do_db.empty?
+      error("MySQL configuration variable 'Binlog_Do_DB' is set. This setting prevents proper operation of Tungsten Replicator.")
+    end
+  end
+
+  def enabled?
+    super() \
+      && get_extractor_datasource().class == MySQLDatabasePlatform
+  end
+end
+
 class MysqldumpAvailableCheck < ConfigureValidationCheck
   include ReplicationServiceValidationCheck
   include MySQLApplierCheck

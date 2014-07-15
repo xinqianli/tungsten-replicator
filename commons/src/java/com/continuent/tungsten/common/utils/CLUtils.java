@@ -402,9 +402,10 @@ public class CLUtils implements Serializable
         {
             String dsHeader = String.format("%s(%s:%s)", dsProps
                     .getString(DataSource.NAME), dsProps
-                    .getString(DataSource.ROLE), managerIsOnline
-                    ? "ONLINE"
-                    : "OFFLINE");
+                    .getString(DataSource.ROLE),
+                    managerIsOnline
+                            ? dsProps.getString(DataSource.STATE)
+                            : "FAILED");
 
             if (!isRawFormat)
             {

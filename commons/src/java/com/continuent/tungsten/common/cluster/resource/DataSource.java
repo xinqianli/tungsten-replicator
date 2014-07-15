@@ -100,7 +100,7 @@ public class DataSource extends Resource implements Serializable
     private HighWaterResource       highWater                      = new HighWaterResource();
 
     // Statistics.
-    private AtomicLong              activeConnectionsCount          = new AtomicLong(
+    private AtomicLong              activeConnectionsCount         = new AtomicLong(
                                                                            0);
     private AtomicLong              connectionsCreatedCount        = new AtomicLong(
                                                                            0);
@@ -127,7 +127,7 @@ public class DataSource extends Resource implements Serializable
     private boolean                 vipIsBound                     = false;
 
     /** Retains all non-closed connections to this data source */
-    private Set<DatabaseConnection> activeConnections               = Collections
+    private Set<DatabaseConnection> activeConnections              = Collections
                                                                            .synchronizedSet(new HashSet<DatabaseConnection>());
     public final static String      JDBC_URL_START                 = "jdbc:";
 
@@ -158,6 +158,11 @@ public class DataSource extends Resource implements Serializable
         else
         {
             setState(ResourceState.valueOf(state));
+        }
+
+        if (role == DataSourceRole.witness)
+        {
+            isWitness = true;
         }
 
         // Backwards compatible.
@@ -212,7 +217,7 @@ public class DataSource extends Resource implements Serializable
     public void removeConnection(DatabaseConnection conn)
     {
         // thread-safe: ActiveConnection is a synchronizedSet
-       activeConnections.remove(conn);
+        activeConnections.remove(conn);
     }
 
     public long getActiveConnectionCount()
@@ -324,6 +329,7 @@ public class DataSource extends Resource implements Serializable
                 memberHeartbeatProps.getString("memberName"));
 
         newDs.setRole(DataSourceRole.witness.toString());
+        newDs.setWitness(true);
 
         newDs.setAlertStatus(DataSourceAlertStatus.OK);
 
@@ -529,6 +535,7 @@ public class DataSource extends Resource implements Serializable
         props.setString(DRIVER, getDriver());
         props.setString(URL, getUrl());
         props.setString(ROLE, getRole().toString());
+        props.setBoolean(ISWITNESS, isWitness());
         props.setString(MASTER_CONNECT_URI, getMasterConnectUri());
         props.setString(ALERT_STATUS, alertStatus.toString());
         props.setString(ALERT_MESSAGE, alertMessage);
@@ -1057,5 +1064,25 @@ public class DataSource extends Resource implements Serializable
                     + (slashIdx != -1 ? slashIdx : remainder.length())
                     + ". Found colonIdx=" + colonIdx + " slashIdx=" + slashIdx);
         }
+    }
+
+    /**
+     * Returns the isWitness value.
+     * 
+     * @return Returns the isWitness.
+     */
+    public boolean isWitness()
+    {
+        return isWitness;
+    }
+
+    /**
+     * Sets the isWitness value.
+     * 
+     * @param isWitness The isWitness to set.
+     */
+    public void setWitness(boolean isWitness)
+    {
+        this.isWitness = isWitness;
     }
 }

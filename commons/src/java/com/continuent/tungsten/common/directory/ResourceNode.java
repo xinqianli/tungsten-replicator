@@ -37,7 +37,7 @@ import com.continuent.tungsten.common.cluster.resource.ResourceType;
 @SuppressWarnings("rawtypes")
 public class ResourceNode implements Comparable, Serializable
 {
-//    static private Logger            logger           = Logger.getLogger(ResourceNode.class);
+
     /**
      * 
      */

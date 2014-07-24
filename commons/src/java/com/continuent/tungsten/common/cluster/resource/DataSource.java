@@ -38,7 +38,6 @@ public class DataSource extends Resource implements Serializable
     public static final String      ISAVAILABLE                    = "isAvailable";
     public static final String      STATE                          = "state";
     public static final String      ISCOMPOSITE                    = "isComposite";
-    public static final String      ISWITNESS                      = "isWitness";
     public static final String      ALERT_STATUS                   = "alertStatus";
     public static final String      ALERT_MESSAGE                  = "alertMessage";
     public static final String      ALERT_TIME                     = "alertTime";
@@ -95,7 +94,6 @@ public class DataSource extends Resource implements Serializable
 
     @SuppressWarnings("unused")
     private boolean                 isStandby                      = false;
-    private boolean                 isWitness                      = false;
 
     private HighWaterResource       highWater                      = new HighWaterResource();
 
@@ -158,11 +156,6 @@ public class DataSource extends Resource implements Serializable
         else
         {
             setState(ResourceState.valueOf(state));
-        }
-
-        if (role == DataSourceRole.witness)
-        {
-            isWitness = true;
         }
 
         // Backwards compatible.
@@ -329,7 +322,6 @@ public class DataSource extends Resource implements Serializable
                 memberHeartbeatProps.getString("memberName"));
 
         newDs.setRole(DataSourceRole.witness.toString());
-        newDs.setWitness(true);
 
         newDs.setAlertStatus(DataSourceAlertStatus.OK);
 
@@ -535,7 +527,6 @@ public class DataSource extends Resource implements Serializable
         props.setString(DRIVER, getDriver());
         props.setString(URL, getUrl());
         props.setString(ROLE, getRole().toString());
-        props.setBoolean(ISWITNESS, isWitness());
         props.setString(MASTER_CONNECT_URI, getMasterConnectUri());
         props.setString(ALERT_STATUS, alertStatus.toString());
         props.setString(ALERT_MESSAGE, alertMessage);
@@ -1073,16 +1064,6 @@ public class DataSource extends Resource implements Serializable
      */
     public boolean isWitness()
     {
-        return isWitness;
-    }
-
-    /**
-     * Sets the isWitness value.
-     * 
-     * @param isWitness The isWitness to set.
-     */
-    public void setWitness(boolean isWitness)
-    {
-        this.isWitness = isWitness;
+        return role.equals(DataSourceRole.witness);
     }
 }

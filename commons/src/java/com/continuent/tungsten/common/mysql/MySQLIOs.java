@@ -570,6 +570,25 @@ public class MySQLIOs
         return true;
     }
 
+    public static void checkStateMapping()
+    {
+        try
+        {
+            MySQLIOs.loadStateMappingConfiguration();
+            logger.info("MONITOR WILL USE DYNAMIC STATE MAPPING:");
+        }
+        catch (ConfigurationException c)
+        {
+            logger.warn(String.format(
+                    "Unable to load state mapping from file: %s",
+                    c.getLocalizedMessage()));
+            logger.info("MONITOR WILL USE DEFAULT STATE MAPPING:");
+        }
+
+        logger.info("\n" + MySQLIOs.showStateMapping() + "\n");
+
+    }
+
     /**
      * Tries to establish a connection to a MySQL server with given credentials
      * and timeout. Upon success, runs the given request (which must be a
@@ -617,7 +636,7 @@ public class MySQLIOs
 
         InputStream socketInput = null;
         OutputStream socketOutput = null;
-        
+
         MySQLPacket queryResult = null;
 
         try
@@ -654,11 +673,10 @@ public class MySQLIOs
             }
 
             statusAndResult.setLong(TIME_TO_CONNECT_MS, timeToConnectMs);
-            
-            
+
             socketInput = socket.getInputStream();
             socketOutput = socket.getOutputStream();
-            
+
             if (socketInput == null || socketOutput == null)
             {
                 statusMessage = String
@@ -789,8 +807,7 @@ public class MySQLIOs
                 socketOutput.flush();
 
                 socketPhase = SOCKET_PHASE_READ;
-                queryResult = MySQLPacket.mysqlReadPacket(
-                        socketInput, true);
+                queryResult = MySQLPacket.mysqlReadPacket(socketInput, true);
                 long timeToExecQueryMs = System.currentTimeMillis()
                         - beforeQuery;
 
@@ -1096,16 +1113,16 @@ public class MySQLIOs
                     socketOutput = null;
                 }
             }
-            
+
             if (queryResult != null)
             {
                 try
                 {
-                  queryResult.close();  
+                    queryResult.close();
                 }
-                catch(Exception ignored)
+                catch (Exception ignored)
                 {
-                    
+
                 }
                 finally
                 {

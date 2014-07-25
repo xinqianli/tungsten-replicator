@@ -34,16 +34,6 @@ module ConfigureDeploymentStepReplicator
       info("Configure the #{ds_alias} replication service")
       
       if @config.getProperty([REPL_SERVICES, hs_alias, REPL_SVC_CLUSTER_ENABLED]) == "true"
-        transformer = Transformer.new(
-    		  "#{get_deployment_basedir()}/tungsten-manager/samples/conf/mysql_checker_query.sql.tpl",
-    			"#{get_deployment_basedir()}/tungsten-manager/conf/mysql_checker_query.sql", nil)
-
-        transformer.set_fixed_properties(@config.getTemplateValue(get_host_key(FIXED_PROPERTY_STRINGS)))
-    	  transformer.transform_values(method(:transform_replication_dataservice_values))
-
-        transformer.output
-        watch_file(transformer.get_filename())
-        
         write_replication_monitor_extension()
       end
       

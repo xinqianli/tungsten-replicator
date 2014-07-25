@@ -30,6 +30,14 @@ module ConfigureDeploymentStepManager
     transformer.output
     watch_file(transformer.get_filename())
     
+    transformer = Transformer.new(
+		  "#{get_deployment_basedir()}/tungsten-manager/samples/conf/mysql_checker_query.sql.tpl",
+			"#{get_deployment_basedir()}/tungsten-manager/conf/mysql_checker_query.sql", nil)
+    transformer.set_fixed_properties(@config.getTemplateValue(get_host_key(FIXED_PROPERTY_STRINGS)))
+	  transformer.transform_values(method(:transform_values))
+    transformer.output
+    watch_file(transformer.get_filename())
+    
     group_communication_config = @config.getProperty(MGR_GROUP_COMMUNICATION_CONFIG)
     transformer = Transformer.new(
 		  "#{get_deployment_basedir()}/tungsten-manager/samples/conf/#{group_communication_config}.tpl",

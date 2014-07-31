@@ -1301,7 +1301,7 @@ public class TungstenProperties implements Serializable
     {
         Object o = getObject(key, defaultValue, required);
         if (o != null)
-            return o.toString();
+            return o.toString().trim();
         return null;
     }
 

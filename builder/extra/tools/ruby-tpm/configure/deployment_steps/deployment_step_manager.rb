@@ -83,6 +83,15 @@ module ConfigureDeploymentStepManager
       watch_file(transformer.get_filename())
     end
     
+    transformer = Transformer.new(
+          "#{get_deployment_basedir()}/tungsten-manager/samples/conf/checker.heartbeat.properties.tpl",
+          "#{get_deployment_basedir()}/tungsten-manager/conf/checker.heartbeat.properties", "#")
+    transformer.set_fixed_properties(@config.getTemplateValue(get_host_key(FIXED_PROPERTY_STRINGS)))
+    transformer.transform_values(method(:transform_values))
+    transformer.output
+    watch_file(transformer.get_filename())
+
+    
     if @config.getProperty(MANAGER_ENABLE_INSTRUMENTATION) == "true"
       FileUtils.cp("#{get_deployment_basedir()}/tungsten-manager/rules-ext/Instrumentation.drl", "#{get_deployment_basedir()}/tungsten-manager/rules/")
     end

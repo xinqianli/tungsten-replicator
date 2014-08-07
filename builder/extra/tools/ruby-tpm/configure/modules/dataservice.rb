@@ -465,8 +465,14 @@ class ReplicationServiceAutoEnable < ConfigurePrompt
   include AdvancedPromptModule
   
   def initialize
+    if Configurator.instance.is_enterprise?()
+      default = "false"
+    else
+      default = "true"
+    end
+    
     super(REPL_AUTOENABLE, "Put replication services ONLINE after the replicator starts", 
-      PV_BOOLEAN, "true")
+      PV_BOOLEAN, default)
   end
 end
 

@@ -1676,13 +1676,6 @@ module ConfigureDeploymentStepMySQL
     end
     
     if is_manager?() && (get_applier_datasource().is_a?(MySQLDatabasePlatform) || get_extractor_datasource().is_a?(MySQLDatabasePlatform))
-      transformer = Transformer.new(
-  		  "#{get_deployment_basedir()}/tungsten-manager/samples/conf/checker.mysqlserver.properties.tpl",
-  			"#{get_deployment_basedir()}/tungsten-manager/conf/checker.mysqlserver.properties", "#")
-  	  transformer.transform_values(method(:transform_replication_dataservice_values))
-      transformer.output
-      watch_file(transformer.get_filename())
-      
       write_svc_properties("mysql", @config.getProperty(REPL_BOOT_SCRIPT))
       
       if @config.getProperty(REPL_MYSQL_RO_SLAVE) == "true"

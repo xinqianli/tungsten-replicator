@@ -246,11 +246,12 @@ public class CLUtils implements Serializable
      * @param wasModified
      * @param printDetails
      * @param includeStatistics
+     * @param useRelativeLatency TODO
      * @return a formatted string representing a datasource
      */
     public static String formatDsMap(Map<String, TungstenProperties> dsMap,
             String header, boolean wasModified, boolean printDetails,
-            boolean includeStatistics)
+            boolean includeStatistics, boolean useRelativeLatency)
     {
         StringBuilder builder = new StringBuilder();
 
@@ -259,7 +260,7 @@ public class CLUtils implements Serializable
             builder.append(
                     formatStatus(dsProps, null, null, null, true, header,
                             wasModified, printDetails, includeStatistics,
-                            false, false)).append(NEWLINE);
+                            false, false, useRelativeLatency)).append(NEWLINE);
         }
 
         return builder.toString();
@@ -272,14 +273,16 @@ public class CLUtils implements Serializable
      * @param wasModified
      * @param printDetails
      * @param includeStatistics
+     * @param useRelativeLatency TODO
      * @return a formatted string representing a datasource
      */
     public static String formatDsProps(TungstenProperties dsProps,
             String header, boolean wasModified, boolean printDetails,
-            boolean includeStatistics)
+            boolean includeStatistics, boolean useRelativeLatency)
     {
         return formatStatus(dsProps, null, null, null, true, header,
-                wasModified, printDetails, includeStatistics, true, false);
+                wasModified, printDetails, includeStatistics, true, false,
+                useRelativeLatency);
     }
 
     /**
@@ -290,47 +293,54 @@ public class CLUtils implements Serializable
      *            modified
      * @param printDetails - print details
      * @param includeStatistics - include statistics
+     * @param useRelativeLatency TODO
      * @return a formatted string representing a datasource/replicator status
      */
     public static String formatStatus(TungstenProperties dsProps,
             TungstenProperties replProps, String header, boolean wasModified,
-            boolean printDetails, boolean includeStatistics)
+            boolean printDetails, boolean includeStatistics,
+            boolean useRelativeLatency)
     {
         return formatStatus(dsProps, replProps, null, null, true, header,
-                wasModified, printDetails, includeStatistics, false, false);
+                wasModified, printDetails, includeStatistics, false, false,
+                useRelativeLatency);
     }
 
     /**
      * Format manager status
      * 
      * @param isRawFormat TODO
+     * @param useRelativeLatency TODO
      */
     public static String formatStatus(TungstenProperties dsProps,
             TungstenProperties replProps, TungstenProperties dbProps,
             TungstenProperties routerUsage, boolean managerIsOnline,
             String header, boolean wasModified, boolean printDetails,
-            boolean includeStatistics, boolean isRawFormat)
+            boolean includeStatistics, boolean isRawFormat,
+            boolean useRelativeLatency)
     {
         return formatStatus(dsProps, replProps, dbProps, routerUsage,
                 managerIsOnline, header, wasModified, printDetails,
-                includeStatistics, true, isRawFormat);
+                includeStatistics, true, isRawFormat, useRelativeLatency);
     }
 
     public static String formatRouterStatus(TungstenProperties dsProps,
-            boolean printDetails)
+            boolean printDetails, boolean useRelativeLatency)
     {
 
         String activeConnections = dsProps
                 .getString(DataSource.ACTIVE_CONNECTION_COUNT);
         String connectionsCreated = dsProps
                 .getString(DataSource.CONNECTIONS_CREATED_COUNT);
-        Double appliedLatency = dsProps.getDouble(DataSource.APPLIED_LATENCY);
 
         String latencyDisplay = "";
 
-        if (dsProps.getString("role").equals("slave"))
+        if (dsProps.getString("role").equals("slave")
+                || dsProps.getString("role").equals("relay"))
         {
-            latencyDisplay = String.format(", latency=%5.3f", appliedLatency);
+            latencyDisplay = String.format(", latency=%5.3f, relative=%5.3f",
+                    dsProps.getDouble(DataSource.APPLIED_LATENCY),
+                    dsProps.getDouble(DataSource.RELATIVE_LATENCY));
         }
         return String.format("%s(%s:%s, created=%s, active=%s%s)",
                 dsProps.getString("name"), dsProps.getString("role"),
@@ -351,17 +361,19 @@ public class CLUtils implements Serializable
      * @param includeStatistics - whether or not to include statistics
      * @param includeComponents TODO
      * @param isRawFormat TODO
+     * @param userRelativeLatency TODO
      * @return a formatted string representing a datasource/replicator status
      */
     public static String formatStatus(TungstenProperties dsProps,
             TungstenProperties replProps, TungstenProperties dbProps,
             boolean managerIsOnline, String header, boolean wasModified,
             boolean printDetails, boolean includeStatistics,
-            boolean includeComponents, boolean isRawFormat)
+            boolean includeComponents, boolean isRawFormat,
+            boolean userRelativeLatency)
     {
         return formatStatus(dsProps, replProps, dbProps, null, managerIsOnline,
                 header, wasModified, printDetails, includeStatistics,
-                includeComponents, isRawFormat);
+                includeComponents, isRawFormat, userRelativeLatency);
     }
 
     /**
@@ -377,6 +389,7 @@ public class CLUtils implements Serializable
      * @param includeStatistics - whether or not to include statistics
      * @param includeComponents TODO
      * @param isRawFormat If true, eliminates 'pretty' formatting.
+     * @param useRelativeLatency TODO
      * @return a formatted string representing a datasource/replicator status
      */
     public static String formatStatus(TungstenProperties dsProps,
@@ -384,7 +397,7 @@ public class CLUtils implements Serializable
             TungstenProperties routerUsage, boolean managerIsOnline,
             String header, boolean wasModified, boolean printDetails,
             boolean includeStatistics, boolean includeComponents,
-            boolean isRawFormat)
+            boolean isRawFormat, boolean useRelativeLatency)
     {
         String indent = "  ";
         StringBuilder builder = new StringBuilder();
@@ -451,24 +464,27 @@ public class CLUtils implements Serializable
         // --- Replicator properties ---
         if (replProps != null)
         {
+
             progressInformation = String.format("progress=%s",
                     replProps.getString(Replicator.APPLIED_LAST_SEQNO));
 
-            Double appliedLatency = -1.0;
-
-            appliedLatency = replProps.getDouble(Replicator.APPLIED_LATENCY);
-
-            if (dsProps.getString(Replicator.ROLE).equals("slave"))
+            if (dsProps.getString(Replicator.ROLE).equals("master"))
             {
 
-                additionalInfo = String.format(", %s, latency=%5.3f",
-                        progressInformation, appliedLatency);
+                additionalInfo = String.format(
+                        ", %s, THL latency=%5.3f, relative=%5.3f",
+                        progressInformation,
+                        replProps.getDouble(Replicator.APPLIED_LATENCY),
+                        replProps.getDouble(Replicator.RELATIVE_LATENCY));
 
             }
             else
             {
-                additionalInfo = String.format(", %s, THL latency=%5.3f",
-                        progressInformation, appliedLatency);
+                additionalInfo = String.format(
+                        ", %s, latency=%5.3f, relative=%5.3f",
+                        progressInformation,
+                        replProps.getDouble(Replicator.APPLIED_LATENCY),
+                        replProps.getDouble(Replicator.RELATIVE_LATENCY));
             }
 
             // Retrieve useSSLConnection value
@@ -952,7 +968,8 @@ public class CLUtils implements Serializable
     }
 
     public static void printDataService(
-            Map<String, TungstenProperties> dataSourceProps, String[] args)
+            Map<String, TungstenProperties> dataSourceProps, String[] args,
+            boolean useRelativeLatency)
     {
         boolean printDetail = false;
 
@@ -974,16 +991,18 @@ public class CLUtils implements Serializable
                     continue;
             }
 
-            printDataSource(dataSourceProps.get(dsName), "", printDetail);
+            printDataSource(dataSourceProps.get(dsName), "", printDetail,
+                    useRelativeLatency);
         }
 
     }
 
     public static void printDataSource(TungstenProperties dsProperties,
-            String header, boolean printDetails)
+            String header, boolean printDetails, boolean useRelativeLatency)
     {
         println(formatStatus(dsProperties, null, null, null, true, header,
-                false, printDetails, printDetails, false, false));
+                false, printDetails, printDetails, false, false,
+                useRelativeLatency));
     }
 
     public static String printArgs(String args[])

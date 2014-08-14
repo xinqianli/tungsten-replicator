@@ -42,6 +42,7 @@ public class DataSource extends Resource implements Serializable
     public static final String      ALERT_MESSAGE                  = "alertMessage";
     public static final String      ALERT_TIME                     = "alertTime";
     public static final String      APPLIED_LATENCY                = "appliedLatency";
+    public static final String      RELATIVE_LATENCY               = "relativeLatency";
     public static final String      HOST                           = "host";
     public static final String      ROLE                           = "role";
     public static final String      VENDOR                         = "vendor";
@@ -89,6 +90,7 @@ public class DataSource extends Resource implements Serializable
     private String                  lastShunReason                 = "";
 
     private double                  appliedLatency                 = DEFAULT_APPLIED_LATENCY;
+    private double                  relativeLatency                = DEFAULT_APPLIED_LATENCY;
     private Date                    updateTimestamp                = new Date();
     private Date                    lastUpdate                     = new Date();
 
@@ -299,6 +301,8 @@ public class DataSource extends Resource implements Serializable
                 .getString(Replicator.APPLIED_LAST_EVENT_ID));
         newDs.setAppliedLatency(replicatorProps
                 .getDouble(Replicator.APPLIED_LATENCY));
+        newDs.setRelativeLatency(replicatorProps
+                .getDouble(Replicator.RELATIVE_LATENCY));
 
         newDs.setVipInterface(replicatorProps.getString(
                 Replicator.RESOURCE_VIP_INTERFACE, null, true));
@@ -1065,5 +1069,25 @@ public class DataSource extends Resource implements Serializable
     public boolean isWitness()
     {
         return role.equals(DataSourceRole.witness);
+    }
+
+    /**
+     * Returns the relativeLatency value.
+     * 
+     * @return Returns the relativeLatency.
+     */
+    public double getRelativeLatency()
+    {
+        return relativeLatency;
+    }
+
+    /**
+     * Sets the relativeLatency value.
+     * 
+     * @param relativeLatency The relativeLatency to set.
+     */
+    public void setRelativeLatency(double relativeLatency)
+    {
+        this.relativeLatency = relativeLatency;
     }
 }

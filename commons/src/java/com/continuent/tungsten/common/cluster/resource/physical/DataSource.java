@@ -21,8 +21,7 @@ import com.continuent.tungsten.common.utils.CLUtils;
 public class DataSource extends Resource implements Serializable
 {
     private static final long           serialVersionUID               = 8153881753668230575L;
-    private static final Logger         logger                         = Logger
-                                                                               .getLogger(DataSource.class);
+    private static final Logger         logger                         = Logger.getLogger(DataSource.class);
 
     public static final String          APPLIED_LATENCY                = "appliedLatency";
     public static final String          CLUSTER                        = "cluster";
@@ -115,12 +114,13 @@ public class DataSource extends Resource implements Serializable
 
         applyDefaults();
         props.applyProperties(this, true);
-        
-        //if (props.getString(REPLICATOR_HOST) == null || props.getString(REPLICATOR_HOST).length() == 0)
-        //{
-        //    System.out.println("############ EMPTY REPLICATOR HOST #################");
-        //    Thread.dumpStack();
-        //}
+
+        // if (props.getString(REPLICATOR_HOST) == null ||
+        // props.getString(REPLICATOR_HOST).length() == 0)
+        // {
+        // System.out.println("############ EMPTY REPLICATOR HOST #################");
+        // Thread.dumpStack();
+        // }
 
         String state = props.getString(DataSource.STATE);
         /*
@@ -160,39 +160,44 @@ public class DataSource extends Resource implements Serializable
     static public TungstenProperties updateFromReplicatorStatus(
             TungstenProperties replicatorProps, TungstenProperties dsProps)
     {
-        
-        if (replicatorProps.getString(REPLICATOR_HOST) == null || replicatorProps.getString(REPLICATOR_HOST).length() == 0)
+
+        if (replicatorProps.getString(REPLICATOR_HOST) == null
+                || replicatorProps.getString(REPLICATOR_HOST).length() == 0)
         {
-            System.out.println("############ EMPTY REPLICATOR HOST #################");
+            System.out
+                    .println("############ EMPTY REPLICATOR HOST #################");
             Thread.dumpStack();
         }
-        
-        dsProps.setString(NAME, replicatorProps.getString(Replicator.SOURCEID));
-        dsProps.setString(CLUSTER, replicatorProps
-                .getString(Replicator.CLUSTERNAME));
-        dsProps.setString(REPLICATOR_HOST, replicatorProps
-                .getString(Replicator.HOST));
-        dsProps.setString(HOST, replicatorProps.getString(Replicator.DATASERVER_HOST));
 
-        dsProps.setString(VENDOR, replicatorProps
-                .getString(Replicator.RESOURCE_VENDOR));
-        dsProps.setString(URL, replicatorProps
-                .getString(Replicator.RESOURCE_JDBC_URL));
-        dsProps.setString(DRIVER, replicatorProps
-                .getString(Replicator.RESOURCE_JDBC_DRIVER));
+        dsProps.setString(NAME, replicatorProps.getString(Replicator.SOURCEID));
+        dsProps.setString(CLUSTER,
+                replicatorProps.getString(Replicator.CLUSTERNAME));
+        dsProps.setString(REPLICATOR_HOST,
+                replicatorProps.getString(Replicator.HOST));
+        dsProps.setString(HOST,
+                replicatorProps.getString(Replicator.DATASERVER_HOST));
+
+        dsProps.setString(VENDOR,
+                replicatorProps.getString(Replicator.RESOURCE_VENDOR));
+        dsProps.setString(URL,
+                replicatorProps.getString(Replicator.RESOURCE_JDBC_URL));
+        dsProps.setString(DRIVER,
+                replicatorProps.getString(Replicator.RESOURCE_JDBC_DRIVER));
         dsProps.setInt(PORT, replicatorProps.getInt(Replicator.RESOURCE_PORT));
-        dsProps.setString(LOGDIR, replicatorProps
-                .getString(Replicator.RESOURCE_LOGDIR));
-        dsProps.setString(LOGPATTERN, replicatorProps
-                .getString(Replicator.RESOURCE_LOGPATTERN));
-        dsProps.setString(DISKLOGDIR, replicatorProps
-                .getString(Replicator.RESOURCE_DISK_LOGDIR));
-        dsProps.setString(REPLICATOR_HOST, replicatorProps
-                .getString(Replicator.HOST));
-        
-        if (dsProps.getString(REPLICATOR_HOST) == null || dsProps.getString(REPLICATOR_HOST).length() == 0)
+        dsProps.setString(LOGDIR,
+                replicatorProps.getString(Replicator.RESOURCE_LOGDIR));
+        dsProps.setString(LOGPATTERN,
+                replicatorProps.getString(Replicator.RESOURCE_LOGPATTERN));
+        dsProps.setString(DISKLOGDIR,
+                replicatorProps.getString(Replicator.RESOURCE_DISK_LOGDIR));
+        dsProps.setString(REPLICATOR_HOST,
+                replicatorProps.getString(Replicator.HOST));
+
+        if (dsProps.getString(REPLICATOR_HOST) == null
+                || dsProps.getString(REPLICATOR_HOST).length() == 0)
         {
-            System.out.println("############ EMPTY REPLICATOR HOST #################");
+            System.out
+                    .println("############ EMPTY REPLICATOR HOST #################");
             Thread.dumpStack();
         }
 
@@ -202,10 +207,10 @@ public class DataSource extends Resource implements Serializable
     static public TungstenProperties createFromReplicatorStatus(
             TungstenProperties replicatorProps)
     {
-        DataSource newDs = new DataSource(replicatorProps
-                .getString(Replicator.SOURCEID), replicatorProps
-                .getString(Replicator.CLUSTERNAME), replicatorProps
-                .getString(Replicator.SOURCEID));
+        DataSource newDs = new DataSource(
+                replicatorProps.getString(Replicator.SOURCEID),
+                replicatorProps.getString(Replicator.CLUSTERNAME),
+                replicatorProps.getString(Replicator.SOURCEID));
 
         newDs.setPrecedence(99);
         newDs.setIsAvailable(false);
@@ -220,8 +225,7 @@ public class DataSource extends Resource implements Serializable
                 .getString(Replicator.RESOURCE_DISK_LOGDIR));
         newDs.setLogPattern(replicatorProps
                 .getString(Replicator.RESOURCE_LOGPATTERN));
-        newDs.setReplicatorHost(replicatorProps
-                .getString(Replicator.HOST));
+        newDs.setReplicatorHost(replicatorProps.getString(Replicator.HOST));
 
         return newDs.toProperties();
     }
@@ -360,13 +364,15 @@ public class DataSource extends Resource implements Serializable
      */
     public void update(DataSource ds)
     {
-        
-        if (ds.getReplicatorHost() == null || ds.getReplicatorHost().length() == 0)
+
+        if (ds.getReplicatorHost() == null
+                || ds.getReplicatorHost().length() == 0)
         {
-            System.out.println("############ EMPTY REPLICATOR HOST #################");
+            System.out
+                    .println("############ EMPTY REPLICATOR HOST #################");
             Thread.dumpStack();
         }
-        
+
         synchronized (this)
         {
             sequence.next();
@@ -393,12 +399,12 @@ public class DataSource extends Resource implements Serializable
     public TungstenProperties toProperties()
     {
         TungstenProperties props = new TungstenProperties();
-        
-        //if (getReplicatorHost() == null || getReplicatorHost().length() == 0)
-        //{
-        //    System.out.println("############ EMPTY REPLICATOR HOST #################");
-        //    Thread.dumpStack();
-        //}
+
+        // if (getReplicatorHost() == null || getReplicatorHost().length() == 0)
+        // {
+        // System.out.println("############ EMPTY REPLICATOR HOST #################");
+        // Thread.dumpStack();
+        // }
 
         props.setString(NAME, getName());
         props.setString(VENDOR, getVendor());
@@ -789,7 +795,7 @@ public class DataSource extends Resource implements Serializable
     public String describe(boolean detailed)
     {
         return CLUtils.formatStatus(this.toProperties(), null, "", false,
-                detailed, false);
+                detailed, false, false);
     }
 
     /**
@@ -889,12 +895,12 @@ public class DataSource extends Resource implements Serializable
      */
     public void setReplicatorHost(String replicatorHost)
     {
-//        if (replicatorHost == null || replicatorHost.length() == 0)
-//        {
-//            System.out.println("############ EMPTY REPLICATOR HOST #################");
-//            Thread.dumpStack();
-//        }
-        
+        // if (replicatorHost == null || replicatorHost.length() == 0)
+        // {
+        // System.out.println("############ EMPTY REPLICATOR HOST #################");
+        // Thread.dumpStack();
+        // }
+
         this.replicatorHost = replicatorHost;
     }
 }

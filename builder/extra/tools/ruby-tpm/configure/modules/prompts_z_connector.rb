@@ -255,6 +255,7 @@ end
 
 class ConnectorListenPort < ConfigurePrompt
   include ConnectorPrompt
+  include NoConnectorReconfigure
   
   def initialize
     super(CONN_LISTEN_PORT, "Port for the connector to listen on", PV_INTEGER, "9999")
@@ -274,6 +275,7 @@ end
 
 class ConnectorReadOnlyListenPort < ConfigurePrompt
   include ConnectorPrompt
+  include NoConnectorReconfigure
   
   def initialize
     super(CONN_RO_LISTEN_PORT, "Port for the connector to listen on for read-only connections", PV_INTEGER)
@@ -561,6 +563,7 @@ end
 class RouterGatewayPort < ConfigurePrompt
   include ConnectorPrompt
   include AdvancedPromptModule
+  include NoConnectorReconfigure
   
   def initialize
     super(ROUTER_GATEWAY_PORT, "The router gateway port", PV_INTEGER, "11999")
@@ -573,6 +576,7 @@ end
 class RouterGatewayReturnPort < ConfigurePrompt
   include ConnectorPrompt
   include HiddenValueModule
+  include NoConnectorReconfigure
   
   def initialize
     super(ROUTER_GATEWAY_RETURN_PORT, "The router gateway return port", PV_INTEGER)
@@ -586,6 +590,7 @@ end
 class RouterJMXPort < ConfigurePrompt
   include ConnectorPrompt
   include AdvancedPromptModule
+  include NoConnectorReconfigure
   
   def initialize
     super(ROUTER_JMX_PORT, "The router jmx port", PV_INTEGER, "10999")
@@ -597,6 +602,7 @@ end
 class ConnectorJavaMemorySize < ConfigurePrompt
   include ConnectorPrompt
   include AdvancedPromptModule
+  include NoConnectorReconfigure
   
   def initialize
     super(CONN_JAVA_MEM_SIZE, "Connector Java heap memory size in Mb (min 128)",
@@ -607,6 +613,7 @@ end
 class ConnectorJavaGarbageCollection < ConfigurePrompt
   include ConnectorPrompt
   include AdvancedPromptModule
+  include NoConnectorReconfigure
   
   def initialize
     super(CONN_JAVA_ENABLE_CONCURRENT_GC, "Connector Java uses concurrent garbage collection",

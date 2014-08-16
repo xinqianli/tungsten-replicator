@@ -511,7 +511,7 @@ public class DataSource extends Resource implements Serializable
             this.setLastError(ds.getLastError());
             this.setLastShunReason(ds.getLastShunReason());
             this.setAppliedLatency(ds.getAppliedLatency());
-            this.setAppliedLatency(ds.getRelativeLatency());
+            this.setRelativeLatency(ds.getRelativeLatency());
             this.setUpdateTimestamp(ds.getUpdateTimestamp());
             this.setLastError(ds.getLastError());
             this.setHighWater(ds.getHighWater());

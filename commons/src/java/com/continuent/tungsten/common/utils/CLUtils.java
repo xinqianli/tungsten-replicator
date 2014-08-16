@@ -338,9 +338,13 @@ public class CLUtils implements Serializable
         if (dsProps.getString("role").equals("slave")
                 || dsProps.getString("role").equals("relay"))
         {
-            latencyDisplay = String.format(", latency=%5.3f, relative=%5.3f",
+            String relativeLatencyInfo = useRelativeLatency ? String.format(
+                    ", relative=%5.3f", dsProps.getDouble(
+                            DataSource.RELATIVE_LATENCY, "-1.0", false)) : "";
+
+            latencyDisplay = String.format(", latency=%5.3f%s",
                     dsProps.getDouble(DataSource.APPLIED_LATENCY),
-                    dsProps.getDouble(DataSource.RELATIVE_LATENCY));
+                    relativeLatencyInfo);
         }
         return String.format("%s(%s:%s, created=%s, active=%s%s)",
                 dsProps.getString("name"), dsProps.getString("role"),
@@ -468,23 +472,25 @@ public class CLUtils implements Serializable
             progressInformation = String.format("progress=%s",
                     replProps.getString(Replicator.APPLIED_LAST_SEQNO));
 
+            String relativeLatencyInfo = useRelativeLatency ? String.format(
+                    ", relative=%5.3f", replProps.getDouble(
+                            Replicator.RELATIVE_LATENCY, "-1.0", false)) : "";
+
             if (dsProps.getString(Replicator.ROLE).equals("master"))
             {
 
-                additionalInfo = String.format(
-                        ", %s, THL latency=%5.3f, relative=%5.3f",
-                        progressInformation,
-                        replProps.getDouble(Replicator.APPLIED_LATENCY),
-                        replProps.getDouble(Replicator.RELATIVE_LATENCY));
+                additionalInfo = String.format(", %s, THL latency=%5.3f%s",
+                        progressInformation, replProps.getDouble(
+                                Replicator.APPLIED_LATENCY, "-1.0", false),
+                        relativeLatencyInfo);
 
             }
             else
             {
-                additionalInfo = String.format(
-                        ", %s, latency=%5.3f, relative=%5.3f",
-                        progressInformation,
-                        replProps.getDouble(Replicator.APPLIED_LATENCY),
-                        replProps.getDouble(Replicator.RELATIVE_LATENCY));
+                additionalInfo = String.format(", %s, latency=%5.3f%s",
+                        progressInformation, replProps.getDouble(
+                                Replicator.APPLIED_LATENCY, "-1.0", false),
+                        relativeLatencyInfo);
             }
 
             // Retrieve useSSLConnection value

@@ -254,6 +254,8 @@ public class DataSource extends Resource implements Serializable
                 replicatorProps.getString(Replicator.APPLIED_LAST_EVENT_ID)));
         dsProps.setDouble(APPLIED_LATENCY,
                 replicatorProps.getDouble(Replicator.APPLIED_LATENCY));
+        dsProps.setDouble(APPLIED_LATENCY,
+                replicatorProps.getDouble(Replicator.RELATIVE_LATENCY));
         dsProps.setString(VIPINTERFACE, replicatorProps.getString(
                 Replicator.RESOURCE_VIP_INTERFACE, null, true));
         dsProps.setString(VIPADDRESS, replicatorProps.getString(
@@ -509,6 +511,7 @@ public class DataSource extends Resource implements Serializable
             this.setLastError(ds.getLastError());
             this.setLastShunReason(ds.getLastShunReason());
             this.setAppliedLatency(ds.getAppliedLatency());
+            this.setAppliedLatency(ds.getRelativeLatency());
             this.setUpdateTimestamp(ds.getUpdateTimestamp());
             this.setLastError(ds.getLastError());
             this.setHighWater(ds.getHighWater());
@@ -541,6 +544,7 @@ public class DataSource extends Resource implements Serializable
         props.setString(LASTERROR, getLastError());
         props.setString(LASTSHUNREASON, getLastShunReason());
         props.setDouble(APPLIED_LATENCY, appliedLatency);
+        props.setDouble(RELATIVE_LATENCY, relativeLatency);
         props.setLong(ACTIVE_CONNECTION_COUNT, activeConnectionsCount.get());
         props.setLong(CONNECTIONS_CREATED_COUNT, connectionsCreatedCount.get());
         props.setLong("statementsCreatedCount", statementsCreatedCount.get());

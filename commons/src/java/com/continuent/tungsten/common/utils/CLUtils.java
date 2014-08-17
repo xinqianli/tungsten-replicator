@@ -691,11 +691,22 @@ public class CLUtils implements Serializable
 
             if (replProps != null)
             {
-                String replHeader = String.format(
-                        "%s:REPLICATOR(role=%s, state=%s)",
-                        replProps.getString("host"),
-                        replProps.getString("role"),
-                        replProps.getString("state"));
+                String replHeader = null;
+
+                if (replProps.getString(Replicator.STATE).equals(
+                        ResourceState.STOPPED.toString()))
+                {
+                    replHeader = String.format("%s:REPLICATOR(state=STOPPED)",
+                            replProps.getString("host"));
+                }
+                else
+                {
+                    replHeader = String.format(
+                            "%s:REPLICATOR(role=%s, state=%s)",
+                            replProps.getString("host"),
+                            replProps.getString("role"),
+                            replProps.getString("state"));
+                }
 
                 builder.append(formatMap(replHeader, replProps.map(), "", "  ",
                         false));
@@ -746,7 +757,8 @@ public class CLUtils implements Serializable
             else
                 return "REPLICATOR(state=STATUS NOT AVAILABLE)";
         }
-        else if (replProps.getString(Replicator.STATE).equals(ResourceState.STOPPED.toString()))
+        else if (replProps.getString(Replicator.STATE).equals(
+                ResourceState.STOPPED.toString()))
         {
             return "REPLICATOR(state=STOPPED)";
         }
@@ -842,6 +854,11 @@ public class CLUtils implements Serializable
         if (replProps == null)
         {
             return "REPLICATOR(state=STATUS NOT AVAILABLE)";
+        }
+        else if (replProps.getString(Replicator.STATE).equals(
+                ResourceState.STOPPED.toString()))
+        {
+            return "REPLICATOR(state=STOPPED)";
         }
         String indent = "\t";
         StringBuilder builder = new StringBuilder();

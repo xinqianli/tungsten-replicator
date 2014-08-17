@@ -746,6 +746,10 @@ public class CLUtils implements Serializable
             else
                 return "REPLICATOR(state=STATUS NOT AVAILABLE)";
         }
+        else if (replProps.getString(Replicator.STATE).equals(ResourceState.STOPPED.toString()))
+        {
+            return "REPLICATOR(state=STOPPED)";
+        }
         String indent = "\t";
         StringBuilder builder = new StringBuilder();
 

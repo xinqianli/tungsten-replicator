@@ -772,26 +772,30 @@ public class CLUtils implements Serializable
         {
             final String prefix = "thl://";
 
-            String masterUri = replProps.getString(
-                    Replicator.MASTER_CONNECT_URI).trim();
+            String masterUri = replProps
+                    .getString(Replicator.MASTER_CONNECT_URI);
 
-            // don't display the port
-            int lastIdx = masterUri.indexOf(":", prefix.length());
-
-            // if we don't have a ':' at the end, maybe a '/'?
-            if (lastIdx == -1)
+            if (masterUri != null)
             {
-                lastIdx = masterUri.indexOf("/", prefix.length());
-            }
+                // don't display the port
+                int lastIdx = masterUri.indexOf(":", prefix.length());
 
-            // If we don't have either, we just go to the end of the string
-            if (lastIdx == -1)
-            {
-                lastIdx = masterUri.length();
-            }
+                // if we don't have a ':' at the end, maybe a '/'?
+                if (lastIdx == -1)
+                {
+                    lastIdx = masterUri.indexOf("/", prefix.length());
+                }
 
-            masterReplicator = ", master="
-                    + masterUri.substring(masterUri.indexOf("//") + 2, lastIdx);
+                // If we don't have either, we just go to the end of the string
+                if (lastIdx == -1)
+                {
+                    lastIdx = masterUri.length();
+                }
+
+                masterReplicator = ", master="
+                        + masterUri.substring(masterUri.indexOf("//") + 2,
+                                lastIdx);
+            }
         }
         builder.append(String.format("REPLICATOR(role=%s%s, state=%s)",
                 replProps.getString("role"), masterReplicator,

@@ -149,14 +149,6 @@ public class CatalogManager
         Database conn = getConnection();
         try
         {
-            // Set default schema if supported.
-            if (conn.supportsUseDefaultSchema() && metadataSchema != null)
-            {
-                if (conn.supportsCreateDropSchema())
-                    conn.createSchema(metadataSchema);
-                conn.useDefaultSchema(metadataSchema);
-            }
-
             // Create tables, allowing schema changes to be logged if requested.
             if (conn.supportsControlSessionLevelLogging())
             {
@@ -168,6 +160,15 @@ public class CatalogManager
                 else
                     conn.controlSessionLevelLogging(true);
             }
+
+            // Set default schema if supported.
+            if (conn.supportsUseDefaultSchema() && metadataSchema != null)
+            {
+                if (conn.supportsCreateDropSchema())
+                    conn.createSchema(metadataSchema);
+                conn.useDefaultSchema(metadataSchema);
+            }
+
 
             // Create commit seqno table.
             commitSeqnoTable = new CommitSeqnoTable(conn, metadataSchema,

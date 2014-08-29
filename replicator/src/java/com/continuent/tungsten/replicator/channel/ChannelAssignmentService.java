@@ -167,7 +167,8 @@ public class ChannelAssignmentService implements PipelineService
         // Create the database connection.
         try
         {
-            conn = DatabaseFactory.createDatabase(url, user, password);
+            conn = DatabaseFactory.createDatabase(url, user, password,
+                    context.isMaster() || context.isPrivilegedSlaveUpdate());
             if (reconnectTimeoutInSeconds > 0)
             {
                 logger.info("ChannelAssignmentService will use a "
@@ -298,7 +299,7 @@ public class ChannelAssignmentService implements PipelineService
                         + "s ago)");
             // Time to reconnect now
             conn.close();
-            conn.connect();
+            conn.connect(false);
         }
         else if (logger.isDebugEnabled())
             logger.debug("Not renewing connection (last active "

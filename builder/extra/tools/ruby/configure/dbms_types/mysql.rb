@@ -80,7 +80,7 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
   end
   
   def get_thl_uri
-	  "jdbc:mysql:thin://${replicator.global.db.host}:${replicator.global.db.port}/${replicator.schema}?createDB=true"
+	  "jdbc:mysql:thin://${replicator.global.db.host}:${replicator.global.db.port}/"
 	end
   
   def check_thl_schema(thl_schema)

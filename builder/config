@@ -7,9 +7,9 @@ BUILD_DIR=build
 
 # SVN URLs of the required modules
 # Replicator URL.
-TREP_SVN_URL=https://tungsten-replicator.googlecode.com/svn/branches/2.2.1-maintenance/replicator
+TREP_SVN_URL=https://tungsten-replicator.googlecode.com/svn/branches/tungsten-3.0.0/replicator
 # Commons URL.
-TCOM_SVN_URL=https://tungsten-replicator.googlecode.com/svn/branches/2.2.1-maintenance/commons
+TCOM_SVN_URL=https://tungsten-replicator.googlecode.com/svn/branches/tungsten-3.0.0/commons
 # Bristlecone URL.
 BRI_SVN_URL=http://bristlecone.googlecode.com/svn/branches/2.2.1-maintenance/bristlecone
 # Tungsten Cookbook URL.

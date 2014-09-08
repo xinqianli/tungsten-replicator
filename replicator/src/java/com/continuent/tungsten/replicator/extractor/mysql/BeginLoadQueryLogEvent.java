@@ -32,13 +32,10 @@ import com.continuent.tungsten.replicator.extractor.mysql.conversion.LittleEndia
  * @version 1.0
  */
 public class BeginLoadQueryLogEvent extends LogEvent
-        implements
-            LoadDataInfileEvent
 {
-    int             fileID;
-    byte[]          fileData;
-    private String  schemaName;
-    private boolean nextEventCanBeAppended = false;
+    int            fileID;
+    byte[]         fileData;
+    private String schemaName;
 
     public BeginLoadQueryLogEvent(byte[] buffer, int eventLength,
             FormatDescriptionLogEvent descriptionEvent, String currentPosition)
@@ -114,17 +111,4 @@ public class BeginLoadQueryLogEvent extends LogEvent
     {
         return schemaName;
     }
-
-    @Override
-    public void setNextEventCanBeAppended(boolean b)
-    {
-        this.nextEventCanBeAppended = b;
-    }
-
-    @Override
-    public boolean canNextEventBeAppended()
-    {
-        return nextEventCanBeAppended;
-    }
-
 }

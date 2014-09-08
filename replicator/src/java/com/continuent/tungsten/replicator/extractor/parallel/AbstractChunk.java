@@ -76,10 +76,17 @@ public abstract class AbstractChunk implements Chunk
     @Override
     public abstract long getNbBlocks();
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.extractor.parallel.Chunk#getWhereClause()
+     */
     protected abstract String getWhereClause();
 
     /**
      * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.extractor.parallel.Chunk#getQuery()
      */
     @Override
     public String getQuery(Database connection, String eventId)
@@ -120,7 +127,11 @@ public abstract class AbstractChunk implements Chunk
         sql.append('.');
         sql.append(connection.getDatabaseObjectName(getTable().getName()));
 
-        sql.append(AbstractChunk.getFlashbackQueryClause(connection, eventId));
+        if (eventId != null)
+        {
+            sql.append(" AS OF SCN ");
+            sql.append(eventId);
+        }
 
         String where = getWhereClause();
         if (where != null)
@@ -132,9 +143,11 @@ public abstract class AbstractChunk implements Chunk
 
         return sql.toString();
     }
-
+    
     /**
      * Returns the order by clause, if any.
+     * 
+     * @return
      */
     protected String getOrderByClause()
     {
@@ -152,19 +165,4 @@ public abstract class AbstractChunk implements Chunk
     {
         return null;
     }
-
-    /**
-     * TODO: getFlashbackQueryClause definition.
-     * 
-     * @param conn
-     */
-    protected static String getFlashbackQueryClause(Database conn,
-            String eventId)
-    {
-        if (eventId != null && conn.supportsFlashbackQuery())
-            return conn.getFlashbackQuery(eventId);
-
-        return "";
-    }
-
 }

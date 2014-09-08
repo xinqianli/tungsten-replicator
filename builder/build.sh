@@ -94,13 +94,8 @@ fi
 
 printHeader "REPLICATOR BUILD SCRIPT"
 
-if [ -n "$SKIP_PROMPT" ]
-then
-    echo "Skipping confirmation, as the variable SKIP_PROMPT is set"
-else
-    echo "Did you update config.local? (press enter to continue)"
-    read ignored_answer
-fi
+echo "Did you update config.local? (press enter to continue)"
+read ignored_answer
 
 source ./$config
 
@@ -160,23 +155,19 @@ if [ -z $SVN_USER ]; then
   export SVN_USER=anonymous
 # else use $SVN_USER environment variable
 fi
+echo "OK to set code.google.com <http://code.google.com> SVN_USER to $SVN_USER?"
+echo "Press enter to continue.  Otherwise quit and set SVN_USER in your environment"
+read ignored_answer
 
-if [ -n "$SKIP_PROMPT" ]
-then
-    echo "Using SVN_USER=$SVN_USER"
+if [ -z $SVN_USER ]; then
+  export SVN_USER=`whoami`
+  echo "OK to set code.google.com SVN_USER to $SVN_USER?"
+  echo "Press enter to continue.  Otherwise quit and set SVN_USER in your environment"
+  read ignored_answer
 else
-    echo "OK to set code.google.com <http://code.google.com> SVN_USER to $SVN_USER?"
-    echo "Press enter to continue.  Otherwise quit and set SVN_USER in your environment"
-    read ignored_answer
-    if [ -z $SVN_USER ]; then
-      export SVN_USER=`whoami`
-      echo "OK to set code.google.com SVN_USER to $SVN_USER?"
-      echo "Press enter to continue.  Otherwise quit and set SVN_USER in your environment"
-      read ignored_answer
-    else
-      export SVN_USER=anonymous
-    fi
+  export SVN_USER=anonymous
 fi
+
 
 # Release name.
 product="Tungsten Replicator"
@@ -241,4 +232,43 @@ if [ "$SKIP_SOURCE" = 0 ]; then
   build_source
 else
   echo "### Skipping source code release generation"
+fi
+
+##########################################################################
+# Create tools build if desired.
+##########################################################################
+
+if [ ${SKIP_TOOLS} -eq 0 ]
+then
+  printHeader "Creating tools release"
+
+  reldir_tools=${reldir}-tools
+  echo "### Creating tools release directory: ${reldir_tools}"
+  rm -rf ${reldir_tools}
+  mkdir -p ${reldir_tools}
+  mkdir -p ${reldir_tools}/.runtime
+
+	cp $extra_tools/configure $reldir_tools
+	cp $extra_tools/configure-service $reldir_tools
+	cp $extra_tools/tungsten-installer $reldir_tools
+	cp $extra_tools/update $reldir_tools
+  rsync -Ca $extra_tools/ruby $reldir_tools
+  rsync -Ca $extra_tools/ruby-tools-only/* $reldir_tools/ruby/
+
+  if [ ${INCLUDE_TPM} -eq 1 ]
+	then
+		cp $extra_tools/tpm $reldir_tools
+		rsync -Ca $extra_tools/ruby-tpm $reldir_tools
+	  rsync -Ca $extra_tools/ruby-tools-only/* $reldir_tools/ruby-tpm/
+	fi
+
+  cp -rf ${reldir} ${reldir_tools}/.runtime
+  cp -rf ${reldir}/.man* ${reldir_tools}
+  
+  rel_tools_tgz=${relname}-tools.tar.gz
+
+  echo "### generating tools tar file: ${rel_tools_tgz}"
+  (cd ${reldir}/..; tar -czf ${rel_tools_tgz} ${relname}-tools/)
+else
+  echo "### Skipping tools release generation"
 fi

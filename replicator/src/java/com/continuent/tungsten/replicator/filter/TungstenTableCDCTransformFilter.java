@@ -69,7 +69,7 @@ public class TungstenTableCDCTransformFilter implements Filter
         }
         else
         {
-            throw new ReplicatorException("Malformed FROM clause : " + name + " - Should be <SCHEMA>.<TABLE>");
+            throw new ReplicatorException("Malformed FROM clause : " + name);
         }
     }
 
@@ -88,7 +88,7 @@ public class TungstenTableCDCTransformFilter implements Filter
         }
         else
         {
-            throw new ReplicatorException("Malformed TO clause : " + name + " - Should be <SCHEMA>.<TABLE>");
+            throw new ReplicatorException("Malformed FROM clause : " + name);
         }
     }
 

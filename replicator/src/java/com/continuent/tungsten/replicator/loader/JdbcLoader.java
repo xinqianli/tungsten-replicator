@@ -623,7 +623,7 @@ public abstract class JdbcLoader extends Loader
 
             // Create the database.
             conn = DatabaseFactory.createDatabase(url, user, password, true);
-            conn.connect();
+            conn.connect(false);
             statement = conn.createStatement();
         }
         catch (SQLException e)

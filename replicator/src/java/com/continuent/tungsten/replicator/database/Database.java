@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -32,12 +32,10 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.continuent.tungsten.common.csv.CsvSpecification;
 import com.continuent.tungsten.common.csv.CsvWriter;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.consistency.ConsistencyCheck;
 import com.continuent.tungsten.replicator.consistency.ConsistencyException;
-import com.continuent.tungsten.replicator.datasource.UniversalConnection;
 import com.continuent.tungsten.replicator.dbms.OneRowChange;
 
 /**
@@ -48,7 +46,7 @@ import com.continuent.tungsten.replicator.dbms.OneRowChange;
  * @author <a href="mailto:scott.martin@continuent.com">Scott Martin</a>
  * @version 1.0
  */
-public interface Database extends UniversalConnection
+public interface Database
 {
     /** String to denote MySQL DBMS dialect in metadata. */
     public static String MYSQL      = "mysql";
@@ -61,27 +59,6 @@ public interface Database extends UniversalConnection
 
     /** String to denote PostgreSQL dialect in metadata. */
     public static String UNKNOWN    = "unknown";
-
-    // START UNIVERSALCONNECTOR API.
-    /**
-     * Commit the current transaction.
-     */
-    @Override
-    public void commit() throws SQLException;
-
-    /**
-     * Rollback the current transaction.
-     */
-    @Override
-    public void rollback() throws SQLException;
-
-    /**
-     * Toggles autocommit by calling Connection.setAutocommit().
-     */
-    @Override
-    public void setAutoCommit(boolean autoCommit) throws SQLException;
-
-    // END UNIVERSALCONNECTOR API.
 
     /** Returns the type of DBMS behind the interface */
     public DBMS getType();
@@ -116,15 +93,19 @@ public interface Database extends UniversalConnection
     public boolean isPrivileged();
 
     /**
-     * Sets the CSV specification use to generate CSV output parameters.
-     */
-    public void setCsvSpecification(CsvSpecification csvSpecification);
-
-    /**
      * Connects to the database. You must set the url, user, and password then
      * do this. Connection does not log queries by default.
      */
     public void connect() throws SQLException;
+
+    /**
+     * Connects to the database. You must set the url, user, and password then
+     * do this.
+     * 
+     * @param binlog log connection updates.
+     * @throws SQLException
+     */
+    public void connect(boolean binlog) throws SQLException;
 
     /**
      * Disconnects from the database. This is also accomplished by close().
@@ -372,11 +353,6 @@ public interface Database extends UniversalConnection
     public boolean supportsReplace();
 
     /**
-     * Returns true if the implementation supports a SQL REPLACE command.
-     */
-    public boolean supportsBLOB();
-
-    /**
      * Replaces a row in the table using the data supplied by the Table
      * specification. The Table instance's primary key is used to locate the
      * matching row. This uses a REPLACE command if it is available.
@@ -410,6 +386,21 @@ public interface Database extends UniversalConnection
      * Generate a JDBC statement.
      */
     public Statement createStatement() throws SQLException;
+
+    /**
+     * Commit the current transaction.
+     */
+    public void commit() throws SQLException;
+
+    /**
+     * Rollback the current transaction.
+     */
+    public void rollback() throws SQLException;
+
+    /**
+     * Toggles autocommit by calling Connection.setAutocommit().
+     */
+    public void setAutoCommit(boolean autoCommit) throws SQLException;
 
     /**
      * Provides a script file to be executed when initializing connection.
@@ -654,36 +645,5 @@ public interface Database extends UniversalConnection
     public void dropTungstenCatalog(String schemaName,
             String tungstenTableType, String serviceName) throws SQLException;
 
-    /**
-     * Returns true if the given schema is a system schema.
-     * 
-     * @param schemaName a schema
-     * @return true if schemaName matches a system schema
-     */
     public boolean isSystemSchema(String schemaName);
-
-    /**
-     * Returns the current position of the database (binary log position for
-     * MySQL, SCN for Oracle, for example).
-     * 
-     * @param flush Should the database be flushed before reading the position?
-     * @return The current position as a string
-     * @throws ReplicatorException if an error occurs
-     */
-    public String getCurrentPosition(boolean flush) throws ReplicatorException;
-
-    /**
-     * Does the database support flashback query?
-     * 
-     * @return true if the database support flashback queries, false otherwise
-     */
-    public boolean supportsFlashbackQuery();
-
-    /**
-     * Returns the flashback clause based on the given position
-     * 
-     * @param position The position to be used for the flashback query
-     * @return the generated flashback clause based on the position
-     */
-    public String getFlashbackQuery(String position);
 }

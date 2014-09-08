@@ -10,10 +10,9 @@ module ClusterCommandModule
     [
       ConfigTargetBasenamePrompt.new(),
       DeploymentCommandPrompt.new(),
-      DeploymentExternalConfigurationTypePrompt.new(),
-      DeploymentExternalConfigurationSourcePrompt.new(),
-      DeploymentConfigurationKeyPrompt.new(),
       RemotePackagePath.new(),
+      DeployCurrentPackagePrompt.new(),
+      DeployPackageURIPrompt.new(),
       DeploymentHost.new(),
       StagingHost.new(),
       StagingUser.new(),
@@ -141,7 +140,10 @@ module ClusterCommandModule
     
     each_prompt(ReplicationServices){
       |prompt|
-
+      if prompt.is_a?(MySQLServerID)
+        next
+      end
+      
       add_prompt(opts, prompt, @replication_options, [REPL_SERVICES])
     }
     
@@ -214,197 +216,160 @@ module ClusterCommandModule
     return is_valid?()
   end
   
-  def load_external_configurations
-    external_configs = []
-    external_option_sets = get_external_option_sets()
+  def load_external_configuration
+    @config.reset()
+    external_options = get_external_option_arguments()
     
-    external_option_sets.each{
-      |option_set|
-      @config.reset()
-      external_options = option_set[:options]
+    external_options.each{
+      |section_options|
+      section = section_options[:key]
+      arguments = section_options[:arguments]
+      reset_cluster_options()
       
-      external_options.each{
-        |section_options|
-        section = section_options[:key]
-        arguments = section_options[:arguments]
-        reset_cluster_options()
-
-        if section == DEFAULTS
-          parse_cluster_options(arguments, true)
-          load_cluster_defaults()
-        else
-          parse_cluster_options(arguments)
-          load_cluster_options([to_identifier(section)])
-        end
-      }
-      
-      @config.setProperty(DEPLOYMENT_EXTERNAL_CONFIGURATION_TYPE, option_set[:type])
-      @config.setProperty(DEPLOYMENT_EXTERNAL_CONFIGURATION_SOURCE, option_set[:source])
-      
-      if Configurator.instance.is_locked?()
-        # Read the staging directory information from the current file
-        original_config_file = Configurator.instance.get_base_path() + "/" + Configurator::HOST_CONFIG
-        if File.exist?(original_config_file)
-          original_config = Properties.new()
-          original_config.load(original_config_file)
-          @config.setProperty(DEPLOYMENT_HOST, original_config.getProperty(DEPLOYMENT_HOST))
-          @config.setProperty(STAGING_HOST, original_config.getProperty(STAGING_HOST))
-          @config.setProperty(STAGING_USER, original_config.getProperty(STAGING_USER))
-          @config.setProperty(STAGING_DIRECTORY, original_config.getProperty(STAGING_DIRECTORY))
-        end
+      if section == DEFAULTS
+        parse_cluster_options(arguments, true)
+        load_cluster_defaults()
+      else
+        parse_cluster_options(arguments)
+        load_cluster_options([to_identifier(section)])
       end
-      
-      external_configs << @config.dup()
     }
     
-    external_configs
-  end
-  
-  def get_external_option_sets
-    option_sets = []
-    
-    if @config_ini_paths.size() != nil
-      @config_ini_paths.each{
-        |path|
-        external_options = get_external_options_from_ini(path)
-        external_options.sort!{
-          |a,b|
-
-          (a[:weight] <=> b[:weight])
-        }
-
-        option_sets << {
-          :type => "ini",
-          :source => path,
-          :options => external_options
-        }
-      }
+    if Configurator.instance.is_locked?()
+      # Read the staging directory information from the current file
+      original_config_file = Configurator.instance.get_base_path() + "/" + Configurator::HOST_CONFIG
+      if File.exist?(original_config_file)
+        original_config = Properties.new()
+        original_config.load(original_config_file)
+        @config.setProperty(DEPLOYMENT_HOST, original_config.getProperty(DEPLOYMENT_HOST))
+        @config.setProperty(STAGING_HOST, original_config.getProperty(STAGING_HOST))
+        @config.setProperty(STAGING_USER, original_config.getProperty(STAGING_USER))
+        @config.setProperty(STAGING_DIRECTORY, original_config.getProperty(STAGING_DIRECTORY))
+      end
     end
-    
-    option_sets
   end
   
-  def get_external_options_from_ini(path)
+  def get_external_option_arguments
     external_arguments = []
     hostname = Configurator.instance.hostname()
     natural_order = 0
     
-    debug("Load external configuration from #{path}")
-    
-    ini = IniParse.open(path)
-    ini.each{
-      |section|
-      key = section.key
+    if @config_ini_path != nil
+      debug("Load external configuration from #{@config_ini_path}")
       
-      if section.key == "defaults"
-        key = DEFAULTS
-      elsif section.key == "defaults.replicator"
-        if Configurator.instance.is_enterprise?() == false
+      ini = IniParse.open(@config_ini_path)
+      ini.each{
+        |section|
+        key = section.key
+        is_modification = false
+        
+        if section.key == "defaults"
           key = DEFAULTS
-        else
-          debug("Bypassing the defaults.replicator section because this is not a Tungsten Replicator build")
-          next
-        end
-      else
-        match = section.key.match(/^([A-Za-z0-9_]+)@([A-Za-z0-9_.\-]+)$/)
-        if match != nil
-          if match[2] == hostname
-            if match[1] == "defaults"
-              key = DEFAULTS
-            else
-              key = match[1]
-            end
+        elsif section.key == "defaults.replicator"
+          if Configurator.instance.is_enterprise?() == false
+            key = DEFAULTS
           else
-            debug("Bypassing the #{section.key} section because it does not apply to this host")
+            debug("Bypassing the defaults.replicator section because this is not a Tungsten Replicator build")
             next
           end
-        end
-      end
-      
-      args = []
-      section.each{
-        |line|
-        unless line.is_a?(Array)
-          values = [line]
         else
-          values = line
+          match = section.key.match(/^([A-Za-z0-9_]+)@([A-Za-z0-9_.\-]+)$/)
+          if match != nil
+            if match[2] == hostname
+              if match[1] == "defaults"
+                key = DEFAULTS
+              else
+                key = match[1]
+              end
+              
+              # Include this in the section definition so this section
+              # may be evaluated after the standard section with the same name
+              is_modification = true
+            else
+              debug("Bypassing the #{section.key} section because it does not apply to this host")
+              next
+            end
+          end
         end
         
-        values.each{
-          |value|
-          argument = value.key.gsub(/_/, "-")
-          unless argument[0,2] == "--"
-            argument = "--" + argument
+        args = []
+        section.each{
+          |line|
+          unless line.is_a?(Array)
+            values = [line]
+          else
+            values = line
           end
           
-          v_string = value.value.to_s()
-          if v_string[-2,2].to_s() == " \\"
-            v_string = v_string[0, (v_string.length()-2)]
-            Configurator.instance.warning("Extra ' \\' characters were found at the end of #{value.key}=#{value.value}. They have been automatically removed. You may wrap the value with double-quotes in order to keep the extra characters.")
-          end
-          args << "#{argument}=#{v_string}"
+          values.each{
+            |value|
+            argument = value.key.gsub(/_/, "-")
+            unless argument[0,2] == "--"
+              argument = "--" + argument
+            end
+            
+            v_string = value.value.to_s()
+            if v_string[-2,2].to_s() == " \\"
+              v_string = v_string[0, (v_string.length()-2)]
+              Configurator.instance.warning("Extra ' \\' characters were found at the end of #{value.key}=#{value.value}. They have been automatically removed. You may wrap the value with double-quotes in order to keep the extra characters.")
+            end
+            args << "#{argument}=#{v_string}"
+          }
         }
+        
+        # Provide metadata about the arguments for this section
+        is_composite = false
+        has_relay_source = false
+        args.each{
+          |arg|
+          if arg =~ /^--composite-datasources=|--dataservice-composite-datasources=/
+            is_composite = true
+            break
+          end
+          if arg =~ /^--relay-source=|--master-dataservice=|--dataservice-relay-source=/
+            has_relay_source = true
+            break
+          end
+        }
+        
+        # Calculate a weight for this section so we can sort on it
+        # DEFAULTS
+        # Services
+        # Services that reference a relay source
+        # Composite services
+        # Sections that modify the above specifically for this host
+        weight = 0
+        if is_modification == true
+          weight = 10**12
+        elsif is_composite == true
+          weight = 10**10
+        elsif has_relay_source == true
+          weight = 10**8
+        elsif key == DEFAULTS
+          weight = 10**4
+        else
+          weight = 10**6
+        end
+        
+        # Add the order from the file as a tie breaker
+        weight = weight + natural_order
+        
+        external_arguments << {
+          :key => key,
+          :arguments => args,
+          :weight => weight
+        }
+        
+        natural_order = natural_order+1
       }
+    end
+    
+    external_arguments.sort!{
+      |a,b|
       
-      external_arguments << {
-        :key => key,
-        :arguments => args,
-        :weight => calculate_external_section_weight(section.key, key, args)
-      }
+      (a[:weight] <=> b[:weight])
     }
-    
     external_arguments
-  end
-  
-  def calculate_external_section_weight(original_key, key, args)
-    @natural_order = 0 unless @natural_order
-    
-    # This is an indication that this section was relabeled to modify another section
-    if original_key != key
-      is_modification = true
-    else
-      is_modification = false
-    end
-    
-    # Provide metadata about the arguments for this section
-    is_composite = false
-    has_relay_source = false
-    args.each{
-      |arg|
-      if arg =~ /^--composite-datasources=|--dataservice-composite-datasources=/
-        is_composite = true
-        break
-      end
-      if arg =~ /^--relay-source=|--master-dataservice=|--dataservice-relay-source=/
-        has_relay_source = true
-        break
-      end
-    }
-    
-    # Calculate a weight for this section so we can sort on it
-    # DEFAULTS
-    # Services
-    # Services that reference a relay source
-    # Composite services
-    # Sections that modify the above specifically for this host
-    weight = 0
-    if is_modification == true
-      weight = 10**12
-    elsif is_composite == true
-      weight = 10**10
-    elsif has_relay_source == true
-      weight = 10**8
-    elsif key == DEFAULTS
-      weight = 10**4
-    else
-      weight = 10**6
-    end
-    
-    # Add the order from the file as a tie breaker
-    weight = weight + @natural_order
-    @natural_order = @natural_order+1
-    
-    weight
   end
   
   def load_prompts
@@ -1280,11 +1245,19 @@ module ClusterCommandModule
     nil
   end
   
-  def get_deployment_configuration(host_alias, config_obj)
+  def get_deployment_configuration(host_alias)
     unless include_host?(host_alias)
       return nil
     end
     
+    if @config.getProperty(DEPLOY_PACKAGE_URI)
+      uri = URI::parse(@config.getProperty(DEPLOY_PACKAGE_URI))
+      package_basename = File.basename(uri.path)
+    else
+      uri = nil
+    end
+    
+    config_obj = @config.dup()
     config_obj.setProperty(DEPLOYMENT_HOST, host_alias)
     
     unless Configurator.instance.is_locked?()
@@ -1492,6 +1465,11 @@ module ClusterCommandModule
       }
     }
     
+    if uri && uri.scheme == "file" && (uri.host == nil || uri.host == "localhost") && !(Configurator.instance.is_localhost?(@config.getProperty([HOSTS, host_alias, HOST])))
+      config_obj.setProperty(GLOBAL_DEPLOY_PACKAGE_URI, @config.getProperty(DEPLOY_PACKAGE_URI))
+      config_obj.setProperty(DEPLOY_PACKAGE_URI, "file://localhost#{config_obj.getProperty([HOSTS, host_alias, TEMP_DIRECTORY])}/#{package_basename}")
+    end
+    
     if !(Configurator.instance.is_localhost?(config_obj.getProperty([HOSTS, host_alias, HOST])))
       if config_obj.getProperty([HOSTS, host_alias, REPL_MYSQL_CONNECTOR_PATH])
         config_obj.setProperty([HOSTS, host_alias, GLOBAL_REPL_MYSQL_CONNECTOR_PATH], config_obj.getProperty([HOSTS, host_alias, REPL_MYSQL_CONNECTOR_PATH]))
@@ -1556,7 +1534,6 @@ module ClusterCommandModule
     get_deployment_configurations().each{
       |cfg|
       
-      c_key = cfg.getProperty(DEPLOYMENT_CONFIGURATION_KEY)
       h_alias = cfg.getProperty(DEPLOYMENT_HOST)
 
       if cfg.getProperty(HOST_ENABLE_REPLICATOR) == "true"
@@ -1564,14 +1541,12 @@ module ClusterCommandModule
       end
 
       if cfg.getProperty(HOST_ENABLE_CONNECTOR) == "true"
-        if @promotion_settings.getProperty([c_key, RESTART_CONNECTORS]) == false
-          if @promotion_settings.getProperty([c_key, RESTART_CONNECTORS_NEEDED]) == true
-            display_promote_connectors = true
-          end
+        if @promotion_settings.getProperty([h_alias, RESTART_CONNECTORS]) == false
+          display_promote_connectors = true
         end
       
-        if @promotion_settings.getProperty([c_key, ACTIVE_DIRECTORY_PATH]) && @promotion_settings.getProperty([c_key, CONNECTOR_ENABLED]) == "true"
-          unless @promotion_settings.getProperty([c_key, CONNECTOR_IS_RUNNING]) == "true"
+        if @promotion_settings.getProperty([h_alias, ACTIVE_DIRECTORY_PATH]) && @promotion_settings.getProperty([h_alias, CONNECTOR_ENABLED]) == "true"
+          unless @promotion_settings.getProperty([h_alias, CONNECTOR_IS_RUNNING]) == "true"
             display_promote_connectors = true
           end
         elsif cfg.getProperty(SVC_START) != "true"
@@ -1667,8 +1642,8 @@ module ClusterConfigurationsModule
     # Then use that to load the configuration for each host.  Only hosts that 
     # are accessible
     if Configurator.instance.is_locked?()
-      threads = []
-      mtx = Mutex.new
+      pids = {}
+      results = {}
       additional_hosts = []
     
       config_objs.each{
@@ -1679,7 +1654,6 @@ module ClusterConfigurationsModule
           additional_hosts = additional_hosts + config_obj.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_CONNECTORS]).split(',')
         }
       }
-      additional_hosts.uniq!()
 
       begin
         additional_hosts.each{
@@ -1688,24 +1662,12 @@ module ClusterConfigurationsModule
             next
           end
 
-          threads << Thread.new(host) {
-            |host|
-
+          results[host] = Tempfile.new('tpm')
+          pids[host] = fork {
             begin
-              contents = nil
               Timeout.timeout(15) {
-                contents = ssh_result("if [ -f #{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tools/tpm ]; then #{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tools/tpm query config; else echo \"\"; fi", host, @config.getProperty(USERID))
+                results[host].write(ssh_result("if [ -f #{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tools/tpm ]; then #{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tools/tpm query config; else echo \"\"; fi", host, @config.getProperty(USERID)))
               }
-              
-              result = result = JSON.parse(contents)
-              if result.instance_of?(Hash)
-                config_obj = Properties.new()
-                config_obj.import(result)
-
-                mtx.synchronize do
-                  config_objs << config_obj
-                end
-              end
             rescue CommandError
             rescue RemoteCommandError
             rescue MessageError => me
@@ -1714,7 +1676,35 @@ module ClusterConfigurationsModule
             end
           }
         }
-        threads.each{|t| t.join() }
+        pids.each_value{|pid| Process.waitpid(pid) }
+
+        results.each_value{
+          |file|
+          file.rewind()
+
+          begin
+            contents = file.read()
+            unless contents == ""
+              result = result = JSON.parse(contents)
+              if result.instance_of?(Hash)
+                config_obj = Properties.new()
+                config_obj.import(result)
+
+                config_objs << config_obj
+              end
+            end
+          rescue TypeError => te
+            raise "Cannot read the parallel result: #{result_dump}"
+          rescue ArgumentError => ae
+            error("Unable to load the parallel result.  This can happen due to a bug in Ruby.  Try updating to a newer version and retry the installation.")
+          end
+        }
+      ensure
+        results.each_value{
+          |file|
+          file.close()
+          file.unlink()
+        }
       end
     end
   

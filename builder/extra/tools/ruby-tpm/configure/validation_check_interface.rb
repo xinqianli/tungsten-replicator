@@ -1,7 +1,7 @@
 module ValidationCheckInterface
   include ConfigureMessages
   
-  attr_reader :title, :description, :properties, :messages, :fatal_on_error
+  attr_reader :title, :description, :properties, :messages, :fatal_on_error, :support_remote_fix
   def initialize
     @title = nil
     @description = ""
@@ -9,6 +9,7 @@ module ValidationCheckInterface
     @config = nil
     @fatal_on_error = false
     @help = []
+    @support_remote_fix = false
     reset_errors()
     
     set_vars()
@@ -94,7 +95,7 @@ module ValidationCheckInterface
   end
   
   def get_message_host_key
-    @config.getProperty([DEPLOYMENT_CONFIGURATION_KEY])
+    @config.getProperty(DEPLOYMENT_HOST)
   end
   
   def build_error_object(message)

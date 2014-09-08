@@ -118,6 +118,7 @@ public class JdbcPrefetcher implements RawApplier
 
     // Statistics.
     protected long                    eventCount           = 0;
+    private long                      transformed;
 
     /**
      * Maximum length of SQL string to log in case of an error. This is needed
@@ -454,6 +455,7 @@ public class JdbcPrefetcher implements RawApplier
                     if (logger.isDebugEnabled())
                         logger.debug("Transformed INSERT to prefetch query: "
                                 + sqlQuery);
+                    transformed++;
                     hasTransform = true;
                 }
                 // else do nothing
@@ -473,6 +475,7 @@ public class JdbcPrefetcher implements RawApplier
                     if (logger.isDebugEnabled())
                         logger.debug("Transformed DELETE to prefetch query: "
                                 + sqlQuery);
+                    transformed++;
                     hasTransform = true;
                 }
                 else
@@ -491,6 +494,7 @@ public class JdbcPrefetcher implements RawApplier
                     if (logger.isDebugEnabled())
                         logger.debug("Transformed UPDATE to prefetch query: "
                                 + sqlQuery);
+                    transformed++;
                     hasTransform = true;
                 }
                 else
@@ -895,6 +899,7 @@ public class JdbcPrefetcher implements RawApplier
                 {
                     logger.debug("Prefetched event " + " : " + stmt.toString());
                 }
+                transformed++;
             }
             catch (SQLException e)
             {
@@ -1185,11 +1190,13 @@ public class JdbcPrefetcher implements RawApplier
 
             // Create the database.
             conn = DatabaseFactory.createDatabase(url, user, password);
-            conn.connect();
+            conn.connect(true);
             statement = conn.createStatement();
 
             // Create table metadata cache.
             tableMetadataCache = new TableMetadataCache(5000);
+
+            transformed = 0;
             eventCount = 0;
         }
         catch (SQLException e)

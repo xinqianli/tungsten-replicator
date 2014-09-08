@@ -30,7 +30,7 @@ fi
 
 DEFAULT_CHANGE_SET="TUNGSTEN_CHANGE_SET"
 CHANGE_SET=${DEFAULT_CHANGE_SET}
-[ -z "${service}" ] && echo "ERROR: Service must be defined in ${CNF_FILE}" && exit 1
+[ -z "${service}" ] && echo "ERROR: service must be defined in ${CNF_FILE}" && exit 1
 [ ! -z "${service}" ] && CHANGE_SET="TUNGSTEN_CS_${service}"
 
 if [ -n "${sys_user}" ]
@@ -68,8 +68,8 @@ then
    sqlplus -S -L ${SYSDBA} @delete_user.sql $pub_user
    if [ $? -eq 148 ]
    then
-      echo "ERROR: There are open publisher user ${pub_user} connections still using this service, or a CDC setup/update script is already running."
-      echo "Please terminate these connections and then run this script again."
+      echo "Disconnect publisher user (${pub_user}) connections."
+      echo "Setup was incomplete!"
       exit $?
    else
       echo "Done."
@@ -109,26 +109,6 @@ else
    specificpath="`pwd`"
 fi
 
-echo "Checking ARCHIVELOG Mode"
-echo "SELECT NAME, LOG_MODE FROM SYS.V\$DATABASE;" | sqlplus -S -L ${SYSDBA} | grep -w "ARCHIVELOG"
-RC=$?
-if [ ${RC} -ne 0 ]
-then
-    echo "ERROR: ARCHIVELOG mode is not enabled"
-    if [ -n "$enable_archivelog" ] && [ $enable_archivelog -eq 1 ]
-    then
-        sqlplus ${SYSDBA} @enable_archivelog.sql
-    else
-        echo
-        echo "If you'd like archive logging to be enabled automatically next time you run setupCDC.sh, specify enable_archivelog=1 in configuration file."
-        echo "WARNING: as part of this procedure, enable_archivelog.sql will be executed, which RESTARTS Oracle server!"
-        echo "Contents of the enable_archivelog.sql script:"
-        echo
-        cat enable_archivelog.sql
-        exit 1
-    fi
-fi
-
 echo "Setup tungsten_load (SYSDBA)"
 sqlplus -S -L ${SYSDBA} @create_tungsten_load.sql $specificpath $pub_user $specific_tables
 RC=$?
@@ -136,15 +116,13 @@ RC=$?
 echo "Done."
 
 echo "Creating publisher/subscriber and preparing table instantiation (SYSDBA)"
-[ -z "$pub_tablespace" ] && pub_tablespace=1
-[ $pub_tablespace -eq 0 ] && echo "WARNING: using default system tablespace (pub_tablespace=0), which is not recommended for production-like deployments"
-sqlplus -S -L ${SYSDBA} @create_publisher_subscriber.sql $source_user $pub_user $pub_password $tungsten_user $tungsten_pwd $cdc_type $pub_tablespace
+sqlplus -S -L ${SYSDBA} @create_publisher_subscriber.sql $source_user $pub_user $pub_password $tungsten_user $tungsten_pwd $cdc_type
 RC=$?
 [ ${RC} -ne 0 ] && echo "ERROR: [$RC] sqlplus statement failed" && exit 1
 echo "Done."
 
 echo "Setting up $cdc_type ($pub_user)"
-sqlplus -S -L $pub_user/$pub_password @create_change_set.sql $source_user $cdc_type $tungsten_user $pub_user ${CHANGE_SET} $pub_tablespace
+sqlplus -S -L $pub_user/$pub_password @create_change_set.sql $source_user $cdc_type $tungsten_user $pub_user ${CHANGE_SET}
 RC=$?
 [ ${RC} -ne 0 ] && echo "ERROR: [$RC] sqlplus statement failed" && exit 1
 echo "Done."

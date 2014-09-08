@@ -1,18 +1,18 @@
 module ConfigureDeploymentStepServices
   def get_methods
     [
-      ConfigureCommitmentMethod.new("set_maintenance_policy", ConfigureDeploymentStepMethod::FIRST_GROUP_ID, ConfigureDeploymentStepMethod::FIRST_STEP_WEIGHT),
+      ConfigureCommitmentMethod.new("set_maintenance_policy", ConfigureDeployment::FIRST_GROUP_ID, ConfigureDeployment::FIRST_STEP_WEIGHT),
       ConfigureCommitmentMethod.new("stop_replication_services", -1, 0),
-      ConfigureDeploymentMethod.new("apply_config_services", 0, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT),
+      ConfigureDeploymentMethod.new("apply_config_services", 0, ConfigureDeployment::FINAL_STEP_WEIGHT),
       ConfigureCommitmentMethod.new("update_metadata", 1, 0),
       ConfigureCommitmentMethod.new("deploy_services", 1, 1),
-      ConfigureCommitmentMethod.new("start_replication_services_unless_provisioning", 2, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT-1, false),
-      ConfigureCommitmentMethod.new("wait_for_manager", 2, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT, false),
+      ConfigureCommitmentMethod.new("start_replication_services_unless_provisioning", 2, ConfigureDeployment::FINAL_STEP_WEIGHT-1, false),
+      ConfigureCommitmentMethod.new("wait_for_manager", 2, ConfigureDeployment::FINAL_STEP_WEIGHT, false),
       ConfigureCommitmentMethod.new("start_connector", 4, 1, false),
       ConfigureCommitmentMethod.new("set_original_policy", 5, 0),
       ConfigureCommitmentMethod.new("provision_server", 5, 1),
-      ConfigureCommitmentMethod.new("report_services", ConfigureDeploymentStepMethod::FINAL_GROUP_ID, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT-1, false),
-      ConfigureCommitmentMethod.new("check_ping", ConfigureDeploymentStepMethod::FINAL_GROUP_ID, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT)
+      ConfigureCommitmentMethod.new("report_services", ConfigureDeployment::FINAL_GROUP_ID, ConfigureDeployment::FINAL_STEP_WEIGHT-1, false),
+      ConfigureCommitmentMethod.new("check_ping", ConfigureDeployment::FINAL_GROUP_ID, ConfigureDeployment::FINAL_STEP_WEIGHT)
     ]
   end
   module_function :get_methods
@@ -27,6 +27,30 @@ module ConfigureDeploymentStepServices
     write_undeployall()
     write_startall()
     write_stopall()
+    
+    prepare_dir = get_deployment_basedir()
+    out = File.open(prepare_dir + "/.watchfiles", "w")
+    
+    @watchfiles.uniq().each{
+      |file|
+      
+      FileUtils.cp(file, get_original_watch_file(file))
+      if file =~ /#{prepare_dir}/
+        file_to_watch = file.sub(prepare_dir, "")
+        if file_to_watch[0, 1] == "/"
+          file_to_watch.slice!(0)
+        end 
+      else
+        file_to_watch = file
+      end
+      out.puts file_to_watch
+      
+      if @config.getProperty(PROTECT_CONFIGURATION_FILES) == "true"
+        cmd_result("chmod o-rwx #{file}")
+        cmd_result("chmod o-rwx #{get_original_watch_file(file)}")
+      end
+    }
+    out.close
   end
   
   def deploy_services
@@ -59,43 +83,15 @@ module ConfigureDeploymentStepServices
       return
     end
     
+    if get_additional_property(ACTIVE_DIRECTORY_PATH) && get_additional_property(CONNECTOR_IS_RUNNING) == "true"
+      info("Stopping the old connector")
+      info(cmd_result("#{get_additional_property(ACTIVE_DIRECTORY_PATH)}/tungsten-connector/bin/connector stop"))
+    end
+    
     if get_additional_property(ACTIVE_DIRECTORY_PATH) && get_additional_property(CONNECTOR_ENABLED) == "true"
       if get_additional_property(CONNECTOR_IS_RUNNING) == "true"
-        if get_additional_property(ACTIVE_DIRECTORY_PATH) == File.readlink(@config.getProperty(CURRENT_RELEASE_DIRECTORY))
-          if get_additional_property(RECONFIGURE_CONNECTORS_ALLOWED) == true
-            # We are updating the existing directory so `connector reconfigure` can be used
-            info("Tell the connector to update its configuration")
-            info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/bin/connector reconfigure"))
-          else
-            # Stop the connector and start it again so that the full configuration, including ports, are reloaded
-            begin
-              info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/bin/connector graceful-stop 30"))
-            ensure
-              sleep(1)
-              info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/bin/connector start"))
-            end
-          end
-        else
-          # We are switching to a new active directory. Start the new connector 
-          # so it goes into a loop trying to bind the connector port
-          info("Starting the new connector")
-          info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/bin/connector start"))
-          
-          # Attempt to use the graceful-stop command but fail back to a regular stop
-          info("Stopping the old connector")
-          begin
-            info(cmd_result("#{get_additional_property(ACTIVE_DIRECTORY_PATH)}/tungsten-connector/bin/connector graceful-stop 30"))
-          rescue CommandError => ce
-            if ce.result =~ /Usage:/
-              debug("The running version doesn't support graceful-stop")
-              # The running version of the connector doesn't support graceful-stop
-              info(cmd_result("#{get_additional_property(ACTIVE_DIRECTORY_PATH)}/tungsten-connector/bin/connector stop"))
-            else
-              # The graceful-stop command failed for another reason so we should bubble that up
-              raise ce
-            end
-          end
-        end
+        info("Starting the connector")
+        info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/bin/connector start"))
       end
     elsif @config.getProperty(SVC_START) == "true"
       info("Starting the connector")

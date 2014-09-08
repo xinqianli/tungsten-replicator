@@ -124,7 +124,7 @@ class TungstenXtrabackupToSlaveScript < TungstenBackupScript
     else
       TU.test_ssh(@options[:target], TI.user())
     end
-
+    
     # Read innodb_log_file_size from the my.cnf file
     @options[:innodb_log_file_size] = get_mysql_option("innodb_log_file_size")
     if @options[:innodb_log_file_size].to_s() == ""
@@ -139,7 +139,7 @@ class TungstenXtrabackupToSlaveScript < TungstenBackupScript
     if @options[:innodb_log_file_size].to_s() == ""
       TU.info "The configuration file at #{@options[:my_cnf]} does not define a innodb_log_file_size value - this can cause problems with xtrabackup."
     end
-            
+        
     path = get_innobackupex_path()
     if path == ""
       TU.error("Unable to find the innobackupex script")

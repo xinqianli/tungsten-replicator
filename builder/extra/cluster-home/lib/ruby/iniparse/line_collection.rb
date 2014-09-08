@@ -66,8 +66,6 @@ module IniParse
 
     # Removes the value identified by +key+.
     def delete(key)
-      key = key.key if key.respond_to?(:key)
-
       unless (idx = @indicies[key]).nil?
         @indicies.delete(key)
         @indicies.each { |k,v| @indicies[k] = v -= 1 if v > idx }
@@ -112,10 +110,8 @@ module IniParse
 
     def <<(line)
       if line.kind_of?(IniParse::Lines::Option)
-        option = line
-        line   = IniParse::Lines::AnonymousSection.new
-
-        line.lines << option if option
+        raise IniParse::LineNotAllowed,
+          "You can't add an Option to a SectionCollection."
       end
 
       if line.blank? || (! has_key?(line.key))

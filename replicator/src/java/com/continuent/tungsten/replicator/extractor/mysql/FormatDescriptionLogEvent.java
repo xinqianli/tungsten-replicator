@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2009-2014 Continuent Inc.
+ * Copyright (C) 2009-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -35,16 +35,11 @@ import com.continuent.tungsten.replicator.extractor.mysql.conversion.LittleEndia
  */
 public class FormatDescriptionLogEvent extends StartLogEvent
 {
-    protected int   binlogVersion;
-    public short    commonHeaderLength;
-    public short[]  postHeaderLength;
-    public short[]  maria10PostHeaderLength;
-
-    private int     eventTypesCount;
-    private int     checksumAlgo;
-
-    // MariaDB 10 support
-    private boolean isMaria10 = false;
+    protected int  binlogVersion;
+    public short   commonHeaderLength;
+    public short[] postHeaderLength;
+    private int    eventTypesCount;
+    private int    checksumAlgo;
 
     public FormatDescriptionLogEvent(byte[] buffer, int eventLength,
             FormatDescriptionLogEvent descriptionEvent, String currentPosition)
@@ -134,7 +129,7 @@ public class FormatDescriptionLogEvent extends StartLogEvent
             if (chksumAlg > 0 && chksumAlg < 0xFF)
             {
                 this.checksumAlgo = chksumAlg;
-                logger.debug("This binlog is checksummed.");
+                logger.info("This binlog is checksummed.");
             }
         }
         else
@@ -152,9 +147,6 @@ public class FormatDescriptionLogEvent extends StartLogEvent
         this.checksumAlgo = checksumAlgo;
         this.binlogVersion = binlogVersion;
         postHeaderLength = new short[MysqlBinlog.ENUM_END_EVENT_FROM_56];
-
-        maria10PostHeaderLength = new short[MysqlBinlog.ENUM_MARIA_END_EVENT
-                - MysqlBinlog.ENUM_MARIA_START_EVENT + 1];
 
         /* identify binlog format */
         switch (binlogVersion)
@@ -224,24 +216,8 @@ public class FormatDescriptionLogEvent extends StartLogEvent
                 postHeaderLength[MysqlBinlog.NEW_UPDATE_ROWS_EVENT - 1] = MysqlBinlog.ROWS_HEADER_LEN + 2;
                 postHeaderLength[MysqlBinlog.NEW_DELETE_ROWS_EVENT - 1] = MysqlBinlog.ROWS_HEADER_LEN + 2;
 
-                maria10PostHeaderLength[MysqlBinlog.ANNOTATE_ROWS_EVENT
-                        - MysqlBinlog.ENUM_MARIA_START_EVENT] = MysqlBinlog.ANNOTATE_ROWS_HEADER_LEN;
-                maria10PostHeaderLength[MysqlBinlog.GTID_EVENT
-                        - MysqlBinlog.ENUM_MARIA_START_EVENT] = MysqlBinlog.GTID_HEADER_LEN;
-                maria10PostHeaderLength[MysqlBinlog.GTID_LIST_EVENT
-                        - MysqlBinlog.ENUM_MARIA_START_EVENT] = MysqlBinlog.GTID_LIST_HEADER_LEN;
-                maria10PostHeaderLength[MysqlBinlog.BINLOG_CHECKPOINT_EVENT
-                        - MysqlBinlog.ENUM_MARIA_START_EVENT] = MysqlBinlog.BINLOG_CHECKPOINT_HEADER_LEN;
-
                 break;
         }
-    }
-
-    public FormatDescriptionLogEvent(int binlogVersion, int checksumAlgo,
-            boolean isMaria10)
-    {
-        this(binlogVersion, checksumAlgo);
-        this.isMaria10 = isMaria10;
     }
 
     public int getChecksumAlgo()
@@ -255,15 +231,4 @@ public class FormatDescriptionLogEvent extends StartLogEvent
             logger.debug("Checking if checksum in use :" + checksumAlgo);
         return checksumAlgo > 0 && checksumAlgo < 0xff;
     }
-
-    /**
-     * Returns the isMaria10 value.
-     * 
-     * @return Returns the isMaria10.
-     */
-    public boolean isMaria10()
-    {
-        return isMaria10;
-    }
-
 }

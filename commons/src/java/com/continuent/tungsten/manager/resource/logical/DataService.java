@@ -35,7 +35,6 @@ import com.continuent.tungsten.common.exception.ResourceException;
 
 public class DataService
 {
-    @SuppressWarnings("unused")
     private static final long                  serialVersionUID = 1L;
 
     private String                             dataServiceName  = null;

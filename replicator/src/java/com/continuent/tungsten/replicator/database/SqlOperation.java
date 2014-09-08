@@ -1,6 +1,6 @@
 /**
  * Tungsten: An Application Server for uni/cluster.
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2011 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -16,8 +16,8 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
- * Initial developer(s): Robert Hodges
- * Contributor(s): Stephane Giron, Scott Martin
+ * Initial developer(s): Scott Martin
+ * Contributor(s): Stephane Giron
  */
 
 package com.continuent.tungsten.replicator.database;
@@ -61,7 +61,6 @@ public class SqlOperation
     public static int SELECT       = 13;
     public static int ALTER        = 14;
     public static int ROLLBACK     = 15;
-    public static int RENAME       = 16;
 
     // Specialized operation types for MySQL.
     public static int FLUSH_TABLES = 101;
@@ -105,8 +104,8 @@ public class SqlOperation
         this.sqlCommand = command;
         this.objectType = object;
         this.operation = operation;
-        this.schema = extractObjectName(schema);
-        this.name = extractObjectName(name);
+        this.schema = schema;
+        this.name = name;
         this.autoCommit = autoCommit;
     }
 
@@ -167,7 +166,7 @@ public class SqlOperation
 
     public void setName(String name)
     {
-        this.name = extractObjectName(name);
+        this.name = name;
     }
 
     public void setAutoCommit(boolean autoCommit)
@@ -213,18 +212,4 @@ public class SqlOperation
     {
         return operation == DROP && objectType == TABLE;
     }
-
-    private String extractObjectName(String name)
-    {
-        if (name == null)
-        {
-            return null;
-        }
-        if (name.startsWith("`"))
-            return name.substring(1, name.length() - 1);
-        if (name.startsWith("\""))
-            return name.substring(1, name.length() - 1);
-        return name;
-    }
-
 }

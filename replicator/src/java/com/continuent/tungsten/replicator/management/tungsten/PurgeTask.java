@@ -91,7 +91,7 @@ public class PurgeTask implements Callable<Integer>
                 + tungstenUser);
         try
         {
-            db.connect();
+            db.connect(false);
         }
         catch (Exception e)
         {

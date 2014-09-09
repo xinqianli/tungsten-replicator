@@ -432,8 +432,8 @@ public class PrefetchApplier implements RawApplier
 
             // Create the database.
             conn = DatabaseFactory.createDatabase(url, user, password,
-                    context.isPrivilegedSlave());
-            conn.connect();
+                    context.isPrivilegedSlaveUpdate());
+            conn.connect(true);
             statement = conn.createStatement();
 
             // Instantiate local caches.

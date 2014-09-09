@@ -14,6 +14,9 @@ class ReplicationServices < GroupConfigurePrompt
   end
 end
 
+# Prompts that include this module will be collected for each dataservice 
+# across interactive mode, the configure-service script and the
+# tungsten-installer script
 module ReplicationServicePrompt
   include GroupConfigurePromptMember
   include HashPromptDefaultsModule
@@ -111,6 +114,7 @@ class ReplicationServiceDeploymentHost < ConfigurePrompt
     super(DEPLOYMENT_HOST, 
       "On what host would you like to deploy this replication service?", 
       PV_IDENTIFIER)
+    @weight = -1
   end
   
   def get_disabled_value
@@ -321,9 +325,9 @@ class ReplicationServiceTHLMaster < ConfigurePrompt
     super() && [REPL_ROLE_S, REPL_ROLE_ARCHIVE].include?(@config.getProperty(get_member_key(REPL_ROLE)))
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     if [REPL_ROLE_S, REPL_ROLE_ARCHIVE].include?(@config.getProperty(get_member_key(REPL_ROLE)))
-      return super()
+      return super(transform_values_method)
     else
       relay_source = @config.getProperty(get_dataservice_key(DATASERVICE_RELAY_SOURCE))
       
@@ -353,14 +357,14 @@ class ReplicationServiceTHLMasterPort < ConfigurePrompt
     super() && [REPL_ROLE_S, REPL_ROLE_ARCHIVE].include?(@config.getProperty(get_member_key(REPL_ROLE)))
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     if [REPL_ROLE_S, REPL_ROLE_ARCHIVE].include?(@config.getProperty(get_member_key(REPL_ROLE)))
-      return super()
+      return super(transform_values_method)
     else
       relay_source = @config.getProperty(get_dataservice_key(DATASERVICE_RELAY_SOURCE))
       
       if relay_source.to_s == ""
-        return super()
+        return super(transform_values_method)
       else
         return @config.getProperty([DATASERVICES, relay_source, DATASERVICE_THL_PORT])
       end
@@ -380,7 +384,7 @@ class ReplicationServiceTHLMasterURI < ConfigurePrompt
     super(REPL_MASTER_URI, "Master THL URI", PV_ANY)
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     topology = Topology.build(get_dataservice_alias(), @config)
     return topology.get_master_thl_uri(get_host_alias())
   end
@@ -462,7 +466,7 @@ class ReplicationServiceAutoEnable < ConfigurePrompt
   
   def initialize
     if Configurator.instance.is_enterprise?()
-      default = "true"
+      default = "false"
     else
       default = "true"
     end
@@ -481,20 +485,6 @@ class AutoRecoveryMaxAttempts < ConfigurePrompt
       "Number of times to auto-recover after online error",
       PV_INTEGER, 0)
   end
-  
-  def load_default_value
-    if get_topology().is_a?(ClusterSlaveTopology)
-      # Load the value from the cluster-slave prompt
-      @default = @config.getProperty(get_member_key(CLUSTER_SLAVE_REPL_AUTO_RECOVERY_MAX_ATTEMPTS))
-      
-      # Revert to the default method if no value is returned
-      if @default == nil
-        super()
-      end
-    else
-      super()
-    end
-  end
 end
 
 class AutoRecoveryResetInterval < ConfigurePrompt
@@ -506,20 +496,6 @@ class AutoRecoveryResetInterval < ConfigurePrompt
       "Length of time online to reset auto-recover count to 0",
       PV_ANY, "300s")
   end
-  
-  def load_default_value
-    if get_topology().is_a?(ClusterSlaveTopology)
-      # Load the value from the cluster-slave prompt
-      @default = @config.getProperty(get_member_key(CLUSTER_SLAVE_REPL_AUTO_RECOVERY_RESET_INTERVAL))
-      
-      # Revert to the default method if no value is returned
-      if @default == nil
-        super()
-      end
-    else
-      super()
-    end
-  end
 end
 
 class AutoRecoveryDelayInterval < ConfigurePrompt
@@ -530,65 +506,6 @@ class AutoRecoveryDelayInterval < ConfigurePrompt
     super(REPL_AUTO_RECOVERY_DELAY_INTERVAL,
       "Length of delay before auto-recovering",
       PV_ANY, "5s")
-  end
-  
-  def load_default_value
-    if get_topology().is_a?(ClusterSlaveTopology)
-      # Load the value from the cluster-slave prompt
-      @default = @config.getProperty(get_member_key(CLUSTER_SLAVE_REPL_AUTO_RECOVERY_DELAY_INTERVAL))
-      
-      # Revert to the default method if no value is returned
-      if @default == nil
-        super()
-      end
-    else
-      super()
-    end
-  end
-end
-
-class ClusterSlaveAutoRecoveryMaxAttempts < ConfigurePrompt
-  include ReplicationServicePrompt
-  include AdvancedPromptModule
-
-  def initialize
-    super(CLUSTER_SLAVE_REPL_AUTO_RECOVERY_MAX_ATTEMPTS, 
-      "Default value for --auto-recovery-max-attempts when --topology=cluster-slave",
-      PV_INTEGER, 2)
-  end
-  
-  def required?
-    false
-  end
-end
-
-class ClusterSlaveAutoRecoveryResetInterval < ConfigurePrompt
-  include ReplicationServicePrompt
-  include AdvancedPromptModule
-
-  def initialize
-    super(CLUSTER_SLAVE_REPL_AUTO_RECOVERY_RESET_INTERVAL,
-      "Default value for --auto-recovery-reset-interval when --topology=cluster-slave",
-      PV_ANY)
-  end
-  
-  def required?
-    false
-  end
-end
-
-class ClusterSlaveAutoRecoveryDelayInterval < ConfigurePrompt
-  include ReplicationServicePrompt
-  include AdvancedPromptModule
-
-  def initialize
-    super(CLUSTER_SLAVE_REPL_AUTO_RECOVERY_DELAY_INTERVAL,
-      "Default value for --auto-recovery-delay-interval when --topology=cluster-slave",
-      PV_ANY)
-  end
-  
-  def required?
-    false
   end
 end
 
@@ -844,7 +761,7 @@ class BackupScriptCommandPrefixConfigurePrompt < BackupConfigurePrompt
     @default = @config.getPropertyOr(get_host_key(ROOT_PREFIX), "false")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     if get_value() == "true"
       "sudo -n"
     else
@@ -987,20 +904,11 @@ class LogSlaveUpdates < ConfigurePrompt
   end
 end
 
-class PrivilegedSlave < ConfigurePrompt
+class SlavePrivilegedUpdates < ConfigurePrompt
   include ReplicationServicePrompt
 
   def initialize
-    super(PRIVILEGED_SLAVE, "Does login for slave have superuser privileges",
-      PV_BOOLEAN, "true")
-  end
-end
-
-class PrivilegedMaster < ConfigurePrompt
-  include ReplicationServicePrompt
-
-  def initialize
-    super(PRIVILEGED_MASTER, "Does login for master have superuser privileges",
+    super(SLAVE_PRIVILEGED_UPDATES, "Does login for slave update have superuser privileges",
       PV_BOOLEAN, "true")
   end
 end
@@ -1205,40 +1113,23 @@ class ReplicationServiceApplierConfig < ConfigurePrompt
     super(REPL_SVC_APPLIER_CONFIG, "Replication service applier config properties")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     if @config.getProperty(PREFETCH_ENABLED) == "true"
-      "tungsten-replicator/samples/conf/appliers/prefetch.tpl"
+      template = @config.getProperty(PREPARE_DIRECTORY) + "/" + 
+        "tungsten-replicator/samples/conf/appliers/prefetch.tpl"
     elsif @config.getProperty(BATCH_ENABLED) == "true"
-      "tungsten-replicator/samples/conf/appliers/batch.tpl"
+      template = @config.getProperty(PREPARE_DIRECTORY) + "/" + 
+        "tungsten-replicator/samples/conf/appliers/batch.tpl"
     else
-      get_applier_datasource().get_applier_template()
+      template = @config.getProperty(PREPARE_DIRECTORY) + "/" + 
+        get_applier_datasource().get_applier_template()
     end
-  end
-end
-
-class ReplicationServiceApplierDatasourceConfig < ConfigurePrompt
-  include ReplicationServicePrompt
-  include ConstantValueModule
-  
-  def initialize
-    super(REPL_SVC_APPLIER_DATASOURCE_CONFIG, "Replication service applier datasource config properties")
-  end
-  
-  def get_template_value
-    get_applier_datasource().get_datasource_template()
-  end
-end
-
-class ReplicationServiceExtractorDatasourceConfig < ConfigurePrompt
-  include ReplicationServicePrompt
-  include ConstantValueModule
-  
-  def initialize
-    super(REPL_SVC_EXTRACTOR_DATASOURCE_CONFIG, "Replication service extractor datasource config properties")
-  end
-  
-  def get_template_value
-    get_applier_datasource().get_datasource_template_ds_name("extractor")
+    
+    transformer = Transformer.new(template)
+    transformer.set_fixed_properties(@config.getProperty(get_member_key(FIXED_PROPERTY_STRINGS)))
+    transformer.transform_values(transform_values_method)
+    
+    return transformer.to_s
   end
 end
 
@@ -1250,8 +1141,13 @@ class ReplicationServiceExtractorConfig < ConfigurePrompt
     super(REPL_SVC_EXTRACTOR_CONFIG, "Replication service extractor config properties")
   end
   
-  def get_template_value
-    get_extractor_datasource().get_extractor_template()
+  def get_template_value(transform_values_method)
+    transformer = Transformer.new(@config.getProperty(PREPARE_DIRECTORY) + "/" + 
+      get_extractor_datasource().get_extractor_template())
+    transformer.set_fixed_properties(@config.getTemplateValue(get_member_key(FIXED_PROPERTY_STRINGS)))
+    transformer.transform_values(transform_values_method)
+    
+    return transformer.to_s
   end
 end
 
@@ -1263,17 +1159,36 @@ class ReplicationServiceFilterConfig < ConfigurePrompt
     super(REPL_SVC_FILTER_CONFIG, "Replication service filter config properties")
   end
   
-  def get_template_value
-    patterns = []
-    patterns << "tungsten-replicator/filters/*.tpl"
-    patterns << "tungsten-replicator/samples/conf/filters/default/*.tpl"
+  def get_template_value(transform_values_method)
+    output_lines = []
     
-    if get_applier_datasource().class != get_extractor_datasource.class
-      patterns << "tungsten-replicator/samples/conf/filters/#{get_extractor_datasource().get_uri_scheme()}/*.tpl"
+    Dir[@config.getProperty(PREPARE_DIRECTORY) + '/tungsten-replicator/samples/conf/filters/default/*.tpl'].sort().each do |file| 
+      transformer = Transformer.new(file)
+      transformer.set_fixed_properties(@config.getTemplateValue(get_member_key(FIXED_PROPERTY_STRINGS)))
+      transformer.transform_values(transform_values_method)
+      
+      output_lines = output_lines + transformer.to_a + [""]
     end
     
-    patterns << "tungsten-replicator/samples/conf/filters/#{get_applier_datasource().get_uri_scheme()}/*.tpl"
-    patterns
+    if get_applier_datasource().class != get_extractor_datasource.class
+      Dir[@config.getProperty(PREPARE_DIRECTORY) + "/tungsten-replicator/samples/conf/filters/#{get_extractor_datasource().get_uri_scheme()}/*.tpl"].sort().each do |file| 
+        transformer = Transformer.new(file)
+        transformer.set_fixed_properties(@config.getTemplateValue(get_member_key(FIXED_PROPERTY_STRINGS)))
+        transformer.transform_values(transform_values_method)
+      
+        output_lines = output_lines + transformer.to_a + [""]
+      end
+    end
+    
+    Dir[@config.getProperty(PREPARE_DIRECTORY) + "/tungsten-replicator/samples/conf/filters/#{get_applier_datasource().get_uri_scheme()}/*.tpl"].sort().each do |file| 
+      transformer = Transformer.new(file)
+      transformer.set_fixed_properties(@config.getTemplateValue(get_member_key(FIXED_PROPERTY_STRINGS)))
+      transformer.transform_values(transform_values_method)
+      
+      output_lines = output_lines + transformer.to_a + [""]
+    end
+    
+    return output_lines.join("\n")
   end
 end
 
@@ -1285,12 +1200,26 @@ class ReplicationServiceBackupConfig < ConfigurePrompt
     super(REPL_SVC_BACKUP_CONFIG, "Replication service backup config properties")
   end
   
-  def get_template_value
-    patterns = []
-    patterns << "tungsten-replicator/backup_methods/*.tpl"
-    patterns << "tungsten-replicator/samples/conf/backup_methods/default/*.tpl"
-    patterns << "tungsten-replicator/samples/conf/backup_methods/#{get_applier_datasource().get_uri_scheme()}/*.tpl"
-    patterns
+  def get_template_value(transform_values_method)
+    output_lines = []
+    
+    Dir[@config.getProperty(PREPARE_DIRECTORY) + '/tungsten-replicator/samples/conf/backup_methods/default/*.tpl'].sort().each do |file| 
+      transformer = Transformer.new(file)
+      transformer.set_fixed_properties(@config.getTemplateValue(get_member_key(FIXED_PROPERTY_STRINGS)))
+      transformer.transform_values(transform_values_method)
+      
+      output_lines = output_lines + transformer.to_a + [""]
+    end
+    
+    Dir[@config.getProperty(PREPARE_DIRECTORY) + "/tungsten-replicator/samples/conf/backup_methods/#{get_applier_datasource().get_uri_scheme()}/*.tpl"].sort().each do |file| 
+      transformer = Transformer.new(file)
+      transformer.set_fixed_properties(@config.getTemplateValue(get_member_key(FIXED_PROPERTY_STRINGS)))
+      transformer.transform_values(transform_values_method)
+      
+      output_lines = output_lines + transformer.to_a + [""]
+    end
+    
+    return output_lines.join("\n")
   end
 end
 
@@ -1302,7 +1231,7 @@ class ReplicationServiceExtractorFilters < ConfigurePrompt
     super(REPL_SVC_EXTRACTOR_FILTERS, "Replication service extractor filters")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     (get_extractor_datasource().get_extractor_filters() + get_value().to_s().split(",")).join(",")
   end
   
@@ -1319,7 +1248,7 @@ class ReplicationServiceTHLFilters < ConfigurePrompt
     super(REPL_SVC_THL_FILTERS, "Replication service THL filters")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     (get_value().to_s().split(",") + get_extractor_datasource().get_thl_filters()).join(",")
   end
   
@@ -1336,7 +1265,7 @@ class ReplicationServiceApplierFilters < ConfigurePrompt
     super(REPL_SVC_APPLIER_FILTERS, "Replication service applier filters")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     (get_value().to_s().split(",") + get_applier_datasource().get_applier_filters()).join(",")
   end
   
@@ -1454,60 +1383,11 @@ class ReplicationServiceRelayLogStorageDirectory < ConfigurePrompt
   end
 end
 
-class ReplicationBatchService < ConfigurePrompt
-  include ReplicationServicePrompt
-  
-  def initialize
-    super(ENABLE_BATCH_SERVICE, "Enable batch operation", PV_BOOLEAN, "false")
-  end
-end
-
-class ReplicationBatchMaster < ConfigurePrompt
-  include ReplicationServicePrompt
-  
-  def initialize
-    super(ENABLE_BATCH_MASTER, "Enable batch operation for the master", PV_BOOLEAN, "false")
-  end
-  
-  def load_default_value
-    if @config.getProperty(get_member_key(ENABLE_BATCH_SERVICE)) == "true"
-      @default = "true"
-    else
-      super()
-    end
-  end
-end
-
-class ReplicationBatchSlave < ConfigurePrompt
-  include ReplicationServicePrompt
-  
-  def initialize
-    super(ENABLE_BATCH_SLAVE, "Enable batch operation for the slave", PV_BOOLEAN, "false")
-  end
-  
-  def load_default_value
-    if @config.getProperty(get_member_key(ENABLE_BATCH_SERVICE)) == "true"
-      @default = "true"
-    else
-      super()
-    end
-  end
-end
-
 class ReplicationHeterogenousService < ConfigurePrompt
   include ReplicationServicePrompt
   
   def initialize
     super(ENABLE_HETEROGENOUS_SERVICE, "Enable heterogenous operation", PV_BOOLEAN, "false")
-    override_command_line_argument("enable-heterogeneous-service")
-  end
-  
-  def load_default_value
-    if @config.getProperty(get_member_key(ENABLE_BATCH_SERVICE)) == "true"
-      @default = "true"
-    else
-      super()
-    end
   end
 end
 
@@ -1516,13 +1396,10 @@ class ReplicationHeterogenousMaster < ConfigurePrompt
   
   def initialize
     super(ENABLE_HETEROGENOUS_MASTER, "Enable heterogenous operation for the master", PV_BOOLEAN, "false")
-    override_command_line_argument("enable-heterogeneous-master")
   end
   
   def load_default_value
     if @config.getProperty(get_member_key(ENABLE_HETEROGENOUS_SERVICE)) == "true"
-      @default = "true"
-    elsif @config.getProperty(get_member_key(ENABLE_BATCH_MASTER)) == "true"
       @default = "true"
     else
       super()
@@ -1535,25 +1412,14 @@ class ReplicationHeterogenousSlave < ConfigurePrompt
   
   def initialize
     super(ENABLE_HETEROGENOUS_SLAVE, "Enable heterogenous operation for the slave", PV_BOOLEAN, "false")
-    override_command_line_argument("enable-heterogeneous-slave")
   end
   
   def load_default_value
     if @config.getProperty(get_member_key(ENABLE_HETEROGENOUS_SERVICE)) == "true"
       @default = "true"
-    elsif @config.getProperty(get_member_key(ENABLE_BATCH_SLAVE)) == "true"
-      @default = "true"
     else
       super()
     end
-  end
-end
-
-class ReplicationServiceDropStaticColumns < ConfigurePrompt
-  include ReplicationServicePrompt
-  
-  def initialize
-    super(DROP_STATIC_COLUMNS, "This will modify UPDATE transactions in row-based replication and eliminate any columns that were not modified.", PV_BOOLEAN, false)
   end
 end
 
@@ -1673,7 +1539,7 @@ class ReplicationServiceExtractorInitScript < ConfigurePrompt
     super(REPL_SVC_DATASOURCE_EXTRACTOR_INIT_SCRIPT, "SQL commands to run when connecting to the datasource extractor", PV_FILENAME)
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     v = get_value()
     
     if v.to_s() != ""
@@ -1722,7 +1588,7 @@ class ReplicationServiceApplierInitScript < ConfigurePrompt
     super(REPL_SVC_DATASOURCE_APPLIER_INIT_SCRIPT, "SQL commands to run when connecting to the datasource applier", PV_FILENAME)
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     v = get_value()
     
     if v.to_s() != ""
@@ -1771,7 +1637,7 @@ class ReplicationServiceTHLInitScript < ConfigurePrompt
     super(REPL_SVC_DATASOURCE_THL_INIT_SCRIPT, "SQL commands to run when connecting to the datasource thl", PV_FILENAME)
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     v = get_value()
     
     if v.to_s() != ""

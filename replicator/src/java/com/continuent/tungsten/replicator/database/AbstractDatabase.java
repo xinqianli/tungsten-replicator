@@ -22,8 +22,6 @@
 
 package com.continuent.tungsten.replicator.database;
 
-import java.io.BufferedWriter;
-import java.io.Serializable;
 import java.sql.Blob;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -35,20 +33,16 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
 import org.apache.log4j.Logger;
 
-import com.continuent.tungsten.common.csv.CsvSpecification;
-import com.continuent.tungsten.common.csv.CsvWriter;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.consistency.ConsistencyCheck;
 import com.continuent.tungsten.replicator.consistency.ConsistencyException;
 import com.continuent.tungsten.replicator.consistency.ConsistencyTable;
 import com.continuent.tungsten.replicator.dbms.OneRowChange;
-import com.continuent.tungsten.replicator.extractor.ExtractorException;
 
 /**
  * Provides a generic implementation for Database interface. Subclasses must
@@ -79,8 +73,6 @@ public abstract class AbstractDatabase implements Database
     protected boolean                      connected     = false;
 
     protected String                       initScript    = null;
-
-    protected CsvSpecification             csvSpec       = null;
 
     /**
      * Create a new database instance. To use the database instance you must at
@@ -128,16 +120,6 @@ public abstract class AbstractDatabase implements Database
         this.privileged = privileged;
     }
 
-    public CsvSpecification getCsvSpecification()
-    {
-        return csvSpec;
-    }
-
-    public void setCsvSpecification(CsvSpecification csvSpec)
-    {
-        this.csvSpec = csvSpec;
-    }
-
     public String getPlaceHolder(OneRowChange.ColumnSpec col, Object colValue,
             String typeDesc)
     {
@@ -170,6 +152,16 @@ public abstract class AbstractDatabase implements Database
      */
     public synchronized void connect() throws SQLException
     {
+        connect(false);
+    }
+
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.database.Database#connect(boolean)
+     */
+    public synchronized void connect(boolean binlog) throws SQLException
+    {
         if (dbConn == null)
         {
             if (dbDriver != null && drivers.get(dbDriver) == null)
@@ -189,6 +181,14 @@ public abstract class AbstractDatabase implements Database
 
             dbConn = DriverManager.getConnection(dbUri, dbUser, dbPassword);
             connected = (dbConn != null);
+
+            if (connected)
+            {
+                if (supportsControlSessionLevelLogging())
+                {
+                    this.controlSessionLevelLogging(!binlog);
+                }
+            }
         }
     }
 
@@ -266,16 +266,6 @@ public abstract class AbstractDatabase implements Database
     /**
      * {@inheritDoc}
      * 
-     * @see com.continuent.tungsten.replicator.database.Database#supportsBLOB()
-     */
-    public boolean supportsBLOB()
-    {
-        return true;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
      * @see com.continuent.tungsten.replicator.database.Database#useDefaultSchema(java.lang.String)
      */
     public void useDefaultSchema(String schema) throws SQLException
@@ -315,28 +305,6 @@ public abstract class AbstractDatabase implements Database
     {
         throw new UnsupportedOperationException(
                 "Controlling session level logging is not supported");
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.datasource.UniversalConnection#setLogged(boolean)
-     */
-    public void setLogged(boolean logged) throws ReplicatorException
-    {
-        // This is harmless if session logging is not supported.
-        if (supportsControlSessionLevelLogging())
-        {
-            try
-            {
-                controlSessionLevelLogging(!logged);
-            }
-            catch (SQLException e)
-            {
-                throw new ReplicatorException("Unable to set logging: "
-                        + e.getMessage(), e);
-            }
-        }
     }
 
     /**
@@ -568,14 +536,7 @@ public abstract class AbstractDatabase implements Database
         return c.getName() + "= ?";
     }
 
-    /**
-     * Executes a prepared statement using values supplied as arguments.
-     * 
-     * @param columns List of values
-     * @param statement The prepared statement instance
-     * @return Number of rows updated
-     */
-    protected int executePrepareStatement(List<Column> columns,
+    private int executePrepareStatement(List<Column> columns,
             PreparedStatement statement) throws SQLException
     {
         int bindNo = 1;
@@ -584,39 +545,28 @@ public abstract class AbstractDatabase implements Database
         {
             statement.setObject(bindNo++, c.getValue());
         }
-
+        // System.out.format("%s (%d binds)\n", SQL, bindNo - 1);
         return statement.executeUpdate();
     }
 
-    protected int executePrepareStatement(Table table,
-            PreparedStatement statement) throws SQLException
+    private int executePrepareStatement(Table table, PreparedStatement statement)
+            throws SQLException
     {
         return executePrepareStatement(table.getAllColumns(), statement);
     }
 
-    protected int executePrepare(Table table, List<Column> columns, String SQL)
+    private int executePrepare(Table table, List<Column> columns, String SQL)
             throws SQLException
     {
         return executePrepare(table, columns, SQL, false, -1);
     }
 
-    protected int executePrepare(Table table, String SQL) throws SQLException
+    private int executePrepare(Table table, String SQL) throws SQLException
     {
         return executePrepare(table, table.getAllColumns(), SQL, false, -1);
     }
 
-    /**
-     * Executes a prepared statement using values supplied as arguments.
-     * 
-     * @param table Table on which to run
-     * @param columns List of values
-     * @param SQL The SQL statement to execute
-     * @param keep If true cache prepared statement in table instance
-     * @param type Statement type assigned by caller (and used to tag
-     *            statements)
-     * @return Number of rows updated
-     */
-    protected int executePrepare(Table table, List<Column> columns, String SQL,
+    private int executePrepare(Table table, List<Column> columns, String SQL,
             boolean keep, int type) throws SQLException
     {
         int bindNo = 1;
@@ -630,8 +580,7 @@ public abstract class AbstractDatabase implements Database
 
             for (Column c : columns)
             {
-                Serializable val = c.getValue();
-                statement.setObject(bindNo++, val);
+                statement.setObject(bindNo++, c.getValue());
             }
             affectedRows = statement.executeUpdate();
         }
@@ -1022,61 +971,51 @@ public abstract class AbstractDatabase implements Database
         Table table = null;
 
         ResultSet rsc = getColumnsResultSet(md, schemaName, tableName);
-        List<Column> columns = new LinkedList<Column>();
-        while (rsc.next())
+        if (rsc.isBeforeFirst())
         {
-            String colName = rsc.getString("COLUMN_NAME");
-            int colType = rsc.getInt("DATA_TYPE");
-            long colLength = rsc.getLong("COLUMN_SIZE");
-            boolean isNotNull = rsc.getInt("NULLABLE") == DatabaseMetaData.columnNoNulls;
-            String valueString = rsc.getString("COLUMN_DEF");
-            String typeDesc = rsc.getString("TYPE_NAME").toUpperCase();
-            // Issue 798. Mimicking MySQLApplier.
-            boolean isSigned = !typeDesc.contains("UNSIGNED");
+            // found columns
+            Map<String, Column> cm = new HashMap<String, Column>();
+            table = new Table(schemaName, tableName);
+            while (rsc.next())
+            {
+                String colName = rsc.getString("COLUMN_NAME");
+                int colType = rsc.getInt("DATA_TYPE");
+                long colLength = rsc.getLong("COLUMN_SIZE");
+                boolean isNotNull = rsc.getInt("NULLABLE") == DatabaseMetaData.columnNoNulls;
+                String valueString = rsc.getString("COLUMN_DEF");
+                String typeDesc = rsc.getString("TYPE_NAME").toUpperCase();
+                // Issue 798. Mimicking MySQLApplier.
+                boolean isSigned = !typeDesc.contains("UNSIGNED");
 
-            Column column = new Column(colName, colType, colLength, isNotNull,
-                    valueString);
-            column.setPosition(rsc.getInt("ORDINAL_POSITION"));
-            column.setTypeDescription(typeDesc);
-            column.setSigned(isSigned);
-            columns.add(column);
+                Column column = new Column(colName, colType, colLength,
+                        isNotNull, valueString);
+                column.setPosition(rsc.getInt("ORDINAL_POSITION"));
+                column.setTypeDescription(typeDesc);
+                column.setSigned(isSigned);
+                table.AddColumn(column);
+                cm.put(column.getName(), column);
+            }
+
+            ResultSet rsk = getPrimaryKeyResultSet(md, schemaName, tableName);
+            if (rsk.isBeforeFirst())
+            {
+                // primary key found
+                Key pKey = new Key(Key.Primary);
+                while (rsk.next())
+                {
+                    String colName = rsk.getString("COLUMN_NAME");
+                    Column column = cm.get(colName);
+                    // Adding columns in the primary key order
+                    pKey.AddColumn(column, rsk.getShort("KEY_SEQ"));
+                }
+                table.AddKey(pKey);
+            }
+            rsk.close();
+
+            if (withUniqueIndex)
+                findUniqueIndexes(md, schemaName, tableName, cm, table);
         }
         rsc.close();
-
-        // If we found no columns, the table does not exist.
-        if (columns.size() == 0)
-            return null;
-
-        // Create the table instance and add the columns.
-        Map<String, Column> cm = new HashMap<String, Column>();
-        table = new Table(schemaName, tableName);
-        for (Column col : columns)
-        {
-            table.AddColumn(col);
-            cm.put(col.getName(), col);
-        }
-
-        // Look for primary key columns.
-        ResultSet rsk = getPrimaryKeyResultSet(md, schemaName, tableName);
-        Key pKey = new Key(Key.Primary);
-        while (rsk.next())
-        {
-            String colName = rsk.getString("COLUMN_NAME");
-            Column column = cm.get(colName);
-            // Adding columns in the primary key order
-            pKey.AddColumn(column, rsk.getShort("KEY_SEQ"));
-        }
-        rsk.close();
-
-        // Add the Primary key if we found any columns.
-        if (pKey.columns.size() > 0)
-        {
-            table.AddKey(pKey);
-        }
-
-        // Find unique indexes.
-        if (withUniqueIndex)
-            findUniqueIndexes(md, schemaName, tableName, cm, table);
 
         return table;
     }
@@ -1469,9 +1408,9 @@ public abstract class AbstractDatabase implements Database
     /**
      * {@inheritDoc}
      * 
-     * @see com.continuent.tungsten.replicator.database.Database#dropTungstenCatalog(java.lang.String,
-     *      java.lang.String, java.lang.String)
+     * @throws SQLException
      */
+    @Override
     public void dropTungstenCatalog(String schemaName,
             String tungstenTableType, String serviceName) throws SQLException
     {
@@ -1490,55 +1429,4 @@ public abstract class AbstractDatabase implements Database
         return false;
     }
 
-    /**
-     * {@inheritDoc}
-     * 
-     * @throws ExtractorException
-     * @see com.continuent.tungsten.replicator.database.Database#getCurrentPosition()
-     */
-    @Override
-    public String getCurrentPosition(boolean flush) throws ReplicatorException
-    {
-        return null;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.Database#supportsFlashbackQuery()
-     */
-    @Override
-    public boolean supportsFlashbackQuery()
-    {
-        // TODO Auto-generated method stub
-        return false;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.Database#getFlashbackQuery(java.lang.String)
-     */
-    @Override
-    public String getFlashbackQuery(String position)
-    {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.Database#getCsvWriter(java.io.BufferedWriter)
-     */
-    public CsvWriter getCsvWriter(BufferedWriter writer)
-    {
-        if (this.csvSpec == null)
-        {
-            throw new UnsupportedOperationException(
-                    "CSV output specification is not configured");
-        }
-        else
-            return csvSpec.createCsvWriter(writer);
-    }
 }

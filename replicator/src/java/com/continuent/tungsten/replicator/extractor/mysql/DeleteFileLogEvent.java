@@ -31,10 +31,9 @@ import com.continuent.tungsten.replicator.extractor.mysql.conversion.LittleEndia
  * @author <a href="mailto:stephane.giron@continuent.com">Stephane Giron</a>
  * @version 1.0
  */
-public class DeleteFileLogEvent extends LogEvent implements LoadDataInfileEvent
+public class DeleteFileLogEvent extends LogEvent
 {
-    int             fileID;
-    private boolean nextEventCanBeAppended = false;
+    int fileID;
 
     public DeleteFileLogEvent(byte[] buffer, int eventLength,
             FormatDescriptionLogEvent descriptionEvent, String currentPosition)
@@ -87,17 +86,5 @@ public class DeleteFileLogEvent extends LogEvent implements LoadDataInfileEvent
     public int getFileID()
     {
         return fileID;
-    }
-
-    @Override
-    public void setNextEventCanBeAppended(boolean b)
-    {
-        this.nextEventCanBeAppended = b;
-    }
-
-    @Override
-    public boolean canNextEventBeAppended()
-    {
-        return nextEventCanBeAppended;
     }
 }

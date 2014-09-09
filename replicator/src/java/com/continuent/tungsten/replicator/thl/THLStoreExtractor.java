@@ -248,10 +248,6 @@ public class THLStoreExtractor implements Extractor
                 fragno = (short) (event.getFragno() + 1);
             }
         }
-
-        // Tell the THL about this. It can then propagate the restart point
-        // forward if the log is empty.
-        thl.setRestartPosition(event);
     }
 
     /**

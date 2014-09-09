@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -37,14 +37,13 @@ import java.util.List;
 import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.common.csv.CsvWriter;
-import com.continuent.tungsten.common.csv.NullPolicy;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.channel.ShardChannelTable;
 import com.continuent.tungsten.replicator.consistency.ConsistencyTable;
-import com.continuent.tungsten.replicator.datasource.SqlCommitSeqno;
 import com.continuent.tungsten.replicator.dbms.OneRowChange;
 import com.continuent.tungsten.replicator.heartbeat.HeartbeatTable;
 import com.continuent.tungsten.replicator.shard.ShardTable;
+import com.continuent.tungsten.replicator.thl.CommitSeqnoTable;
 
 /**
  * Defines an interface to the Oracle database
@@ -80,7 +79,7 @@ public class OracleDatabase extends AbstractDatabase
             "VALUES", "VARCHAR", "VARCHAR2", "VIEW", "WHENEVER", "WHERE",
             "WITH"                                                            }));
 
-    private static final List<String>      SYSTEM_SCHEMAS             = Arrays.asList(new String[]{
+    private static final List<String> SYSTEM_SCHEMAS             = Arrays.asList(new String[]{
             "SYS", "SYSMAN", "SYSTEM", "TSMSYS", "WMSYS", "XDB",
             "SI_INFORMTN_SCHEMA", "ANONYMOUS", "CTXSYS", "DBSNMP", "DIP",
             "DMSYS", "EXFSYS", "MDDATA", "MDSYS", "MGMT_VIEW", "OLAPSYS",
@@ -111,12 +110,14 @@ public class OracleDatabase extends AbstractDatabase
     /**
      * In Oracle, to support timestamp with local time zone replication we need
      * to set the session level time zone to be the same as the database time
-     * zone. 
+     * zone. {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#connect(boolean)
      */
     @Override
-    public synchronized void connect() throws SQLException
+    public synchronized void connect(boolean binlog) throws SQLException
     {
-        super.connect();
+        super.connect(binlog);
         ResultSet res = null;
         Statement statement = createStatement();
         String timeZone = "00:00";
@@ -681,20 +682,9 @@ public class OracleDatabase extends AbstractDatabase
      */
     public CsvWriter getCsvWriter(BufferedWriter writer)
     {
-        if (this.csvSpec == null)
-        {
-            CsvWriter csv = new CsvWriter(writer);
-            csv.setQuoteChar('"');
-            csv.setQuoted(true);
-            csv.setEscapeChar('\\');
-            csv.setEscapedChars("\\");
-            csv.setNullPolicy(NullPolicy.nullValue);
-            csv.setNullValue("\\N");
-            csv.setWriteHeaders(false);
-            return csv;
-        }
-        else
-            return csvSpec.createCsvWriter(writer);
+        // Need to implement in order to support CSV.
+        throw new UnsupportedOperationException(
+                "CSV output is not supported for this database type");
     }
 
     /**
@@ -815,7 +805,8 @@ public class OracleDatabase extends AbstractDatabase
                         + "', capture_values => 'both', rs_id => 'y', row_id => 'n', "
                         + "user_id => 'n', timestamp => 'n', object_id => 'n', "
                         + "target_colmap => 'y', source_colmap => 'n', ddl_markers=>'n', "
-                        + "options_string=>''); END;";
+                        + "options_string=>'TABLESPACE " + table.getSchema()
+                        + "'); END;";
 
             }
             else
@@ -836,7 +827,8 @@ public class OracleDatabase extends AbstractDatabase
                         + "', capture_values => 'both', rs_id => 'y', row_id => 'n', "
                         + "user_id => 'n', timestamp => 'n', object_id => 'n', "
                         + "target_colmap => 'y', source_colmap => 'n', "
-                        + "options_string=>''); END;";
+                        + "options_string=>'TABLESPACE " + table.getSchema()
+                        + "'); END;";
 
             try
             {
@@ -885,8 +877,7 @@ public class OracleDatabase extends AbstractDatabase
     /**
      * {@inheritDoc}
      * 
-     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#dropTungstenCatalog(String,
-     *      String, String)
+     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#dropTungstenCatalog(String, String, String)
      */
     @Override
     public void dropTungstenCatalog(String schemaName,
@@ -894,7 +885,7 @@ public class OracleDatabase extends AbstractDatabase
     {
         // In Oracle, Tungsten user is not dropped automatically.
         // However, all Tungsten tables will be dropped.
-        dropTable(new Table(schemaName, SqlCommitSeqno.TABLE_NAME));
+        dropTable(new Table(schemaName, CommitSeqnoTable.TABLE_NAME));
         dropTable(new Table(schemaName, ConsistencyTable.TABLE_NAME));
         dropTable(new Table(schemaName, ShardChannelTable.TABLE_NAME));
         dropTable(new Table(schemaName, ShardTable.TABLE_NAME));
@@ -1025,89 +1016,6 @@ public class OracleDatabase extends AbstractDatabase
     {
         // TODO Auto-generated method stub
         return '\"' + name + '\"';
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#getCurrentPosition(boolean)
-     */
-    @Override
-    public String getCurrentPosition(boolean flush) throws ReplicatorException
-    {
-        Statement st = null;
-        ResultSet rs = null;
-        try
-        {
-            st = createStatement();
-            logger.debug("Seeking current SCN from database");
-            rs = st.executeQuery("SELECT current_scn FROM V$DATABASE");
-            if (!rs.next())
-                throw new ReplicatorException(
-                        "Error getting current SCN from database");
-            String scn = rs.getString(1);
-
-            return scn;
-        }
-        catch (SQLException e)
-        {
-            throw new ReplicatorException(
-                    "Error getting current SCN from database", e);
-        }
-        finally
-        {
-            if (rs != null)
-            {
-                try
-                {
-                    rs.close();
-                }
-                catch (SQLException ignore)
-                {
-                }
-            }
-            if (st != null)
-            {
-                try
-                {
-                    st.close();
-                }
-                catch (SQLException ignore)
-                {
-                }
-            }
-        }
-
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#supportsFlashbackQuery()
-     */
-    @Override
-    public boolean supportsFlashbackQuery()
-    {
-        return true;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#getFlashbackQuery(java.lang.String)
-     */
-    @Override
-    public String getFlashbackQuery(String position)
-    {
-        // position is either of the form ora:<SCN> or <SCN>, but only the SCN
-        // part needs to get used in the query
-        OracleEventId eventId = new OracleEventId(position);
-        if (eventId.isValid())
-        {
-            return " AS OF SCN " + eventId.getSCN();
-        }
-        else
-            return " AS OF SCN " + position;
     }
 
 }

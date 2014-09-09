@@ -21,7 +21,6 @@ REPL_MYSQL_USE_BYTES_FOR_STRING = "repl_mysql_use_bytes_for_string"
 REPL_MYSQL_CONF = "repl_datasource_mysql_conf"
 REPL_MYSQL_COMMAND = "repl_datasource_mysql_command"
 REPL_MYSQL_SERVICE_CONF = "repl_datasource_mysql_service_conf"
-EXTRACTOR_REPL_MYSQL_SERVICE_CONF = "repl_direct_datasource_mysql_service_conf"
 
 class MySQLDatabasePlatform < ConfigureDatabasePlatform
   def get_uri_scheme
@@ -35,7 +34,7 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
     end
     return path
   end
-  
+
   def get_default_backup_method
     innobackupex_path = get_innobackupex_path()
     if innobackupex_path.to_s() != "" && @config.getProperty(ROOT_PREFIX) != "false"
@@ -44,7 +43,7 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
       "mysqldump"
     end
   end
-  
+
   def get_valid_backup_methods
     "none|mysqldump|xtrabackup|xtrabackup-incremental|script"
   end
@@ -71,7 +70,6 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
       tmp << "user=#{@username}\n"
       tmp << "password=#{@password}\n"
       tmp << "port=#{@port}\n"
-      #tmp << "defaults-file=/etc/tungsten/my.cnf\n"
       tmp.flush
       
       Timeout.timeout(5) {
@@ -157,7 +155,7 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
   end
   
   def get_thl_uri
-	  "jdbc:mysql:thin://${replicator.global.db.host}:${replicator.global.db.port}/${replicator.schema}?createDB=true"
+	  "jdbc:mysql:thin://${replicator.global.db.host}:${replicator.global.db.port}/"
 	end
   
   def check_thl_schema(thl_schema)
@@ -171,7 +169,7 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
     h_alias = to_identifier(@host)
     if @config.getProperty([HOSTS, h_alias]) != nil
       begin
-        logbin = ssh_result("my_print_defaults --config-file=#{@config.getProperty(@prefix + [REPL_MYSQL_CONF])} mysqld | grep '^--log[_-]bin='", @host, @config.getProperty([HOSTS, h_alias, USERID])).split("=")[-1].strip()
+        logbin = ssh_result("my_print_defaults --config-file=#{@config.getProperty(@prefix + [REPL_MYSQL_CONF])} mysqld | grep '^--log[_-]bin'", @host, @config.getProperty([HOSTS, h_alias, USERID])).split("=")[-1].strip()
 
         if logbin.to_s() != ""
           logdir = File.dirname(logbin)
@@ -249,10 +247,6 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
     "jdbc:#{getJdbcScheme()}://${replicator.global.db.host}:${replicator.global.db.port}/${DBNAME}?jdbcCompliantTruncation=false&zeroDateTimeBehavior=convertToNull&tinyInt1isBit=false&allowMultiQueries=true&yearIsDateType=false"
   end
   
-  def getJdbcQueryUrl()
-    "jdbc:mysql://#{@host}:#{@port}"
-  end
-  
   def getJdbcDriver()
     if @config.getProperty(MYSQL_DRIVER) == "drizzle"
       "org.drizzle.jdbc.DrizzleDriver"
@@ -310,7 +304,6 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
 	def get_backup_agents()
 	  agent = @config.getProperty(REPL_BACKUP_METHOD)
 	  path_to_xtrabackup = get_innobackupex_path()
-	  
 	  if agent == "script"
 	    agents = ["script"]
 	  else
@@ -336,7 +329,7 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
 	end
 	
 	def get_default_backup_agent()
-    path_to_xtrabackup = get_innobackupex_path()
+          path_to_xtrabackup = get_innobackupex_path()
 	  
 	  if path_to_xtrabackup.to_s() != ""
 	    "xtrabackup-full"
@@ -395,7 +388,7 @@ class MySQLDriver < ConfigurePrompt
     end
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     if get_value() == "drizzle"
       "mysql:thin"
     elsif get_value() == "mariadb"
@@ -597,19 +590,6 @@ class MySQLServiceConfigFile < ConfigurePrompt
   
   def load_default_value
     @default = @config.getProperty(get_host_key(HOME_DIRECTORY)) + "/share/.my.#{@config.getProperty(get_member_key(DEPLOYMENT_SERVICE))}.cnf"
-  end
-end
-
-class DirectMySQLServiceConfigFile < ConfigurePrompt
-  include ReplicationServicePrompt
-  include ConstantValueModule
-  
-  def initialize
-    super(EXTRACTOR_REPL_MYSQL_SERVICE_CONF, "Path to my.cnf file customized for this service", PV_FILENAME)
-  end
-  
-  def load_default_value
-    @default = @config.getProperty(get_host_key(HOME_DIRECTORY)) + "/share/.my.#{@config.getProperty(get_member_key(DEPLOYMENT_SERVICE))}.direct.cnf"
   end
 end
 
@@ -1102,7 +1082,7 @@ class MySQLConfigFileCheck < ConfigureValidationCheck
         end
       end
     else
-      debug("Unable to check the MySQL config file '#{conf_file}'")
+      warning("Unable to check the MySQL config file '#{conf_file}'")
     end
   end
 end
@@ -1149,7 +1129,7 @@ class MySQLApplierServerIDCheck < ConfigureValidationCheck
         error("The MySQL config file '#{conf_file}' is not readable")
       end
     else
-      debug("Unable to check for a configured server-id in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
+      warning("Unable to check for a configured server-id in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
     end
   end
 end
@@ -1167,7 +1147,7 @@ class MySQLApplierPortCheck < ConfigureValidationCheck
     
     conf_file = @config.getProperty(get_applier_key(REPL_MYSQL_CONF))
     unless Configurator.instance.is_localhost?(@config.getProperty(get_applier_key(REPL_DBHOST)))
-      debug("Unable to check for a configured port in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
+      warning("Unable to check for a configured port in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
       return
     end
     
@@ -1243,12 +1223,12 @@ class MySQLApplierLogsCheck < ConfigureValidationCheck
   def validate
     dir = @config.getProperty(get_applier_key(REPL_MASTER_LOGDIR))
     
-    conf_file = @config.getProperty(get_applier_key(REPL_MYSQL_CONF))
     unless Configurator.instance.is_localhost?(@config.getProperty(get_applier_key(REPL_DBHOST)))
-      debug("Unable to check the configured log directory in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
+      warning("Unable to check the configured log directory in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
       return
     end
     
+    conf_file = @config.getProperty(get_applier_key(REPL_MYSQL_CONF))
     unless File.exists?(conf_file) && File.readable?(conf_file)
       error("The MySQL config file '#{conf_file}' is not readable")
       return
@@ -1261,7 +1241,7 @@ class MySQLApplierLogsCheck < ConfigureValidationCheck
     end
     
     begin
-      conf_file_results = cmd_result("#{my_print_defaults} --config-file=#{conf_file} mysqld | grep '^--log[_-]bin='").split("=")[-1].strip()
+      conf_file_results = cmd_result("#{my_print_defaults} --config-file=#{conf_file} mysqld | grep '^--log[_-]bin'").split("=")[-1].strip()
     rescue CommandError
     end
     
@@ -1290,27 +1270,25 @@ class MySQLApplierLogsCheck < ConfigureValidationCheck
   end
 end
 
-#
-# With the fixing of Issue#771 we don't need this check anymore
-#class MySQLVersionCheck < ConfigureValidationCheck
-#  include ReplicationServiceValidationCheck
-#  include MySQLApplierCheck
-#
-#  def set_vars
-#    @title = "MySQL version check"
-#  end
-#  
-#  def validate
-#    info("Checking MySQL version")
-#    version = get_applier_datasource.get_value("show variables like 'version'", "Value")
-#    comment = get_applier_datasource.get_value("show variables like 'version_comment'", "Value")
-#    if comment == "MariaDB Server"
-#      if version =~ /10\..*/
-#        error("Support for MariaDB 10.0 is not available at this time")
-#      end
-#    end
-#  end
-#end
+class MySQLVersionCheck < ConfigureValidationCheck
+  include ReplicationServiceValidationCheck
+  include MySQLApplierCheck
+
+  def set_vars
+    @title = "MySQL version check"
+  end
+  
+  def validate
+    info("Checking MySQL version")
+    version = get_applier_datasource.get_value("show variables like 'version'", "Value")
+    comment = get_applier_datasource.get_value("show variables like 'version_comment'", "Value")
+    if comment == "MariaDB Server"
+      if version =~ /10\..*/
+        error("Support for MariaDB 10.0 is not available at this time")
+      end
+    end
+  end
+end
 
 class MySQLSettingsCheck < ConfigureValidationCheck
   include ReplicationServiceValidationCheck
@@ -1337,12 +1315,6 @@ class MySQLSettingsCheck < ConfigureValidationCheck
     max_allowed_packet = get_applier_datasource.get_value("show variables like 'max_allowed_packet'", "Value")
     if max_allowed_packet == nil || max_allowed_packet.to_i() < (48*1024*1024)
       warning("We suggest adding \"max_allowed_packet=52m\" or greater to the MySQL configuration file for #{get_applier_datasource.get_connection_summary()}")
-    end
-
-    info("Checking innodb_log_file_size")
-    innodb_log_file_size = get_applier_datasource.get_value("show variables like 'innodb_log_file_size'", "Value")
-    if innodb_log_file_size.to_i == 5242880
-      warning("innodb_log_file_size is set to the default value (5mb), this setting may need reviewing and setting to an appropriate value for #{get_applier_datasource.get_connection_summary()}")
     end
     
     info("Checking open_files_limit")
@@ -1424,7 +1396,7 @@ class MySQLBinlogDoDbCheck < ConfigureValidationCheck
 
   def validate
     do_db = get_applier_datasource.get_value("SHOW MASTER STATUS", "Binlog_Do_DB")
-    unless do_db.to_s() == ""
+    unless do_db.empty?
       error("MySQL configuration variable 'Binlog_Do_DB' is set. This setting prevents proper operation of Tungsten Replicator.")
     end
   end
@@ -1502,7 +1474,7 @@ class XtrabackupAvailableCheck < ConfigureValidationCheck
     end
     return path
   end
-  
+
   def validate
     innobackupex_path = get_innobackupex_path()
     if innobackupex_path.empty?
@@ -1511,7 +1483,7 @@ class XtrabackupAvailableCheck < ConfigureValidationCheck
       info("xtrabackup found at #{innobackupex_path}")
     end
   end
-  
+
   def enabled?
     super() && ["xtrabackup","xtrabackup-full","xtrabackup-incremental"].include?(@config.getProperty(get_member_key(REPL_BACKUP_METHOD)))
   end
@@ -1700,21 +1672,8 @@ module ConfigureDeploymentStepMySQL
           file.puts("datadir=#{@config.getProperty(get_service_key(REPL_MYSQL_DATADIR))}")
         end
       }
-      WatchFiles.watch_file(@config.getProperty(get_service_key(REPL_MYSQL_SERVICE_CONF)), @config)
+      watch_file(@config.getProperty(get_service_key(REPL_MYSQL_SERVICE_CONF)))
     end
-    
-    if @config.getProperty(get_service_key(REPL_ROLE)) == REPL_ROLE_DI
-      eds = get_extractor_datasource()
-      if eds.is_a?(MySQLDatabasePlatform)
-        File.open(@config.getProperty(get_service_key(EXTRACTOR_REPL_MYSQL_SERVICE_CONF)), "w") {
-          |file|
-          file.puts("[client]")
-          file.puts("user=#{eds.username}")
-          file.puts("password=#{eds.password}")
-        }
-        WatchFiles.watch_file(@config.getProperty(get_service_key(EXTRACTOR_REPL_MYSQL_SERVICE_CONF)), @config)
-      end
-	  end
     
     if is_manager?() && (get_applier_datasource().is_a?(MySQLDatabasePlatform) || get_extractor_datasource().is_a?(MySQLDatabasePlatform))
       write_svc_properties("mysql", @config.getProperty(REPL_BOOT_SCRIPT))
@@ -1723,11 +1682,13 @@ module ConfigureDeploymentStepMySQL
         FileUtils.cp("#{get_deployment_basedir()}/tungsten-manager/rules-ext/mysql_readonly.service.properties", 
           "#{get_deployment_basedir()}/cluster-home/conf/cluster/#{@config.getProperty(DATASERVICENAME)}/service/mysql_readonly.properties")
     
-        service_transformer("cluster-home/bin/mysql_readonly") {
-          |t|
-          t.mode(0750)
-          t.set_template("tungsten-manager/samples/conf/mysql_readonly.tpl")
-        }
+        transformer = Transformer.new(
+    		  "#{get_deployment_basedir()}/tungsten-manager/samples/conf/mysql_readonly.tpl",
+    			"#{get_deployment_basedir()}/cluster-home/bin/mysql_readonly", "#")
+    	  transformer.transform_values(method(:transform_replication_dataservice_values))
+        transformer.output
+        watch_file(transformer.get_filename())
+        File.chmod(0750, "#{get_deployment_basedir()}/cluster-home/bin/mysql_readonly")
       else
         FileUtils.rm_f("#{get_deployment_basedir()}/cluster-home/conf/cluster/#{@config.getProperty(DATASERVICENAME)}/service/mysql_readonly.properties")
         FileUtils.rm_f("#{get_deployment_basedir()}/cluster-home/bin/mysql_readonly")

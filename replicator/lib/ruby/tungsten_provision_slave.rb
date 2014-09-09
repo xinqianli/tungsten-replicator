@@ -14,11 +14,7 @@ class TungstenReplicatorProvisionSlave
     if @options[:mysqldump] == false
       provision_with_xtrabackup()
     else
-      if opt(:topology) == "direct"
-        provision_from_direct_master()
-      else
-        provision_with_mysqldump()
-      end
+      provision_with_mysqldump()
     end
   end
   
@@ -165,71 +161,6 @@ class TungstenReplicatorProvisionSlave
     end
   end
   
-  def provision_from_direct_master
-    # Create a directory to hold the mysqldump output
-    id = build_timestamp_id("provision_from_direct_master_")
-    staging_dir = TI.setting(TI.setting_key(REPL_SERVICES, opt(:service), "repl_backup_directory")) + "/" + id
-    FileUtils.mkdir_p(staging_dir)
-    opt(:change_master_file, "#{staging_dir}/change_master.sql")
-    
-    extraction_conf = TI.setting(TI.setting_key(REPL_SERVICES, opt(:service), "repl_direct_datasource_mysql_service_conf"))
-    extraction_host = TI.setting(TI.setting_key(REPL_SERVICES, opt(:service), "repl_direct_datasource_host"))
-    extraction_port = TI.setting(TI.setting_key(REPL_SERVICES, opt(:service), "repl_direct_datasource_port"))
-    mysqldump = "mysqldump --defaults-file=#{extraction_conf} --host=#{extraction_host} --port=#{extraction_port} --opt --single-transaction --all-databases --add-drop-database --master-data=2"
-    
-    # Run the mysqldump command and load the contents directly into mysql
-    # The output is parsed by egrep to find the CHANGE MASTER statement
-    # and write it to another file
-    begin      
-      script = File.open("#{staging_dir}/mysqldump.sh", "w")
-      script.puts("#!/bin/bash")
-      script.puts("#{mysqldump} | tee >(egrep \"^-- CHANGE MASTER\" > #{opt(:change_master_file)}) | #{get_mysql_command()}")
-      script.close()
-      File.chmod(0755, script.path())
-      TU.cmd_result("#{script.path()}")
-    rescue CommandError => ce
-      TU.debug(ce)
-      raise "Unable to extract and apply the MySQL data for provisioning"
-    end
-    
-    # Parse the CHANGE MASTER information for the file number and position
-    change_master_line = TU.cmd_result("cat #{opt(:change_master_file)}")
-    if change_master_line != nil
-      binlog_file = nil
-      binlog_position = nil
-      
-      m = change_master_line.match(/MASTER_LOG_FILE='([a-zA-Z0-9\.\-\_]*)', MASTER_LOG_POS=([0-9]*)/)
-      if m
-        binlog_file = m[1]
-        binlog_position = m[2]
-      else
-        raise "Unable to parse CHANGE MASTER data"
-      end
-      
-      TU.notice("#{TI.hostname()} has been provisioned to #{binlog_file}:#{binlog_position} on #{extraction_host}:#{extraction_port}")
-      
-      begin
-        TU.forward_cmd_results?(true)
-
-        set_position_command = []
-        set_position_command << "#{TI.root()}/#{CURRENT_RELEASE_DIRECTORY}/tungsten-replicator/scripts/tungsten_set_position"
-        set_position_command << "--seqno=0"
-        set_position_command << "--epoch=0"
-        set_position_command << "--source-id=#{extraction_host}"
-        set_position_command << "--event-id=#{binlog_file}:#{binlog_position}"
-        set_position_command << TU.get_tungsten_command_options()
-        TU.cmd_result(set_position_command.join(' '))
-      rescue CommandError => ce
-        TU.debug(ce)
-        raise "Unable to set the new replication position based on provisioning information"
-      ensure
-        TU.forward_cmd_results?(false)
-      end
-    else
-      raise "Unable to find CHANGE MASTER data"
-    end
-  end
-  
   def validate
     # All replication must be OFFLINE
     unless TI.is_replicator?()
@@ -286,60 +217,6 @@ class TungstenReplicatorProvisionSlave
       end
     end
     
-    valid_service_option = false
-    if opt(:service) != nil
-      if TI.dataservices().include?(opt(:service))
-        valid_service_option = true
-      end
-    end
-    # Look at services on the source and suggest a proper value
-    if valid_service_option == false && opt(:source) != nil
-      begin
-        local_services = TI.dataservices()
-        master_services = []
-        service_names = []
-        raw = TU.ssh_result("#{TI.root()}/#{CURRENT_RELEASE_DIRECTORY}/tungsten-replicator/bin/trepctl services -json", 
-          opt(:source), TI.user())
-        services = JSON.parse(raw)
-        services.each{
-          |s|
-          svc = s["serviceName"]
-          
-          # Only suggest this service if it is part of the local replicator
-          unless local_services.include?(svc)
-            next
-          end
-          
-          service_names << svc
-          if s["role"] == "master"
-            master_services << svc
-          end
-        }
-        
-        if opt(:service) == nil
-          error = "The --service option was not given."
-        else
-          error = "The --service option provided does not exist."
-        end
-        
-        case master_services.size()
-        when 0
-          TU.error("#{error} You must specify it as one of #{service_names.join(',')}.")
-        when 1
-          svc = master_services[0]
-          TU.error("#{error} You must specify it as #{svc} which is the master on #{opt(:source)}.")
-        else
-          TU.error("#{error} You must specify it as one of #{master_services.join(',')}.")
-        end
-      rescue JSON::ParserError => pe
-        TU.debug(pe)
-        TU.error("Unable to suggest a value for --service due to parsing issues.")
-      rescue CommandError => ce
-        TU.debug(ce)
-        TU.error("Unable to suggest a value for --service due to issues on #{opt(:source)}")
-      end
-    end
-    
     # This section evaluates :mysqldump and :xtrabackup to determine the best
     # mechanism to use. This will need to be more generic as we support
     # more platforms
@@ -354,32 +231,11 @@ class TungstenReplicatorProvisionSlave
     
     # Inspect the default value for the replication service to identify the 
     # preferred method
-    if opt(:service) != nil && opt(:mysqldump) == nil && opt(:xtrabackup) == nil
+    if opt(:mysqldump) == nil && opt(:xtrabackup) == nil
       if TI.setting(TI.setting_key(REPL_SERVICES, opt(:service), "repl_backup_method")) == "mysqldump"
         opt(:mysqldump, true)
       else
         opt(:mysqldump, false)
-      end
-    end
-    
-    if opt(:service) && TI
-      topology = TI.setting(TI.setting_key(DATASERVICES, opt(:service), "dataservice_topology"))
-    else
-      topology = nil
-    end
-    opt(:topology, topology)
-    
-    if opt(:topology) == "clustered"
-      opt(:is_clustered, true)
-    else
-      opt(:is_clustered, false)
-    end
-    
-    if opt(:topology) == "direct"
-      opt(:mysqldump, true)
-      
-      if opt(:source) == nil && TI
-        opt(:source, TI.setting(TI.setting_key(REPL_SERVICES, opt(:service), "repl_direct_datasource_host")))
       end
     end
     
@@ -389,6 +245,12 @@ class TungstenReplicatorProvisionSlave
     
     unless TU.is_valid?()
       return
+    end
+    
+    if TI && TI.setting(TI.setting_key(DATASERVICES, opt(:service), "dataservice_topology")) == "clustered"
+      opt(:is_clustered, true)
+    else
+      opt(:is_clustered, false)
     end
     
     if @options[:mysqldump] == false
@@ -427,7 +289,7 @@ class TungstenReplicatorProvisionSlave
           TU.error "The MySQL data dir '#{@options[:mysqldatadir]}' is not writeable"
         end
       end
-
+    
       # Read innodb_log_file_size from the my.cnf file
       @options[:innodb_log_file_size] = get_mysql_option("innodb_log_file_size")
       if @options[:innodb_log_file_size].to_s() == ""
@@ -444,12 +306,12 @@ class TungstenReplicatorProvisionSlave
       if @options[:innodb_log_file_size].to_s() == ""
         TU.info "The configuration file at #{@options[:my_cnf]} does not define a innodb_log_file_size value - this can cause problems with xtrabackup."
       end    
-        
+    
       path = get_innobackupex_path()
       if path == ""
         TU.error("Unable to find the innobackupex script")
       end
-          
+    
       # If the InnoDB files are stored somewhere other than datadir we are
       # not able to put them all in the correct position at this time
       # This only matters if we are restoring directly to the data directory
@@ -465,11 +327,7 @@ class TungstenReplicatorProvisionSlave
     if @options[:source].to_s() == ""
       TU.error("The --source argument is required")
     else
-      if TU.is_localhost?(opt(:source))
-        TU.error("The value provided for --source, #{opt(:source)}, resolves to the local node. You cannot provision a node from itself.")
-      end
-      
-      if opt(:topology) != "direct" && TU.test_ssh(@options[:source], TI.user())
+      if TU.test_ssh(@options[:source], TI.user())
         begin
           TU.forward_cmd_results?(true)
           
@@ -490,9 +348,7 @@ class TungstenReplicatorProvisionSlave
               @options[:source], TI.user())
           end
           TU.forward_cmd_results?(false)
-        rescue CommandError => ce
-          TU.debug(ce)
-          TU.error("There were errors validating the provision script on #{opt(:source)}")
+        rescue
         end
       end
     end

@@ -45,8 +45,6 @@
     <property name="dist.src.dir" value="${build.dir}/tungsten-common-src"/>
     <property name="tungsten-common.jar" value="${jars.dir}/tungsten-common.jar"/>
     <property name="tungsten-common-src.jar" value="${jars.dir}/tungsten-common-src.jar"/>
-    <!-- Dummy entry for cases where directory does not exist. -->
-    <property name="external.lib.dir" value="lib"/>
 
     <property name="deploy.host" value="localhost"/>
     <property name="deploy.dir" value="${user.home}/tungsten"/>
@@ -55,9 +53,6 @@
 		<fileset dir="lib/">
 			<include name="*.jar" unless="library.compile.files"/>
 			<include name="${library.compile.files}" if="library.compile.files"/>
-		</fileset>
-    	<fileset dir="lib-ext/">
-			<include name="cloudera-4.4/*.jar"/>
 		</fileset>
     	<fileset dir="lib.tools/">
 			<include name="*.jar" unless="tools.compile.files"/>
@@ -69,9 +64,6 @@
         <path refid="compile.classpath"/>
         <path location="${classes.dir}"/>
 		<fileset dir="lib-test/">
-			<include name="*.jar"/>
-		</fileset>
-		<fileset dir="${external.lib.dir}">
 			<include name="*.jar"/>
 		</fileset>
     </path>

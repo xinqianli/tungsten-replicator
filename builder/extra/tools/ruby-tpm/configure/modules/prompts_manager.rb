@@ -125,6 +125,7 @@ class ManagerDeploymentHost < ConfigurePrompt
     super(DEPLOYMENT_HOST, 
       "On what host would you like to deploy this manager?", 
       PV_IDENTIFIER)
+    @weight = -1
   end
   
   def load_default_value
@@ -613,7 +614,7 @@ class ManagerGroupCommunicationInitialHosts < ConfigurePrompt
     super(MGR_GROUP_COMMUNICATION_INITIAL_HOSTS, "Initial hosts for seeding group communication", PV_ANY)
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     fill_ports_near_hosts(@config.getProperty(get_dataservice_key(DATASERVICE_MEMBERS)), @config.getProperty(get_member_key(MGR_GROUP_COMMUNICATION_PORT)))
   end
 end
@@ -653,7 +654,7 @@ class ManagerJavaGarbageCollection < ConfigurePrompt
       PV_BOOLEAN, "false")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     if get_value() == "true"
       ""
     else
@@ -757,7 +758,7 @@ class ManagerIsWitness < ConfigurePrompt
       if @config.getPropertyOr(get_dataservice_key(DATASERVICE_WITNESSES)).include_alias?(get_host_alias())
         @default = "true"
       else
-        @default = "false"
+        @default = false
       end
     else
       @default = "false"

@@ -129,6 +129,8 @@ public class LimitChunk extends AbstractChunk implements Chunk
 
     /**
      * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.extractor.parallel.AbstractChunk#getQuery(com.continuent.tungsten.replicator.database.Database)
      */
     @Override
     public String getQuery(Database connection, String eventId)
@@ -188,7 +190,11 @@ public class LimitChunk extends AbstractChunk implements Chunk
         sql.append(" FROM ");
         sql.append(fqnTable);
 
-        sql.append(AbstractChunk.getFlashbackQueryClause(connection, eventId));
+        if (eventId != null)
+        {
+            sql.append(" AS OF SCN ");
+            sql.append(eventId);
+        }
 
         if (fromValues != null || toValues != null)
         {

@@ -39,9 +39,6 @@ import com.continuent.tungsten.common.config.TungstenPropertiesIO;
 import com.continuent.tungsten.common.file.FileIOException;
 import com.continuent.tungsten.fsm.event.EventDispatcher;
 import com.continuent.tungsten.replicator.ReplicatorException;
-import com.continuent.tungsten.replicator.datasource.DataSourceService;
-import com.continuent.tungsten.replicator.datasource.DummyDataSource;
-import com.continuent.tungsten.replicator.datasource.UniversalDataSource;
 import com.continuent.tungsten.replicator.event.ReplDBMSHeader;
 import com.continuent.tungsten.replicator.filter.FilterManualProperties;
 import com.continuent.tungsten.replicator.management.OpenReplicatorContext;
@@ -174,7 +171,7 @@ public class ReplicatorRuntime implements PluginContext
         {
             if (!ReplicatorConf.ROLE_MASTER.equals(roleName))
                 throw new ReplicatorException(
-                        "Provisioning can happen only on master");
+                        "Provisionning can happen only on master");
             roleName = ReplicatorConf.ROLE_MASTER + "-provision";
         }
         else if (ReplicatorConf.ROLE_MASTER.equals(roleName))
@@ -874,7 +871,6 @@ public class ReplicatorRuntime implements PluginContext
 
     /**
      * {@inheritDoc}
-     * 
      * @see com.continuent.tungsten.replicator.plugin.PluginContext#isProvisioning()
      */
     public boolean isProvisioning()
@@ -1096,48 +1092,6 @@ public class ReplicatorRuntime implements PluginContext
     /**
      * {@inheritDoc}
      * 
-     * @see com.continuent.tungsten.replicator.plugin.PluginContext#getDataSource(java.lang.String)
-     * @see com.continuent.tungsten.replicator.datasource.DataSourceService#find(java.lang.String)
-     */
-    public UniversalDataSource getDataSource(String name)
-            throws ReplicatorException
-    {
-        // If the name is null or blank, we just return nothing.
-        if (name == null || "".equals(name))
-        {
-            return null;
-        }
-
-        // Make sure the data source service exists.
-        DataSourceService datasourceService = (DataSourceService) getService("datasource");
-        if (datasourceService == null)
-        {
-            throw new ReplicatorException(
-                    "Unable to locate data source service; check replicator properties file to ensure it is running in pipeline");
-        }
-
-        // Now look up and return the data source according to a set of rules.
-        UniversalDataSource ds = datasourceService.find(name);
-        if (ds == null)
-        {
-            // Not finding a name data source is bad.
-            throw new ReplicatorException("Data source not found: name=" + name);
-        }
-        else if (ds instanceof DummyDataSource)
-        {
-            // Dummy data sources are like no data source.
-            return null;
-        }
-        else
-        {
-            // Everything else goes back.
-            return ds;
-        }
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
      * @see com.continuent.tungsten.replicator.plugin.PluginContext#getEventDispatcher()
      */
     public EventDispatcher getEventDispatcher()
@@ -1279,7 +1233,7 @@ public class ReplicatorRuntime implements PluginContext
         catch (Throwable t)
         {
             String message = "Unable to configure plugin: class name="
-                    + pluginClassName + " message=[" + t.getMessage() + "]";
+                    + pluginClassName;
 
             logger.error(message, t);
             throw new ReplicatorException(message, t);
@@ -1309,7 +1263,7 @@ public class ReplicatorRuntime implements PluginContext
         catch (Throwable t)
         {
             String message = "Unable to prepare plugin: class name="
-                    + pluginClassName + " message=[" + t.getMessage() + "]";
+                    + pluginClassName;
 
             logger.error(message, t);
             throw new ReplicatorException(message, t);
@@ -1354,23 +1308,12 @@ public class ReplicatorRuntime implements PluginContext
     /**
      * {@inheritDoc}
      * 
-     * @see com.continuent.tungsten.replicator.plugin.PluginContext#isPrivilegedSlave()
+     * @see com.continuent.tungsten.replicator.plugin.PluginContext#isPrivilegedSlaveUpdate()
      */
-    public boolean isPrivilegedSlave()
+    public boolean isPrivilegedSlaveUpdate()
     {
-        return properties.getBoolean(ReplicatorConf.PRIVILEGED_SLAVE,
-                ReplicatorConf.PRIVILEGED_SLAVE_DEFAULT, true);
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.plugin.PluginContext#isPrivilegedMaster()
-     */
-    public boolean isPrivilegedMaster()
-    {
-        return properties.getBoolean(ReplicatorConf.PRIVILEGED_MASTER,
-                ReplicatorConf.PRIVILEGED_MASTER_DEFAULT, true);
+        return properties.getBoolean(ReplicatorConf.PRIVILEGED_SLAVE_UPDATE,
+                ReplicatorConf.PRIVILEGED_SLAVE_UPDATE_DEFAULT, true);
     }
 
     /**

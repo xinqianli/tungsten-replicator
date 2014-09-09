@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2011-14 Continuent Inc.
+ * Copyright (C) 2011-13 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -33,16 +33,15 @@ import org.apache.log4j.Logger;
 import com.continuent.tungsten.common.config.TungstenProperties;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.database.Database;
-import com.continuent.tungsten.replicator.datasource.SqlDataSource;
-import com.continuent.tungsten.replicator.datasource.UniversalDataSource;
+import com.continuent.tungsten.replicator.database.DatabaseFactory;
 import com.continuent.tungsten.replicator.plugin.PluginContext;
 import com.continuent.tungsten.replicator.service.PipelineService;
 
 /**
  * Provides a service interface to the shard-to-channel assignment table. This
  * service only works for relational databases and deactivates automatically if
- * the data source type is non-SQL. This is necessary to permit proper operation
- * when applying against data source type like MongoDB or Hadoop.
+ * the URL is not set. This is necessary to permit proper operation when
+ * applying against NoSQL DBMS like MongoDB.
  * 
  * @author <a href="mailto:robert.hodges@continuent.com">Robert Hodges</a>
  */
@@ -51,11 +50,12 @@ public class ChannelAssignmentService implements PipelineService
     // Parameters.
     private static Logger        logger                    = Logger.getLogger(ChannelAssignmentService.class);
     private String               name;
-    private String               dataSource;
+    private String               user;
+    private String               url;
+    private String               password;
     private int                  channels;
 
     // Internal values.
-    private PluginContext        context;
     private boolean              active                    = false;
     private Database             conn;
     private ShardChannelTable    channelTable;
@@ -76,9 +76,19 @@ public class ChannelAssignmentService implements PipelineService
         this.name = name;
     }
 
-    public void setDataSource(String dataSource)
+    public void setUser(String user)
     {
-        this.dataSource = dataSource;
+        this.user = user;
+    }
+
+    public void setUrl(String url)
+    {
+        this.url = url;
+    }
+
+    public void setPassword(String password)
+    {
+        this.password = password;
     }
 
     public void setChannels(int channels)
@@ -126,7 +136,6 @@ public class ChannelAssignmentService implements PipelineService
     public void configure(PluginContext context) throws ReplicatorException,
             InterruptedException
     {
-        this.context = context;
     }
 
     /**
@@ -137,45 +146,36 @@ public class ChannelAssignmentService implements PipelineService
     public void prepare(PluginContext context) throws ReplicatorException,
             InterruptedException
     {
-        // If the data source is non-relational, the service is not active.
-        UniversalDataSource dataSourceImpl = context.getDataSource(dataSource);
-
-        if (dataSourceImpl == null)
+        // If the URL is missing, the service is not active. This is expected if
+        // the target is non-relational.
+        if (url == null || url.trim().length() == 0)
         {
-            logger.info("Channel-assignment data source is unspecified; service is disabled");
+            logger.info("Channel-assignment service URL is null; service is disabled");
             return;
-        }
-        else if (dataSourceImpl instanceof SqlDataSource)
-        {
-            active = true;
         }
         else
         {
-            logger.info("Channel-assignment data source is not a SQL DBMS; service is disabled");
-            return;
+            active = true;
         }
+
+        // Use default user/password if not supplied.
+        if (user == null)
+            user = context.getJdbcUser();
+        if (password == null)
+            password = context.getJdbcPassword();
 
         // Create the database connection.
         try
         {
-            conn = (Database) dataSourceImpl.getConnection();
+            conn = DatabaseFactory.createDatabase(url, user, password,
+                    context.isMaster() || context.isPrivilegedSlaveUpdate());
             if (reconnectTimeoutInSeconds > 0)
             {
                 logger.info("ChannelAssignmentService will use a "
                         + reconnectTimeoutInSeconds + "s timeout.");
                 connectionLastUsedTime = System.currentTimeMillis();
             }
-            // Need to suppress logging if possible. If we are running on a
-            // master we also don't want to run without a privileged account to
-            // avoid corrupting downstream replicators. However that check needs
-            // to happen when we actually log data.
-            conn.connect();
-            if (context.isSlave() && context.isPrivilegedSlave())
-            {
-                conn.setPrivileged(true);
-                if (conn.supportsControlSessionLevelLogging())
-                    conn.controlSessionLevelLogging(true);
-            }
+            conn.connect(false);
         }
         catch (SQLException e)
         {
@@ -185,9 +185,28 @@ public class ChannelAssignmentService implements PipelineService
 
         String metadataSchema = context.getReplicatorSchemaName();
 
-        // Load channel assignments.
+        // Create shard-channel table if it does not exist.
         channelTable = new ShardChannelTable(metadataSchema,
                 context.getTungstenTableType());
+        try
+        {
+            // HACK: Create schema. This table should be created by
+            // the catalog manager.
+            if (conn.supportsUseDefaultSchema() && metadataSchema != null)
+            {
+                if (conn.supportsCreateDropSchema())
+                    conn.createSchema(metadataSchema);
+                conn.useDefaultSchema(metadataSchema);
+            }
+            channelTable.initializeShardTable(conn, context.getChannels());
+        }
+        catch (SQLException e)
+        {
+            throw new ReplicatorException(
+                    "Unable to initialize shard-channel table", e);
+        }
+
+        // Load channel assignments.
         loadChannelAssignments();
     }
 
@@ -280,13 +299,7 @@ public class ChannelAssignmentService implements PipelineService
                         + "s ago)");
             // Time to reconnect now
             conn.close();
-            conn.connect();
-            if (context.isSlave() && context.isPrivilegedSlave())
-            {
-                conn.setPrivileged(true);
-                if (conn.supportsControlSessionLevelLogging())
-                    conn.controlSessionLevelLogging(true);
-            }
+            conn.connect(false);
         }
         else if (logger.isDebugEnabled())
             logger.debug("Not renewing connection (last active "

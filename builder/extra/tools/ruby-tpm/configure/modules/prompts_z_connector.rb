@@ -123,6 +123,7 @@ class ConnectorDeploymentHost < ConfigurePrompt
     super(DEPLOYMENT_HOST, 
       "On what host would you like to deploy this connector?", 
       PV_IDENTIFIER)
+    @weight = -1
   end
   
   def load_default_value
@@ -255,14 +256,13 @@ end
 
 class ConnectorListenPort < ConfigurePrompt
   include ConnectorPrompt
-  include NoConnectorReconfigure
   
   def initialize
     super(CONN_LISTEN_PORT, "Port for the connector to listen on", PV_INTEGER, "9999")
     override_command_line_argument("application-port")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     if @config.getTemplateValue(get_member_key(ENABLE_CONNECTOR_RO)) == "true"
       @config.getPropertyOr(get_member_key(CONN_RO_LISTEN_PORT), get_value())
     else
@@ -275,7 +275,6 @@ end
 
 class ConnectorReadOnlyListenPort < ConfigurePrompt
   include ConnectorPrompt
-  include NoConnectorReconfigure
   
   def initialize
     super(CONN_RO_LISTEN_PORT, "Port for the connector to listen on for read-only connections", PV_INTEGER)
@@ -354,7 +353,7 @@ class ConnectorUserMapPasswordLines < ConfigurePrompt
     super(CONN_PASSWORD_LINES, "Connector user.map password lines", PV_ANY, "")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     ds_alias = get_dataservice()
     composite_ds_alias = nil
     @config.getPropertyOr(DATASERVICES, {}).keys().each{
@@ -393,7 +392,7 @@ class ConnectorUserMapDirectLines < ConfigurePrompt
     super(CONN_DIRECT_LINES, "Connector user.map @direct lines", PV_ANY, "")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     if @config.getProperty(get_member_key(CONN_RWSPLITTING)) == "true"
       prefix = ""
     else
@@ -415,7 +414,7 @@ class ConnectorRWAddresses < ConfigurePrompt
     super(CONN_RW_ADDRESSES, "Connector addresses that should receive a r/w connection", PV_ANY, "")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     lines = []
     
     get_value().to_s().split(",").each{
@@ -438,7 +437,7 @@ class ConnectorROAddresses < ConfigurePrompt
     super(CONN_RO_ADDRESSES, "Connector addresses that should receive a r/o connection", PV_ANY, "")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     lines = []
     
     get_value().to_s().split(",").each{
@@ -469,11 +468,11 @@ class ConnectorSmartScale < ConfigurePrompt
     super(CONN_SMARTSCALE, "Enable SmartScale R/W splitting in the connector", PV_BOOLEAN, "false")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     if @config.getTemplateValue(get_member_key(ENABLE_CONNECTOR_RO)) == "true"
       "false"
     else
-      super()
+      super(transform_values_method)
     end
   end
 end
@@ -512,7 +511,11 @@ class ConnectorRelativeSlaveStatus < ConfigurePrompt
   include HiddenValueModule
   
   def initialize
-    super(CONN_SLAVE_STATUS_IS_RELATIVE, "Display slave status using relative time", PV_BOOLEAN, "false")
+    super(CONN_SLAVE_STATUS_IS_RELATIVE, "Display slave status using relative time", PV_BOOLEAN)
+  end
+  
+  def load_default_value
+    @default = @config.getProperty(get_dataservice_key(DATASERVICE_USE_RELATIVE_LATENCY))
   end
 end
 
@@ -559,7 +562,6 @@ end
 class RouterGatewayPort < ConfigurePrompt
   include ConnectorPrompt
   include AdvancedPromptModule
-  include NoConnectorReconfigure
   
   def initialize
     super(ROUTER_GATEWAY_PORT, "The router gateway port", PV_INTEGER, "11999")
@@ -572,7 +574,6 @@ end
 class RouterGatewayReturnPort < ConfigurePrompt
   include ConnectorPrompt
   include HiddenValueModule
-  include NoConnectorReconfigure
   
   def initialize
     super(ROUTER_GATEWAY_RETURN_PORT, "The router gateway return port", PV_INTEGER)
@@ -586,7 +587,6 @@ end
 class RouterJMXPort < ConfigurePrompt
   include ConnectorPrompt
   include AdvancedPromptModule
-  include NoConnectorReconfigure
   
   def initialize
     super(ROUTER_JMX_PORT, "The router jmx port", PV_INTEGER, "10999")
@@ -598,7 +598,6 @@ end
 class ConnectorJavaMemorySize < ConfigurePrompt
   include ConnectorPrompt
   include AdvancedPromptModule
-  include NoConnectorReconfigure
   
   def initialize
     super(CONN_JAVA_MEM_SIZE, "Connector Java heap memory size in Mb (min 128)",
@@ -609,14 +608,13 @@ end
 class ConnectorJavaGarbageCollection < ConfigurePrompt
   include ConnectorPrompt
   include AdvancedPromptModule
-  include NoConnectorReconfigure
   
   def initialize
     super(CONN_JAVA_ENABLE_CONCURRENT_GC, "Connector Java uses concurrent garbage collection",
       PV_BOOLEAN, "false")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     if get_value() == "true"
       ""
     else
@@ -663,7 +661,7 @@ class ConnectorDriverOptions < ConfigurePrompt
     end
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     v = get_value()
     if @config.getTemplateValue(get_member_key(ENABLE_CONNECTOR_RO)) == "true"
       if v == ""
@@ -737,7 +735,7 @@ class ConnectorJavaKeystorePath < ConfigurePrompt
     super(JAVA_CONNECTOR_KEYSTORE_PATH, "Local path to the Java Connector Keystore file.", PV_FILENAME)
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     @config.getProperty(get_host_key(SECURITY_DIRECTORY)) + "/tungsten_connector_keystore.jks"
   end
   
@@ -778,7 +776,7 @@ class ConnectorJavaTruststorePath < ConfigurePrompt
     super(JAVA_CONNECTOR_TRUSTSTORE_PATH, "Local path to the Java Connector Truststore file.", PV_FILENAME)
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     @config.getProperty(get_host_key(SECURITY_DIRECTORY)) + "/tungsten_connector_truststore.ts"
   end
   
@@ -819,7 +817,7 @@ class ConnectorEnableReadOnly < ConfigurePrompt
     override_command_line_argument("connector-readonly")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     if get_value() == "true" || ConfigureDeploymentStepConnector.connector_ro_mode?() == true
       "true"
     else
@@ -836,7 +834,7 @@ class ConnectorEnableBridgeMode < ConfigurePrompt
     override_command_line_argument("connector-bridge-mode")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     if get_value() == "true"
       if @config.getTemplateValue(get_member_key(ENABLE_CONNECTOR_RO)) == "true"
         "RO_RELAXED"
@@ -858,7 +856,7 @@ class ConnectorReadOnlyPropertiesExists < ConfigurePrompt
     super(CONN_RO_PROPERTIES_EXISTS, "Enable the second Tungsten Connector listeners", PV_BOOLEAN, "false")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     if File.exist?("#{@config.getProperty(PREPARE_DIRECTORY)}/tungsten-connector/conf/connector.ro.properties") == true
       "true"
     else
@@ -878,6 +876,14 @@ class ConnectorMaxSlaveLatency < ConfigurePrompt
   def required?
     false
   end
+  
+  def add_jdbc_driver_options(opts)
+    if get_value() != nil
+      opts << "maxAppliedLatency=#{get_value}"
+    end
+  end
+  
+  ConnectorDriverOptions.register(CONN_MAX_SLAVE_LATENCY)
 end
 
 class ConnectorAffinity < ConfigurePrompt
@@ -897,9 +903,9 @@ class ConnectorAffinity < ConfigurePrompt
     end
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     if @config.getTemplateValue(get_member_key(ENABLE_CONNECTOR_RO)) == "true"
-      super()
+      super(transform_values_method)
     else
       ""
     end

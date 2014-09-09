@@ -126,6 +126,7 @@ public class ChunksGeneratorThread extends Thread
     private int                  extractChannels;
     private long                 chunkSize = 1000;
     private String               eventId   = null;
+    private PreparedStatement    pStmt;
     private String               whereClause;
 
     /**
@@ -508,8 +509,8 @@ public class ChunksGeneratorThread extends Thread
                 pkName,
                 conn.getDatabaseObjectName(table.getSchema()) + '.'
                         + conn.getDatabaseObjectName(table.getName()));
-
-        sql += AbstractChunk.getFlashbackQueryClause(conn, eventId);
+        if (eventId != null)
+            sql += " AS OF SCN " + eventId;
 
         Statement st = null;
         ResultSet rs = null;
@@ -624,8 +625,8 @@ public class ChunksGeneratorThread extends Thread
         // Get Count
         String sql = String.format("SELECT COUNT(%s) as cnt FROM %s", pkName,
                 fqnTable);
-
-        sql += AbstractChunk.getFlashbackQueryClause(connection, eventId);
+        if (eventId != null)
+            sql += " AS OF SCN " + eventId;
 
         // if count <= Chunk size, we are done
         long count = 0;
@@ -692,9 +693,6 @@ public class ChunksGeneratorThread extends Thread
 
         PreparedStatement pstmt = null;
 
-        // TODO: This does not perform very well. It is better to scan the index
-        // than to try to use a query based on rownum
-
         StringBuffer sqlBuf = new StringBuffer("SELECT MIN(");
         sqlBuf.append(pkName);
         sqlBuf.append(") as min, MAX(");
@@ -708,8 +706,11 @@ public class ChunksGeneratorThread extends Thread
         sqlBuf.append(" ORDER BY ");
         sqlBuf.append(pkName);
 
-        sqlBuf.append(AbstractChunk
-                .getFlashbackQueryClause(connection, eventId));
+        if (eventId != null)
+        {
+            sqlBuf.append(" AS OF SCN ");
+            sqlBuf.append(eventId);
+        }
 
         sqlBuf.append(") sub where ROWNUM <= ? ) where rnum >= ?");
 
@@ -775,16 +776,14 @@ public class ChunksGeneratorThread extends Thread
 
     private void chunkLimit(Table table) throws InterruptedException
     {
-        PreparedStatement pStmt = null;
-
         // Table does not have a primary key. Let's chunk using limit.
         String fqnTable = connection.getDatabaseObjectName(table.getSchema())
                 + '.' + connection.getDatabaseObjectName(table.getName());
 
         // Get Count
         String sql = String.format("SELECT COUNT(*) as cnt FROM %s", fqnTable);
-
-        sql += AbstractChunk.getFlashbackQueryClause(connection, eventId);
+        if (eventId != null)
+            sql += " AS OF SCN " + eventId;
 
         long count = 0;
         Statement st = null;
@@ -792,8 +791,6 @@ public class ChunksGeneratorThread extends Thread
         try
         {
             st = connection.createStatement();
-            if (logger.isDebugEnabled())
-                logger.debug("Running " + sql);
             rs = st.executeQuery(sql);
             if (rs.next())
             {
@@ -849,14 +846,7 @@ public class ChunksGeneratorThread extends Thread
 
         try
         {
-            pStmt = generateChunkingPreparedStatement(table, blockSize);
-            if (pStmt == null)
-            {
-                chunks.put(new NoChunk(table, null));
-                // No chunks for this table (all table at once)
-                return;
-            }
-
+            generateChunkingPreparedStatement(table, blockSize);
         }
         catch (SQLException e)
         {
@@ -906,38 +896,29 @@ public class ChunksGeneratorThread extends Thread
         }
         finally
         {
-            if (result != null)
+            try
             {
-                try
-                {
-                    result.close();
-                }
-                catch (SQLException e)
-                {
-                    logger.warn("Error while closing resultset", e);
-                }
+                result.close();
             }
-            if (pStmt != null)
-                try
-                {
-                    pStmt.close();
-                    pStmt = null;
-                }
-                catch (SQLException e)
-                {
-                    logger.warn(
-                            "Error while closing chunking prepared statement",
-                            e);
-                }
-        }
+            catch (SQLException e)
+            {
+                logger.warn("Error while closing resultset", e);
+            }
+            try
+            {
+                pStmt.close();
+            }
+            catch (SQLException e)
+            {
+                logger.warn("Error while closing chunking prepared statement",
+                        e);
+            }
+		}
     }
 
-    private PreparedStatement generateChunkingPreparedStatement(Table table,
-            long blockSize) throws SQLException
+    private void generateChunkingPreparedStatement(Table table, long blockSize)
+            throws SQLException
     {
-        if (logger.isDebugEnabled())
-            logger.debug("Handling table " + table.toExtendedString());
-
         String fqnTable = connection.getDatabaseObjectName(table.getSchema())
                 + '.' + connection.getDatabaseObjectName(table.getName());
 
@@ -945,58 +926,57 @@ public class ChunksGeneratorThread extends Thread
         StringBuffer colBuf = new StringBuffer();
         whereClause = new String();
 
-        Key key;
-
         if (table.getPrimaryKey() != null)
         {
             // TODO
             // No dedicated chunking algorithm for this type of pk (either
             // composite or datatype not handled)
-            key = table.getPrimaryKey();
         }
         else
         {
+            if (logger.isDebugEnabled())
+                logger.debug("Handling table " + table.toExtendedString());
             // This is a unique key that can be used
-            key = table.getPKFromUniqueIndex();
+            Key key = table.getPKFromUniqueIndex();
 
             if (key == null)
             {
-                logger.info("getPKFromUniqueIndex returned null key for table "
-                        + table);
-                return null;
+                logger.info("getPKFromUniqueIndex returned null key");
             }
-        }
-        ArrayList<Column> colsList = key.getColumns();
+            ArrayList<Column> colsList = key.getColumns();
 
-        if (logger.isDebugEnabled())
-            logger.debug("colsList = " + colsList);
+            if (logger.isDebugEnabled())
+                logger.debug("colsList = " + colsList);
 
-        Column[] columns = new Column[colsList.size()];
-        int i = 0;
-        for (Column column : colsList)
-        {
-            columns[i] = column;
-            i++;
-        }
-
-        whereClause = buildWhereClause(columns, 0);
-
-        for (int j = 0; j < columns.length; j++)
-        {
-            if (j > 0)
+            Column[] columns = new Column[colsList.size()];
+            int i = 0;
+            for (Column column : colsList)
             {
-                colBuf.append(", ");
+                columns[i] = column;
+                i++;
             }
-            colBuf.append(columns[j].getName());
+
+            whereClause = buildWhereClause(columns, 0);
+
+            for (int j = 0; j < columns.length; j++)
+            {
+                if (j > 0)
+                {
+                    colBuf.append(", ");
+                }
+                colBuf.append(columns[j].getName());
+            }
+            sqlBuffer.append(colBuf);
         }
-        
-        sqlBuffer.append(colBuf);
 
         sqlBuffer.append(" FROM ");
         sqlBuffer.append(fqnTable);
+        if (eventId != null)
+        {
+            sqlBuffer.append(" AS OF SCN ");
+            sqlBuffer.append(eventId);
 
-        sqlBuffer.append(AbstractChunk.getFlashbackQueryClause(connection,
-                eventId));
+        }
 
         sqlBuffer.append(" ORDER BY ");
         sqlBuffer.append(colBuf);
@@ -1004,10 +984,10 @@ public class ChunksGeneratorThread extends Thread
         String sql = sqlBuffer.toString();
         if (logger.isDebugEnabled())
             logger.debug("Generated statement :" + sql);
-        PreparedStatement pStmt = connection.prepareStatement(sql);
+        pStmt = connection.prepareStatement(sql);
+
         // TODO : have a setting ?
         pStmt.setFetchSize(100);
-        return pStmt;
     }
 
     private String buildWhereClause(Column[] columns, int index)
@@ -1020,6 +1000,7 @@ public class ChunksGeneratorThread extends Thread
             return columns[index].getName() + " > ? OR ("
                     + columns[index].getName() + " = ? AND "
                     + buildWhereClause(columns, index + 1) + ")";
+
     }
 
     public void setEventId(String eventId)

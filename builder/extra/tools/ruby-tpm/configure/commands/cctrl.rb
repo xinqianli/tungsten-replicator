@@ -17,9 +17,15 @@ class CCTRLCommand
   def validate_commit
     super()
     
+    @promotion_settings.props.each_key{
+      |h_alias|
+      @promotion_settings.include([h_alias], {
+      })
+    }
+    
     @promotion_settings.force_output()
     
-    is_valid?()
+    get_validation_handler().is_valid?()
   end
   
   def output_command_usage

@@ -1,6 +1,6 @@
 /**
  * Tungsten: An Application Server for uni/cluster.
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2010 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,6 +22,7 @@
 
 package com.continuent.tungsten.replicator.database;
 
+import java.io.BufferedWriter;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -32,6 +33,7 @@ import java.util.Iterator;
 
 import org.apache.log4j.Logger;
 
+import com.continuent.tungsten.common.csv.CsvWriter;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.dbms.OneRowChange;
 
@@ -105,7 +107,19 @@ public class GreenplumDatabase extends AbstractDatabase
      */
     public void connect() throws SQLException
     {
-        super.connect();
+        connect(false);
+    }
+
+    /**
+     * Connect to a PostgreSQL database. {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#connect(boolean)
+     */
+    public void connect(boolean binlog) throws SQLException
+    {
+        // Use superclass method to avoid missing things like loading the
+        // driver class.
+        super.connect(binlog);
     }
 
     public boolean supportsReplace()
@@ -455,5 +469,17 @@ public class GreenplumDatabase extends AbstractDatabase
     {
         // TODO: Develop matcher for Drizzle dialect.
         return new MySQLOperationMatcher();
+    }
+
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.database.Database#getCsvWriter(java.io.BufferedWriter)
+     */
+    public CsvWriter getCsvWriter(BufferedWriter writer)
+    {
+        // Need to implement in order to support CSV.
+        throw new UnsupportedOperationException(
+                "CSV output is not supported for this database type");
     }
 }

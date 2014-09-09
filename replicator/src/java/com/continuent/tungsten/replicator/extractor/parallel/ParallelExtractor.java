@@ -22,8 +22,6 @@
 
 package com.continuent.tungsten.replicator.extractor.parallel;
 
-import java.io.File;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.Iterator;
@@ -34,8 +32,6 @@ import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.replicator.InSequenceNotification;
 import com.continuent.tungsten.replicator.ReplicatorException;
-import com.continuent.tungsten.replicator.database.Database;
-import com.continuent.tungsten.replicator.database.DatabaseFactory;
 import com.continuent.tungsten.replicator.dbms.StatementData;
 import com.continuent.tungsten.replicator.event.DBMSEmptyEvent;
 import com.continuent.tungsten.replicator.event.DBMSEvent;
@@ -212,34 +208,11 @@ public class ParallelExtractor implements RawExtractor
     @Override
     public void setLastEventId(String eventId) throws ReplicatorException
     {
-        if (eventId == null || eventId.length() == 0)
-        {
-            Database connection = null;
-            try
-            {
-                connection = DatabaseFactory
-                        .createDatabase(url, user, password);
-                connection.connect();
-                this.eventId = connection.getCurrentPosition(true);
-            }
-            catch (SQLException e)
-            {
-                logger.warn("Error while connecting to database (" + url + ")",
-                        e);
-            }
-            finally
-            {
-                if (connection != null)
-                    connection.close();
-            }
-        }
-        else
-            this.eventId = eventId;
-
-        chunksGeneratorThread.setEventId(this.eventId);
+        this.eventId = eventId;
+        chunksGeneratorThread.setEventId(eventId);
         for (int i = 0; i < extractChannels; i++)
         {
-            threads.get(i).setEventId(this.eventId);
+            threads.get(i).setEventId(eventId);
         }
     }
 
@@ -302,7 +275,6 @@ public class ParallelExtractor implements RawExtractor
                     StatementData sd = new StatementData("TRUNCATE TABLE "
                             + event.getMetadataOptionValue("table"), null,
                             event.getMetadataOptionValue("schema"));
-                    sd.addOption("foreign_key_checks", "0");
                     event.getData().add(0, sd);
 
                     blk = Long
@@ -349,10 +321,7 @@ public class ParallelExtractor implements RawExtractor
      */
     public void setChunkDefinitionFile(String chunkDefinitionFile)
     {
-        File f = new File(chunkDefinitionFile);
-        if (f.isFile() && f.canRead())
-        {
-            this.chunkDefinitionFile = chunkDefinitionFile;
-        }
+        this.chunkDefinitionFile = chunkDefinitionFile;
     }
+
 }

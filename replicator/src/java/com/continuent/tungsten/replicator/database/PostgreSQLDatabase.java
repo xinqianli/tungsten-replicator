@@ -120,9 +120,19 @@ public class PostgreSQLDatabase extends AbstractDatabase
      */
     public void connect() throws SQLException
     {
+        connect(false);
+    }
+
+    /**
+     * Connect to a PostgreSQL database. {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#connect(boolean)
+     */
+    public void connect(boolean binlog) throws SQLException
+    {
         // Use superclass method to avoid missing things like loading the
         // driver class.
-        super.connect();
+        super.connect(binlog);
     }
 
     public boolean supportsReplace()
@@ -173,17 +183,15 @@ public class PostgreSQLDatabase extends AbstractDatabase
 
     /**
      * Checks whether the schema exists and, if it does, drops it. This mimics
-     * MySQLDatabase's behavior "DROP DATABASE IF EXISTS". Also drops objects
-     * inside of it too. {@inheritDoc}
+     * MySQLDatabase's behavior "DROP DATABASE IF EXISTS". {@inheritDoc}
      * 
      * @see com.continuent.tungsten.replicator.database.AbstractDatabase#dropSchema(java.lang.String)
      */
     public void dropSchema(String schema) throws SQLException
     {
-        // JDBC driver returns schema names in lower case.
-        if (getSchemas().contains(schema.toLowerCase()))
+        if (getSchemas().contains(schema))
         {
-            String SQL = "DROP SCHEMA " + schema + " CASCADE";
+            String SQL = "DROP SCHEMA " + schema;
             execute(SQL);
         }
         else if (logger.isDebugEnabled())
@@ -507,18 +515,13 @@ public class PostgreSQLDatabase extends AbstractDatabase
      */
     public CsvWriter getCsvWriter(BufferedWriter writer)
     {
-        if (this.csvSpec == null)
-        {
-            CsvWriter csv = new CsvWriter(writer);
-            csv.setQuoteChar('"');
-            csv.setQuoted(true);
-            csv.setNullPolicy(NullPolicy.skip);
-            csv.setEscapedChars("\\");
-            csv.setEscapeChar('"');
-            csv.setWriteHeaders(false);
-            return csv;
-        }
-        else
-            return csvSpec.createCsvWriter(writer);
+        CsvWriter csv = new CsvWriter(writer);
+        csv.setQuoteChar('"');
+        csv.setQuoted(true);
+        csv.setNullPolicy(NullPolicy.skip);
+        csv.setEscapedChars("\\");
+        csv.setEscapeChar('"');
+        csv.setWriteHeaders(false);
+        return csv;
     }
 }

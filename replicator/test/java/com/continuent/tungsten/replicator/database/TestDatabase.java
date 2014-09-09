@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Robert Hodges and Scott Martin
- * Contributor(s): Linas Virbalas
+ * Contributor(s): 
  */
 
 package com.continuent.tungsten.replicator.database;
@@ -68,7 +68,6 @@ public class TestDatabase
 {
     private static Logger logger = Logger.getLogger(TestDatabase.class);
 
-    private static String vendor;
     private static String driver;
     private static String url;
     private static String user;
@@ -105,7 +104,6 @@ public class TestDatabase
             logger.warn("Using default values for test");
 
         // Set values used for test.
-        vendor = tp.getString("database.vendor");
         driver = tp.getString("database.driver",
                 "org.apache.derby.jdbc.EmbeddedDriver", true);
         url = tp.getString("database.url", "jdbc:derby:testdb;create=true",
@@ -144,8 +142,7 @@ public class TestDatabase
     @Test
     public void testDatabaseConnect() throws Exception
     {
-        Database db = DatabaseFactory.createDatabase(url, user, password,
-                false, vendor);
+        Database db = DatabaseFactory.createDatabase(url, user, password);
         Assert.assertNotNull(db);
         db.connect();
         db.close();
@@ -158,8 +155,7 @@ public class TestDatabase
     @Test
     public void testDatabaseConnectPrivileged() throws Exception
     {
-        Database db = DatabaseFactory.createDatabase(url, user, password, true,
-                vendor);
+        Database db = DatabaseFactory.createDatabase(url, user, password, true);
         Assert.assertNotNull(db);
         Assert.assertTrue(db.isPrivileged());
         db.connect();
@@ -183,8 +179,7 @@ public class TestDatabase
 
         // Create a privileged connection and ensure expected capabilities are
         // set.
-        Database db = DatabaseFactory.createDatabase(url, user, password, true,
-                vendor);
+        Database db = DatabaseFactory.createDatabase(url, user, password, true);
         Assert.assertNotNull(db);
         Assert.assertTrue("Control section logging",
                 db.supportsControlSessionLevelLogging());
@@ -198,7 +193,7 @@ public class TestDatabase
         // Create a non-privileged connection and ensure expected capabilities
         // are *not* set.
         Database db2 = DatabaseFactory.createDatabase(url, user, password,
-                false, vendor);
+                false);
         Assert.assertNotNull(db2);
         Assert.assertFalse("Do not control section logging",
                 db2.supportsControlSessionLevelLogging());
@@ -216,8 +211,7 @@ public class TestDatabase
     @Test
     public void testSessionLoggingSupport() throws Exception
     {
-        Database db = DatabaseFactory.createDatabase(url, user, password, true,
-                vendor);
+        Database db = DatabaseFactory.createDatabase(url, user, password, true);
         db.connect();
         if (db.supportsControlSessionLevelLogging())
         {
@@ -233,8 +227,7 @@ public class TestDatabase
     @Test
     public void testSchemaSupport() throws Exception
     {
-        Database db = DatabaseFactory.createDatabase(url, user, password,
-                false, vendor);
+        Database db = DatabaseFactory.createDatabase(url, user, password);
         db.connect();
         if (db.supportsCreateDropSchema())
         {
@@ -263,8 +256,7 @@ public class TestDatabase
     @Test
     public void testTimestampControl() throws Exception
     {
-        Database db = DatabaseFactory.createDatabase(url, user, password,
-                false, vendor);
+        Database db = DatabaseFactory.createDatabase(url, user, password);
         db.connect();
         if (db.supportsControlTimestamp())
         {
@@ -281,8 +273,7 @@ public class TestDatabase
     @Test
     public void testSessionVariables() throws Exception
     {
-        Database db = DatabaseFactory.createDatabase(url, user, password,
-                false, vendor);
+        Database db = DatabaseFactory.createDatabase(url, user, password);
         db.connect();
         if (db.supportsSessionVariables())
         {
@@ -301,9 +292,6 @@ public class TestDatabase
     @Test
     public void testColumnTypesWithKey() throws Exception
     {
-        Database db = DatabaseFactory.createDatabase(url, user, password,
-                false, vendor);
-
         Column myInt = new Column("my_int", Types.INTEGER);
         Column myBigInt = new Column("my_big_int", Types.BIGINT);
         Column myChar = new Column("my_char", Types.CHAR, 10);
@@ -321,14 +309,14 @@ public class TestDatabase
         testColumnTypes.AddColumn(myDate);
         testColumnTypes.AddColumn(myTimestamp);
         testColumnTypes.AddColumn(myClob);
-        if (db.supportsBLOB())
-            testColumnTypes.AddColumn(myBlob);
+        testColumnTypes.AddColumn(myBlob);
 
         Key primary = new Key(Key.Primary);
         primary.AddColumn(myInt);
         testColumnTypes.AddKey(primary);
 
         // Open database and connect.
+        Database db = DatabaseFactory.createDatabase(url, user, password);
         db.connect();
         if (db.supportsUseDefaultSchema())
             db.useDefaultSchema(schema);
@@ -337,6 +325,7 @@ public class TestDatabase
         db.createTable(testColumnTypes, true);
 
         // Add a row.
+        byte byteData[] = "blobs".getBytes("UTF-8");
         myInt.setValue(23);
         myBigInt.setValue(25L);
         myChar.setValue("myChar");
@@ -344,11 +333,7 @@ public class TestDatabase
         myDate.setValue(new Date(System.currentTimeMillis()));
         myTimestamp.setValue(new Date(System.currentTimeMillis()));
         myClob.setValue("myClob");
-        if (db.supportsBLOB())
-        {
-            byte byteData[] = "blobs".getBytes("UTF-8");
-            myBlob.setValue(new ByteArrayInputStream(byteData), byteData.length);
-        }
+        myBlob.setValue(new ByteArrayInputStream(byteData), byteData.length);
 
         db.insert(testColumnTypes);
 
@@ -370,9 +355,6 @@ public class TestDatabase
     @Test
     public void testTableOperations() throws Exception
     {
-        Database db = DatabaseFactory.createDatabase(url, user, password,
-                false, vendor);
-
         /* History table */
         Column historySeqno = new Column("seqno", Types.BIGINT);
         Column historyTstamp = new Column("tstamp", Types.VARCHAR, 32);
@@ -381,8 +363,7 @@ public class TestDatabase
         Table history = new Table(schema, "history");
         history.AddColumn(historySeqno);
         history.AddColumn(historyTstamp);
-        if (db.supportsBLOB())
-            history.AddColumn(historyStatement);
+        history.AddColumn(historyStatement);
 
         /* Seqno table */
         Column seqnoSeqno = new Column("seqno", Types.BIGINT);
@@ -418,6 +399,7 @@ public class TestDatabase
         InputStream fake_SQL_is = is;
 
         // Open database and connect.
+        Database db = DatabaseFactory.createDatabase(url, user, password);
         db.connect();
         if (db.supportsUseDefaultSchema())
             db.useDefaultSchema(schema);
@@ -474,8 +456,7 @@ public class TestDatabase
         empty.AddKey(emptyPrimary);
 
         // Open database and connect.
-        Database db = DatabaseFactory.createDatabase(url, user, password,
-                false, vendor);
+        Database db = DatabaseFactory.createDatabase(url, user, password);
         db.connect();
 
         // Create empty table.
@@ -514,8 +495,7 @@ public class TestDatabase
     public void testGetSchemas() throws Exception
     {
         // Open database and connect.
-        Database db = DatabaseFactory.createDatabase(url, user, password,
-                false, vendor);
+        Database db = DatabaseFactory.createDatabase(url, user, password);
         if (db.getType() == DBMS.DERBY)
         {
             logger.info("Skipping testGetSchemas() on Derby...");
@@ -542,8 +522,7 @@ public class TestDatabase
     public void testGetTimeDiff() throws Exception
     {
         // Open database and connect.
-        Database db = DatabaseFactory.createDatabase(url, user, password,
-                false, vendor);
+        Database db = DatabaseFactory.createDatabase(url, user, password);
         if (db.getType() == DBMS.DERBY)
         {
             logger.info("Skipping testGetTimeDiff() on Derby...");
@@ -609,8 +588,7 @@ public class TestDatabase
     public void testUserManagement() throws Exception
     {
         // Open database and connect, but only if we support user management.
-        Database db = DatabaseFactory.createDatabase(url, user, password, true,
-                vendor);
+        Database db = DatabaseFactory.createDatabase(url, user, password, true);
         if (!db.supportsUserManagement())
         {
             logger.info("User management is not supported; skipping test...");
@@ -649,8 +627,7 @@ public class TestDatabase
     public void testSessionManagement() throws Exception
     {
         // Open database and connect, but only if we support user management.
-        Database db = DatabaseFactory.createDatabase(url, user, password, true,
-                vendor);
+        Database db = DatabaseFactory.createDatabase(url, user, password, true);
         if (!db.supportsUserManagement())
         {
             logger.info("User management is not supported; skipping test...");
@@ -724,8 +701,7 @@ public class TestDatabase
     public void testUnprivilegedUser() throws Exception
     {
         // Open database and connect, but only if we support user management.
-        Database db = DatabaseFactory.createDatabase(url, user, password, true,
-                vendor);
+        Database db = DatabaseFactory.createDatabase(url, user, password, true);
         if (!db.supportsUserManagement())
         {
             logger.info("User management is not supported; skipping test...");
@@ -740,7 +716,7 @@ public class TestDatabase
 
         // Login independently with our non-privileged user.
         Database db2 = DatabaseFactory.createDatabase(url, u.getLogin(),
-                u.getPassword(), false, vendor);
+                u.getPassword(), false);
         db2.connect();
         db2.disconnect();
 

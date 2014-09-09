@@ -29,6 +29,7 @@ import java.io.IOException;
 import java.text.MessageFormat;
 
 import org.apache.commons.configuration.PropertiesConfiguration;
+import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.common.config.TungstenProperties;
@@ -46,6 +47,16 @@ import com.continuent.tungsten.common.utils.CLUtils;
 public class SecurityHelper
 {
     private static final Logger logger = Logger.getLogger(SecurityHelper.class);
+
+    /*
+     * Defines the type of application requesting Security information. This
+     * allows module specific configuration of security.
+     */
+    // TUC-1872
+    public static enum TUNGSTEN_APPLICATION_NAME
+    {
+        CONNECTOR, ANY;
+    }
 
     /**
      * Save passwords from a TungstenProperties into a file
@@ -178,11 +189,13 @@ public class SecurityHelper
     public static AuthenticationInfo loadAuthenticationInformation(
             String propertiesFileLocation) throws ConfigurationException
     {
-        return loadAuthenticationInformation(propertiesFileLocation, true);
+        return loadAuthenticationInformation(propertiesFileLocation, true,
+                TUNGSTEN_APPLICATION_NAME.ANY);
     }
 
     public static AuthenticationInfo loadAuthenticationInformation(
-            String propertiesFileLocation, boolean doConsistencyChecks)
+            String propertiesFileLocation, boolean doConsistencyChecks,
+            TUNGSTEN_APPLICATION_NAME tungstenApplicationName)
             throws ConfigurationException
     {
         // Load properties and perform substitution
@@ -221,7 +234,30 @@ public class SecurityHelper
                             SecurityConf.SECURITY_USE_TUNGSTEN_AUTHENTICATION_REALM_ENCRYPTED_PASSWORD_DEFAULT,
                             false);
 
+            // Define application specific settings
+            // Use default values by default
+            String security_keystore_location = SecurityConf.SECURITY_KEYSTORE_LOCATION;
+            String security_keystore_password = SecurityConf.SECURITY_KEYSTORE_PASSWORD;
+            String security_truststore_location = SecurityConf.SECURITY_TRUSTSTORE_LOCATION;
+            String security_truststore_password = SecurityConf.SECURITY_TRUSTSTORE_PASSWORD;
+            // Use application specific settings if needed
+            switch (tungstenApplicationName)
+            {
+                case CONNECTOR :
+                    security_keystore_location = SecurityConf.CONNECTOR_SECURITY_KEYSTORE_LOCATION;
+                    security_keystore_password = SecurityConf.CONNECTOR_SECURITY_KEYSTORE_PASSWORD;
+                    security_truststore_location = SecurityConf.CONNECTOR_SECURITY_TRUSTSTORE_LOCATION;
+                    security_truststore_password = SecurityConf.CONNECTOR_SECURITY_TRUSTSTORE_PASSWORD;
+                    break;
+                default :
+                    // Keep default values
+                    break;
+            }
+
             // Retrieve properties
+            boolean connectorUseSSL = securityProperties.getBoolean(
+                    SecurityConf.CONNECTOR_USE_SSL, "false", false);
+
             String parentFileLocation = securityProperties
                     .getString(SecurityConf.SECURITY_PROPERTIES_PARENT_FILE_LOCATION);
             String passwordFileLocation = securityProperties
@@ -229,17 +265,24 @@ public class SecurityHelper
             String accessFileLocation = securityProperties
                     .getString(SecurityConf.SECURITY_ACCESS_FILE_LOCATION);
             String keystoreLocation = securityProperties
-                    .getString(SecurityConf.SECURITY_KEYSTORE_LOCATION);
+                    .getString(security_keystore_location);
+            keystoreLocation = (keystoreLocation != null && StringUtils
+                    .isNotBlank(keystoreLocation)) ? keystoreLocation : null;
             String keystorePassword = securityProperties
-                    .getString(SecurityConf.SECURITY_KEYSTORE_PASSWORD);
+                    .getString(security_keystore_password);
             String truststoreLocation = securityProperties
-                    .getString(SecurityConf.SECURITY_TRUSTSTORE_LOCATION);
+                    .getString(security_truststore_location);
+            truststoreLocation = (truststoreLocation != null && StringUtils
+                    .isNotBlank(truststoreLocation))
+                    ? truststoreLocation
+                    : null;
             String truststorePassword = securityProperties
-                    .getString(SecurityConf.SECURITY_TRUSTSTORE_PASSWORD);
+                    .getString(security_truststore_password);
             String userName = securityProperties.getString(
                     SecurityConf.SECURITY_JMX_USERNAME, null, false);
 
             // Populate return object
+            authInfo.setConnectorUseSSL(connectorUseSSL);
             authInfo.setParentPropertiesFileLocation(parentFileLocation);
             authInfo.setAuthenticationNeeded(useAuthentication);
             authInfo.setUseTungstenAuthenticationRealm(useTungstenAuthenticationRealm);
@@ -252,12 +295,13 @@ public class SecurityHelper
             authInfo.setTruststoreLocation(truststoreLocation);
             authInfo.setTruststorePassword(truststorePassword);
             authInfo.setUsername(userName);
+            authInfo.setParentProperties(securityProperties);
 
             // --- Check information is correct ---
+            // Checks authentication and encryption parameters
+            // file exists, ...
             if (doConsistencyChecks)
-                authInfo.checkAuthenticationInfo(); // Checks authentication and
-                                                    // encryption parameters:
-                                                    // file exists, ...
+                authInfo.checkAndCleanAuthenticationInfo(tungstenApplicationName);
 
             // --- Set critical properties as System Properties ---
             SecurityHelper.setSecurityProperties(authInfo, false);
@@ -304,7 +348,8 @@ public class SecurityHelper
             CLUtils.println("Setting system property: name=" + name + " value="
                     + value);
         }
-        System.setProperty(name, value);
+        if (value != null)
+            System.setProperty(name, value);
     }
 
     /**
@@ -333,10 +378,10 @@ public class SecurityHelper
         File securityPropertiesFile;
         if (propertiesFileLocation == null) // Get from default location
         {
-            ClusterConfiguration clusterConf = new ClusterConfiguration("Dummy");
-            File clusterConfDirectory = clusterConf.getDir(ClusterConfiguration
-                    .getGlobalConfigDirName(ClusterConfiguration
-                            .getClusterHome()));
+            File clusterConfDirectory = ClusterConfiguration
+                    .getDir(ClusterConfiguration
+                            .getGlobalConfigDirName(ClusterConfiguration
+                                    .getClusterHome()));
             securityPropertiesFile = new File(clusterConfDirectory.getPath(),
                     SecurityConf.SECURITY_PROPERTIES_FILE_NAME);
         }
@@ -352,8 +397,7 @@ public class SecurityHelper
             securityProps = new TungstenProperties();
             securityConfigurationFileInputStream = new FileInputStream(
                     securityPropertiesFile);
-            securityProps.load(securityConfigurationFileInputStream,
-                    true);
+            securityProps.load(securityConfigurationFileInputStream, true);
             closeSecurityConfigurationFileInputStream(securityConfigurationFileInputStream);
         }
         catch (FileNotFoundException e)
@@ -390,14 +434,15 @@ public class SecurityHelper
 
         return securityProps;
     }
-    
+
     /**
-     * Close the security.properties input stream once it's been used.
-     * Best effort
+     * Close the security.properties input stream once it's been used. Best
+     * effort
      * 
      * @param fis
      */
-    private static void closeSecurityConfigurationFileInputStream(FileInputStream fis)
+    private static void closeSecurityConfigurationFileInputStream(
+            FileInputStream fis)
     {
         // TUC-2065 Close input stream once it's used
         if (fis != null)

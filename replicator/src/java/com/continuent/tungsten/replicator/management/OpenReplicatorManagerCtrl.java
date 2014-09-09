@@ -453,7 +453,7 @@ public class OpenReplicatorManagerCtrl
             {
                 // Add Authentication and Encryption parameters if needed
                 if (authenticationInfo != null)
-                    authenticationInfo.checkAuthenticationInfo();
+                    authenticationInfo.checkAndCleanAuthenticationInfo();
 
                 TungstenProperties securityProperties = (authenticationInfo != null)
                         ? authenticationInfo.getAsTungstenProperties()

@@ -151,14 +151,6 @@ public class DiskLog
     {
         return this.logDirName;
     }
-    
-    /**
-     * Returns THL log filename prefix.
-     */
-    public String getFilePrefix()
-    {
-        return DATA_FILENAME_PREFIX;
-    }
 
     /**
      * Sets the log file size. This is approximate as rotation will occur after
@@ -1175,7 +1167,7 @@ public class DiskLog
     private LogFile startNewLogFile(long seqno) throws ReplicatorException,
             IOException, InterruptedException
     {
-        // Open new log file and update index. 
+        // Open new log file and update index. TODO: did this get updated?
         String logFileName = getDataFileName(fileIndex);
         LogFile dataFile = new LogFile(logDir, logFileName);
         dataFile.setBufferSize(bufferSize);
@@ -1201,22 +1193,6 @@ public class DiskLog
     public String getIndex()
     {
         return index.toString();
-    }
-    
-    /**
-     * Returns the first index file or null if no such file exists.
-     */
-    public String getFirstFile()
-    {
-        return index.getFirstFile();
-    }
-
-    /**
-     * Returns the last index file or null if no such file exists.
-     */
-    public String getLastFile()
-    {
-        return index.getLastFile();
     }
 
     /**

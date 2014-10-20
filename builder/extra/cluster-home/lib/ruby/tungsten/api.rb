@@ -7,7 +7,7 @@ require 'net/http'
 
 #      SAMPLE USAGE:
 #      api_server='localhost:8090'
-#      service="chicago"
+#      service=chicago
 #
 #      cctrl = TungstenDataserviceManager.new(api_server)
 #      cctrl.list(:text)
@@ -21,10 +21,10 @@ require 'net/http'
 # 
 #      begin
 #        APICall.set_return_on_call_fail(:raise)
-#        json_obj = cctrl.post("#{service}/host1", 'promote')
+#        json_obj = cctrl.post(service}/host1', 'promote')
 #        pp json_obj["message"]
 #      rescue Exception => e
-#        puts e   # failure message will come here
+#        puts e   # failure message will coem here
 #      end
  
 
@@ -135,18 +135,18 @@ class APICall
     # returns a header for the API call fields
     #
     def self.header ()
-        return sprintf(@@template , 'name', 'type', 'prefix', 'command' , 'help')
+        return sprintf @@template , 'name', 'type', 'prefix', 'command' , 'help'
     end
 
     #
     # returns a set of dashes to ptint below the header
     #
     def self.dashes ()
-        return sprintf(@@template , '----', '----', '------', '-------' , '----')
+        return sprintf @@template , '----', '----', '------', '-------' , '----'
     end
 
     def to_s
-        return sprintf(@@template , @name, @type, @prefix, @command , @help)
+        return sprintf @@template , @name, @type, @prefix, @command , @help     
     end
 
     def to_hash
@@ -182,18 +182,11 @@ class APICall
     # Used internally by the calls to get and post to determine if the response was successful
     #
     def evaluate_response (api_server, response)
+
         if response.body
             hash_from_json = JSON.parse(response.body)
         end
-        
-        unless hash_from_json
-          raise "Unable to parse API response from #{api_server}"
-        end
-        
-        if TU.log_cmd_results?()
-          TU.debug("Result: #{JSON.pretty_generate(hash_from_json)}")
-        end
-        
+
         if hash_from_json && hash_from_json["returnMessage"] && hash_from_json["returnCode"] && hash_from_json["returnCode"] != '200'
             return_object = {
                 "httpStatus"    => hash_from_json["returnCode"],
@@ -225,7 +218,6 @@ class APICall
     def get(api_server, service)
         api_uri = URI(self.make_uri(api_server,service))
         puts  "GET #{api_uri}" if ENV["SHOW_INTERNALS"]
-        TU.debug("GET #{api_uri}")
         response = Net::HTTP.get_response(api_uri)
         return evaluate_response(api_server,response)
     end
@@ -236,7 +228,6 @@ class APICall
     def post(api_server, service, post_params = {})
         api_uri = URI(self.make_uri(api_server,service))
         puts  "POST #{api_uri}" if ENV["SHOW_INTERNALS"]
-        TU.debug("POST #{api_uri}")
         response = Net::HTTP.post_form(api_uri, post_params)
         return evaluate_response(api_server,response)
     end
@@ -306,18 +297,18 @@ class ReplicatorAPICall < APICall
     # override ancestor's header
     #
     def self.header
-        return sprintf(@@template, :name.to_s, :tool.to_s, :command.to_s, :help.to_s)
+        return sprintf @@template, :name.to_s, :tool.to_s, :command.to_s, :help.to_s
     end
 
     #
     # override ancestor's dashes
     #
     def self.dashes
-        return sprintf(@@template, '----', '----', '-------', '----')
+        return sprintf @@template, '----', '----', '-------', '----'
     end
 
     def to_s
-        return sprintf(@@template, @name, @tool, @command, @help)
+        return sprintf @@template, @name, @tool, @command, @help
     end
 
     def to_hash
@@ -467,7 +458,7 @@ class TungstenDataserviceManager
     def call_default (service, name, api_server=nil )
         api_server ||= @api_server
         api = @api_calls[name].to_hash
-        if api.type == :get
+        if api[:type.to_s] == :get
             return call(service,name,:get, api_server)
         else
             return call(service,name,:post, api_server)
@@ -477,16 +468,12 @@ class TungstenDataserviceManager
     #
     # Calls a named service with explicit mode (:get or :post)
     #
-    def call (service, name , type=nil, api_server=nil)
+    def call (service, name , type, api_server=nil)
         api_server ||= @api_server
         api = @api_calls[name]
         unless api
             raise SyntaxError, "api call #{name} not found"
         end
-        if type == nil
-          type = api.type
-        end
-        
         if type == :get
             return api.get(@api_server,service)
         else

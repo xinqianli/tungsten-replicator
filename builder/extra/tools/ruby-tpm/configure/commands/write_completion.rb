@@ -72,54 +72,7 @@ tpm_#{cmd.tr('-', '_')}=\"#{klass_options.join(' ')}\"
   fi
 }
 complete -o nospace -F _tpm tpm
-if [ "$EXECUTABLE_PREFIX" != "" ]; then
-	complete -F _tpm ${EXECUTABLE_PREFIX}_tpm
-fi
 EOF
-
-      scripts = [
-        "cluster-home/bin/tungsten_monitor",
-        "cluster-home/bin/tungsten_health_check",
-        "cluster-home/bin/check_tungsten_backups",
-        "cluster-home/bin/cluster_backup",
-        "tungsten-replicator/scripts/tungsten_provision_slave",
-        "tungsten-replicator/scripts/tungsten_provision_thl",
-        "tungsten-replicator/scripts/tungsten_read_master_events",
-        "tungsten-replicator/scripts/tungsten_get_position",
-        "tungsten-replicator/scripts/tungsten_set_position",
-        "tungsten-replicator/scripts/xtrabackup_to_slave",
-        "tungsten-replicator/scripts/mysqldump_to_slave",
-        "tungsten-replicator/scripts/multi_trepctl"
-        ]
-      scripts.each{
-        |path|
-        basename = File.basename(path)
-        id = "_" + to_identifier(basename)
-        
-        if File.exist?("#{Configurator.instance.get_base_path()}/#{path}")
-          script_args = cmd_result("#{Configurator.instance.get_base_path()}/#{path} --autocomplete")
-          file.print("\n")
-          file.print("#{id}()\n")
-          file.printf <<EOF
-{
-  local cur prev opts
-  COMPREPLY=()
-  cur="${COMP_WORDS[COMP_CWORD]}"
-  prev="${COMP_WORDS[COMP_CWORD-1]}"
-EOF
-        file.printf("script_options=\"#{script_args}\"")
-        file.printf <<EOF
-
-  COMPREPLY=( $(compgen -W "${script_options}" -- ${cur}) )
-  return 0
-}
-EOF
-          file.printf("complete -o nospace -F #{id} #{basename}\n")
-          file.printf("if [ \"$EXECUTABLE_PREFIX\" != \"\" ]; then\n")
-          file.printf("  complete -F #{id} ${EXECUTABLE_PREFIX}_#{basename}\n")
-        	file.printf("fi\n")
-        end
-      }
     end
   end
   

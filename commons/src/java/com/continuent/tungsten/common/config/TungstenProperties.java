@@ -41,7 +41,6 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -53,16 +52,8 @@ import java.util.TreeSet;
 import javax.xml.bind.annotation.XmlRootElement;
 
 import org.apache.log4j.Logger;
-import org.codehaus.jackson.JsonGenerationException;
-import org.codehaus.jackson.JsonParseException;
-import org.codehaus.jackson.annotate.JsonAnyGetter;
-import org.codehaus.jackson.annotate.JsonAnySetter;
 import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonIgnoreProperties;
-import org.codehaus.jackson.map.JsonMappingException;
-import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.map.ObjectWriter;
-import org.codehaus.jackson.map.SerializationConfig.Feature;
 import org.codehaus.jackson.map.annotate.JsonSerialize;
 
 /**
@@ -90,31 +81,9 @@ public class TungstenProperties implements Serializable
         NONE, DOLLAR, LBRACKET, NAME
     };
 
-    @JsonIgnore
     protected Map<String, Object> properties;
     private boolean               sorted;
-    @JsonIgnore
     private boolean               beanSupportEnabled = false;
-
-    // --- Support for "flat" JSON ---
-    /*
-     * This allows the Jackson JSON serialisation to "flatten" the properties
-     * with the rest of the atributes
-     */
-    // "any getter" needed for serialization
-    @JsonAnyGetter
-    public Map<String, Object> any()
-    {
-        return properties;
-    }
-
-    @JsonAnySetter
-    public void set(String name, Object value)
-    {
-        properties.put(name, value);
-    }
-
-    // ------------------------------
 
     /**
      * Creates a new instance.
@@ -186,13 +155,6 @@ public class TungstenProperties implements Serializable
         if (doSubstitutions)
             substituteSystemValues(props);
         load(props);
-
-        /*
-         * props ends up holding a reference to the InputStream. So even
-         * though the Properties instance should be eligible for collection on
-         * method exit, give GC a hand and null out the props here.
-         */
-        props = null;
     }
 
     /**
@@ -243,24 +205,6 @@ public class TungstenProperties implements Serializable
         if (doSubstitutions)
             substituteSystemValues(props);
         load(props);
-    }
-
-    /**
-     * Load values from a JSON serialized string
-     * 
-     * @param json The JSON serialized string
-     * @throws JsonParseException
-     * @throws JsonMappingException
-     * @throws IOException
-     */
-    public static TungstenProperties loadFromJSON(String json)
-            throws JsonParseException, JsonMappingException, IOException
-    {
-        ObjectMapper mapper = new ObjectMapper();
-        TungstenProperties tungstenProp = mapper.readValue(json,
-                TungstenProperties.class);
-
-        return tungstenProp;
     }
 
     /**
@@ -994,7 +938,6 @@ public class TungstenProperties implements Serializable
     /**
      * Returns true if properties map is empty.
      */
-    @JsonIgnore
     public boolean isEmpty()
     {
         return properties.isEmpty();
@@ -1205,18 +1148,6 @@ public class TungstenProperties implements Serializable
     }
 
     /**
-     * Stores a TungstenProperties as a property
-     * 
-     * @param key the key to identify the property
-     * @param tungstenProperties the TungstenProperties to store
-     */
-    public void setTungstenProperties(String key,
-            TungstenProperties tungstenProperties)
-    {
-        properties.put(key, tungstenProperties);
-    }
-
-    /**
      * Stores a Map which keys are strings and values are TungstenProperties.
      * This function is meant to be used to store a data source map
      * <p>
@@ -1305,9 +1236,6 @@ public class TungstenProperties implements Serializable
         return null;
     }
 
-    /**
-     * Returns the value as a String or null if not found
-     */
     public String getString(String key)
     {
         return getString(key, null, false);
@@ -1450,27 +1378,6 @@ public class TungstenProperties implements Serializable
     public Interval getInterval(String key)
     {
         return getInterval(key, null, false);
-    }
-
-    /**
-     * Returns a TungstenProperties value.
-     * 
-     * @param key identifying the property
-     * @return TungstenProperties
-     */
-    @SuppressWarnings("unchecked")
-    public TungstenProperties getTungstenProperties(String key)
-    {
-        TungstenProperties tungstenProp = null;
-
-        Object value = this.getObject(key);
-
-        if (value instanceof TungstenProperties)
-            tungstenProp = (TungstenProperties) value;
-        else if (value instanceof LinkedHashMap<?, ?>)
-            tungstenProp = new TungstenProperties((Map<String, String>) value);
-
-        return tungstenProp;
     }
 
     /**
@@ -1647,83 +1554,16 @@ public class TungstenProperties implements Serializable
         int propCount = 0;
         for (String key : orderedProps.keySet())
         {
-
-            Object value = orderedProps.get(key);
-
-            // Skip processing null values...
-            if (value == null)
-            {
-                continue;
-            }
-
             if (++propCount > 1)
                 builder.append("\n");
 
-            builder.append("  ").append(key).append("=");
-
-            if (value instanceof String)
-            {
-                // Strings must properly escape control characters.
-                String valueAsString = (String) value;
-                for (int i = 0; i < valueAsString.length(); i++)
-                {
-                    char c = valueAsString.charAt(i);
-                    if (Character.isISOControl(c))
-                    {
-                        // Print Unicode escape sequence.
-                        int cAsInt = c;
-                        String escapedValue = String.format("\\u%04x", cAsInt);
-                        builder.append(escapedValue);
-                    }
-                    else
-                    {
-                        // Otherwise just print the character representation.
-                        builder.append(c);
-                    }
-                }
-            }
-            else
-            {
-                builder.append(value.toString());
-            }
-
+            builder.append("  ").append(key).append("=")
+                    .append(orderedProps.get(key));
         }
+
         builder.append("\n}");
 
         return builder.toString();
-    }
-
-    public String toJSON() throws JsonGenerationException,
-            JsonMappingException, IOException
-    {
-        return this.toJSON(false);
-    }
-
-    /**
-     * Serialize the TungstenProperties into a JSON String
-     * 
-     * @param prettyPrint Set to true to have the JSON output formatted for
-     *            easier read
-     * @return String representing JSON serialization of the TungstenProperties
-     * @throws JsonGenerationException
-     * @throws JsonMappingException
-     * @throws IOException
-     */
-    public String toJSON(boolean prettyPrint) throws JsonGenerationException,
-            JsonMappingException, IOException
-    {
-        String json = null;
-        ObjectMapper mapper = new ObjectMapper(); // Setup Jackson
-        mapper.configure(Feature.INDENT_OUTPUT, true);
-        mapper.configure(Feature.SORT_PROPERTIES_ALPHABETICALLY, true);
-
-        ObjectWriter writer = mapper.writer();
-        if (prettyPrint)
-            writer = writer.withDefaultPrettyPrinter();
-
-        json = writer.writeValueAsString(this);
-
-        return json;
     }
 
     public static String formatProperties(String name,
@@ -1944,7 +1784,7 @@ public class TungstenProperties implements Serializable
     }
 
     /**
-     * Generate a comma-delimited string of list items.
+     * TODO: listToString definition.
      */
     static public String listToString(List<String> list)
     {
@@ -2012,5 +1852,4 @@ public class TungstenProperties implements Serializable
             properties.put(key, value);
         }
     }
-
 }

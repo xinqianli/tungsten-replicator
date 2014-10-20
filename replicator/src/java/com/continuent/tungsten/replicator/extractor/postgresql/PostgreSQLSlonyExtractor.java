@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2011-2014 Continuent Inc.
+ * Copyright (C) 2011 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -329,7 +329,9 @@ public class PostgreSQLSlonyExtractor implements RawExtractor
                     if (!dataArray.isEmpty())
                     {
                         dbmsEvent = new DBMSEvent(txId.toString(), dataArray,
-                                null);
+                                null /*
+                                      * TODO : startTime ?
+                                      */);
 
                         // Move to next event.
                         if (logger.isDebugEnabled())
@@ -448,6 +450,7 @@ public class PostgreSQLSlonyExtractor implements RawExtractor
      */
     private Database getDBConnection() throws SQLException
     {
+        // TODO: add reconnect if connection lost?
         if (conn == null)
         {
             conn = DatabaseFactory.createDatabase(url, user, password);

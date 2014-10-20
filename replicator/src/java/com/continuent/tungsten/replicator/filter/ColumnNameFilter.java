@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2011-2014 Continuent Inc.
+ * Copyright (C) 2011 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,13 +17,12 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Stephane Giron
- * Contributor(s): Linas Virbalas
+ * Contributor(s):
  */
 
 package com.continuent.tungsten.replicator.filter;
 
 import java.sql.SQLException;
-import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.Iterator;
@@ -47,16 +46,15 @@ import com.continuent.tungsten.replicator.event.ReplDBMSEvent;
 import com.continuent.tungsten.replicator.plugin.PluginContext;
 
 /**
- * ColumnNameFilter adds column meta information (eg. name, signed/unsigned
- * flag) to the events, which is otherwise unavailable to the extractor, by
- * querying underlying DBMS.
+ * This class defines a ColumnNameFilter. It adds column name information to
+ * events on the extractor side.
  * 
  * @author <a href="mailto:stephane.giron@continuent.com">Stephane Giron</a>
  * @version 1.0
  */
 public class ColumnNameFilter implements Filter
 {
-    private static Logger                               logger              = Logger.getLogger(ColumnNameFilter.class);
+    private static Logger                               logger     = Logger.getLogger(ColumnNameFilter.class);
 
     // Metadata cache is a hashtable indexed by the database name and each
     // database uses a hashtable indexed by the table name (This is done in
@@ -65,17 +63,14 @@ public class ColumnNameFilter implements Filter
     // updated only when a table is used for the first time by a row event.
     private Hashtable<String, Hashtable<String, Table>> metadataCache;
 
-    Database                                            conn                = null;
+    Database                                            conn       = null;
 
     private String                                      user;
     private String                                      url;
     private String                                      password;
-    private boolean                                     addSignedFlag       = true;
-    private boolean                                     addTypeDescriptor   = true;
-    private boolean                                     ignoreMissingTables = true;
 
     // SQL parser.
-    SqlOperationMatcher                                 sqlMatcher          = new MySQLOperationMatcher();
+    SqlOperationMatcher                                 sqlMatcher = new MySQLOperationMatcher();
 
     /**
      * {@inheritDoc}
@@ -93,18 +88,11 @@ public class ColumnNameFilter implements Filter
      */
     public void prepare(PluginContext context) throws ReplicatorException
     {
-        // Greeting message.
-        String msg = "Column names ";
-        if (addSignedFlag)
-            msg += "and signed flag ";
-        logger.info(msg += "will be queried from the DBMS");
-
-        // Initialize cache for tables.
         metadataCache = new Hashtable<String, Hashtable<String, Table>>();
 
         // Load defaults for connection
         if (url == null)
-            url = context.getJdbcUrl(null);
+            url = context.getJdbcUrl("tungsten_" + context.getServiceName());
         if (user == null)
             user = context.getJdbcUser();
         if (password == null)
@@ -264,7 +252,7 @@ public class ColumnNameFilter implements Filter
             try
             {
                 newTable = conn.findTable(orc.getSchemaName(),
-                        orc.getTableName(), false);
+                        orc.getTableName());
             }
             catch (SQLException e)
             {
@@ -275,33 +263,10 @@ public class ColumnNameFilter implements Filter
             }
             if (newTable == null)
             {
-                if (ignoreMissingTables)
-                {
-                    // If we are ignoring missing tables, manufacture a
-                    // table definition with generated column names.
-                    if (logger.isDebugEnabled())
-                    {
-                        logger.debug("Ignored a missing table: name="
-                                + orc.getSchemaName() + "." + tableName);
-                    }
-                    newTable = new Table(orc.getSchemaName(),
-                            orc.getTableName());
-                    int maxCols = Math.max(orc.getColumnSpec().size(), orc
-                            .getKeySpec().size());
-                    for (int i = 0; i < maxCols; i++)
-                    {
-                        Column column = new Column("col_" + i, Types.OTHER);
-                        newTable.AddColumn(column);
-                    }
-                }
-                else
-                {
-                    // Otherwise generate an error.
-                    throw new ReplicatorException(
-                            "Unable to find column metadata; table may be missing: schema="
-                                    + orc.getSchemaName() + " table="
-                                    + orc.getTableName());
-                }
+                throw new ReplicatorException(
+                        "Unable to find column metadata; table may be missing: schema="
+                                + orc.getSchemaName() + " table="
+                                + orc.getTableName());
             }
             newTable.setTableId(orc.getTableId());
             dbCache.put(tableName, newTable);
@@ -316,13 +281,6 @@ public class ColumnNameFilter implements Filter
         {
             ColumnSpec type = iterator.next();
             type.setName(columns.get(index).getName());
-            if (addSignedFlag)
-                type.setSigned(columns.get(index).isSigned()); // Issue 798.
-            if (addTypeDescriptor)
-            {
-                String typeDesc = columns.get(index).getTypeDescription();
-                type.setTypeDescription(typeDesc);
-            }
             index++;
         }
 
@@ -332,16 +290,9 @@ public class ColumnNameFilter implements Filter
         {
             ColumnSpec type = iterator.next();
             type.setName(columns.get(index).getName());
-            if (addSignedFlag)
-                type.setSigned(columns.get(index).isSigned()); // Issue 798.
-            if (addTypeDescriptor)
-            {
-                String typeDesc = columns.get(index).getTypeDescription();
-                type.setTypeDescription(typeDesc);
-            }
             index++;
         }
-        // We could retrieve primary keys at this point.
+        // We could retrieve primary keys at this point
     }
 
     public void setUser(String user)
@@ -357,34 +308,5 @@ public class ColumnNameFilter implements Filter
     public void setPassword(String password)
     {
         this.password = password;
-    }
-
-    /**
-     * In addition to the column names, should the add filter signed/unsigned
-     * flag too?
-     */
-    public void setAddSignedFlag(boolean addSignedFlag)
-    {
-        this.addSignedFlag = addSignedFlag;
-    }
-
-    /**
-     * If true convert columns type as java.sql.Types.VARCHAR that actually come
-     * from binary columns to Types.BINARY or Types.VARBINARY. This works around
-     * improper typing in the MySQL binlog, which types [VAR]BINARY columns as
-     * VARCHAR.
-     */
-    public void setAddTypeDescriptor(boolean addTypeDescriptor)
-    {
-        this.addTypeDescriptor = addTypeDescriptor;
-    }
-
-    /**
-     * If true ignore missing tables. This allows us to read a log that includes
-     * dropped tables where we cannot look up metadata.
-     */
-    public void setIgnoreMissingTables(boolean ignoreMissingTables)
-    {
-        this.ignoreMissingTables = ignoreMissingTables;
     }
 }

@@ -1,6 +1,6 @@
 /**
  * Tungsten: An Application Server for uni/cluster.
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -23,17 +23,13 @@
 package com.continuent.tungsten.replicator.database;
 
 import java.io.BufferedWriter;
-import java.io.Serializable;
 import java.sql.DatabaseMetaData;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
 import java.util.ArrayList;
-import java.util.List;
 
 import com.continuent.tungsten.common.csv.CsvWriter;
-import com.continuent.tungsten.common.csv.NullPolicy;
 import com.continuent.tungsten.replicator.ReplicatorException;
 
 /**
@@ -58,7 +54,7 @@ public class DerbyDatabase extends AbstractDatabase
     @Override
     public SqlOperationMatcher getSqlNameMatcher() throws ReplicatorException
     {
-        // Return MySQL matcher for now. 
+        // TODO: Develop matcher for Drizzle dialect.
         return new MySQLOperationMatcher();
     }
 
@@ -79,12 +75,6 @@ public class DerbyDatabase extends AbstractDatabase
             case Types.BIGINT :
                 return "BIGINT";
 
-            case Types.SMALLINT :
-                return "SMALLINT";
-
-            case Types.TINYINT :
-                return "SMALLINT";
-
             case Types.CHAR :
                 return "CHAR(" + c.getLength() + ")";
 
@@ -103,48 +93,9 @@ public class DerbyDatabase extends AbstractDatabase
             case Types.BLOB :
                 return "BLOB";
 
-            case Types.BOOLEAN :
-                return "BOOLEAN";
-
             default :
                 return "UNKNOWN";
         }
-    }
-
-    protected int executePrepare(Table table, List<Column> columns, String SQL,
-            boolean keep, int type) throws SQLException
-    {
-        int bindNo = 1;
-
-        PreparedStatement statement = null;
-        int affectedRows = 0;
-
-        try
-        {
-            statement = dbConn.prepareStatement(SQL);
-
-            for (Column c : columns)
-            {
-                Serializable val = c.getValue();
-                if (val == null)
-                    statement.setNull(bindNo++, c.getType());
-                else
-                    statement.setObject(bindNo++, val);
-            }
-            affectedRows = statement.executeUpdate();
-        }
-        finally
-        {
-            if (statement != null && !keep)
-            {
-                statement.close();
-                statement = null;
-            }
-        }
-        if (keep && type > -1)
-            table.setStatement(type, statement);
-
-        return affectedRows;
     }
 
     /**
@@ -165,20 +116,11 @@ public class DerbyDatabase extends AbstractDatabase
     public ResultSet getColumnsResultSet(DatabaseMetaData md,
             String schemaName, String tableName) throws SQLException
     {
-        return md.getColumns(null, schemaName.toUpperCase(),
-                tableName.toUpperCase(), null);
+        throw new UnsupportedOperationException("Not implemented.");
     }
 
     protected ResultSet getPrimaryKeyResultSet(DatabaseMetaData md,
             String schemaName, String tableName) throws SQLException
-    {
-        return md.getPrimaryKeys(null, schemaName.toUpperCase(),
-                tableName.toUpperCase());
-    }
-
-    protected ResultSet getIndexResultSet(DatabaseMetaData md,
-            String schemaName, String tableName, boolean unique)
-            throws SQLException
     {
         throw new UnsupportedOperationException("Not implemented.");
     }
@@ -186,8 +128,7 @@ public class DerbyDatabase extends AbstractDatabase
     protected ResultSet getTablesResultSet(DatabaseMetaData md,
             String schemaName, boolean baseTablesOnly) throws SQLException
     {
-        String[] types = {"TABLE"};
-        return md.getTables("%", schemaName, "%", types);
+        throw new UnsupportedOperationException("Not implemented.");
     }
 
     public String getNowFunction()
@@ -227,34 +168,8 @@ public class DerbyDatabase extends AbstractDatabase
      */
     public CsvWriter getCsvWriter(BufferedWriter writer)
     {
-        if (this.csvSpec == null)
-        {
-            CsvWriter csv = new CsvWriter(writer);
-            csv.setQuoteChar('"');
-            csv.setQuoted(true);
-            csv.setEscapeChar('\\');
-            csv.setEscapedChars("\\");
-            csv.setNullPolicy(NullPolicy.skip);
-            csv.setWriteHeaders(false);
-            return csv;
-        }
-        else
-            return csvSpec.createCsvWriter(writer);
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#dropSchema(java.lang.String)
-     */
-    public void dropSchema(String schema) throws SQLException
-    {
-        // Derby does not cascade, so we have to delete any tables first.
-        List<Table> tables = getTables(schema, true);
-        for (Table table : tables)
-        {
-            dropTable(table);
-        }
-        execute("DROP SCHEMA " + schema + " RESTRICT");
+        // Need to implement in order to support CSV.
+        throw new UnsupportedOperationException(
+                "CSV output is not supported for this database type");
     }
 }

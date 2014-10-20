@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2014 Continuent Inc.
+ * Copyright (C) 2010-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -76,8 +76,7 @@ public class InMemoryQueueStore implements Store
     }
 
     /** Returns the last header processed. */
-    public ReplDBMSHeader getLastHeader() throws ReplicatorException,
-            InterruptedException
+    public ReplDBMSHeader getLastHeader()
     {
         return lastHeader;
     }
@@ -99,7 +98,7 @@ public class InMemoryQueueStore implements Store
      */
     public long getMinStoredSeqno()
     {
-        return -1;
+        return 0;
     }
 
     // PSEUDO-PARALLEL QUEUE INTERFACE -- Allows this store to masquerade as a
@@ -221,8 +220,7 @@ public class InMemoryQueueStore implements Store
      * 
      * @see com.continuent.tungsten.replicator.plugin.ReplicatorPlugin#release(com.continuent.tungsten.replicator.plugin.PluginContext)
      */
-    public void release(PluginContext context) throws ReplicatorException,
-            InterruptedException
+    public void release(PluginContext context) throws ReplicatorException
     {
         queue = null;
     }

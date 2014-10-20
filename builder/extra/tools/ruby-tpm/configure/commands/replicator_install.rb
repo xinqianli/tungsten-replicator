@@ -2,7 +2,7 @@ class InstallCommand
   include ConfigureCommand
   include ResetConfigPackageModule
   include ClusterCommandModule
-  include ProvisionNewSlavesPackageModule
+  include RequireDataserviceArgumentModule
   
   def output_command_usage()
     super()
@@ -19,13 +19,11 @@ class InstallCommand
   end
   
   def arguments_valid?
-    super()
-    
     if Configurator.instance.is_locked?()
       error("Unable to install from an installed directory")
+    else
+      return true
     end
-    
-    return is_valid?()
   end
   
   def enable_log?()
@@ -50,6 +48,16 @@ class InstallCommand
   
   def self.get_command_description
     "Install Tungsten with the current configuration and any options specified at runtime."
+  end
+end
+
+module NotTungstenInstallerPrompt
+  def enabled_for_command_line?
+    unless Configurator.instance.command.is_a?(InstallCommand)
+      super() && true
+    else
+      false
+    end
   end
 end
 

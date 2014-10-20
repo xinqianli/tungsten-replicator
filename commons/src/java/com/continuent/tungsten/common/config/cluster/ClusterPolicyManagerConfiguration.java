@@ -26,7 +26,6 @@ package com.continuent.tungsten.common.config.cluster;
  **/
 public class ClusterPolicyManagerConfiguration extends ClusterConfiguration
 {
-    @SuppressWarnings("unused")
     private static final long serialVersionUID               = 1L;
 
     /**

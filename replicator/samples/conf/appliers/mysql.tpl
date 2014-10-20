@@ -1,6 +1,7 @@
-# MySQL applier configuration. 
 replicator.applier.dbms=com.continuent.tungsten.replicator.applier.MySQLDrizzleApplier
-replicator.applier.dbms.dataSource=global
+replicator.applier.dbms.host=${replicator.global.db.host}
+replicator.applier.dbms.port=${replicator.global.db.port}
+replicator.applier.dbms.user=${replicator.global.db.user}
+replicator.applier.dbms.password=${replicator.global.db.password}
 replicator.applier.dbms.ignoreSessionVars=autocommit
 replicator.applier.dbms.getColumnMetadataFromDB=true
-replicator.applier.dbms.optimizeRowEvents=@{REPL_SVC_APPLIER_OPTIMIZE_ROW_EVENTS}

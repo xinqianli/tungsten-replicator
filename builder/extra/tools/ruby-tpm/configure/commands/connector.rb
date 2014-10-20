@@ -30,20 +30,10 @@ class ConnectorTerminalCommand
     opts.on("--samples") { @display_samples = true }
     @terminal_args = Configurator.instance.run_option_parser(opts, arguments)
     
-    unless Configurator.instance.is_enterprise?()
-      error "This command is not supported in the Tungsten Replicator package"
-    end
-    
     []
   end
   
   def run
-    unless Configurator.instance.is_locked?()
-      error("Unable to run this command because this is not the installed directory. If this is the staging directory, try running tpm from an installed Tungsten directory.")
-      return
-    end
-    
-    build_topologies(@config)
     if @display_samples == true
       display_samples()
     else
@@ -67,7 +57,7 @@ class ConnectorTerminalCommand
     conncnf.puts("password=#{password}")
     conncnf.close()
     
-    exec("mysql --defaults-file=#{conncnf.path()} --host=#{hostname} --port=#{port} #{@terminal_args.join(' ')}; rm #{conncnf.path()}")
+    exec("mysql --defaults-file=#{conncnf.path()} --host=#{hostname} --port=#{port} #{@terminal_args.join(' ')}")
   end
   
   def display_samples
@@ -78,7 +68,7 @@ class ConnectorTerminalCommand
       return
     end
     
-    output_usage_line("Bash", "mysql -h#{hostname} -P#{port} -u#{username} -p#{password}")
+    output_usage_line("Bash", "mysql -h#{hostname} -P#{port} -u#{username} -P#{password}")
     output_usage_line("Perl::dbi", "$dbh=DBI->connecti('DBI:mysql:host=#{hostname};port=#{port}', '#{username}', '#{password}')")
     output_usage_line("PHP::mysqli", "$dbh = new mysqli('#{hostname}', '#{username}', '#{password}', 'schema', '#{port}');")
     output_usage_line("PHP::pdo", "$dbh = new PDO('mysql:host=#{hostname};port=#{port}', '#{username}', '#{password}');")
@@ -122,13 +112,5 @@ class ConnectorTerminalCommand
   
   def self.get_command_description
     "Open a terminal to the Connector"
-  end
-  
-  def self.display_command
-    if Configurator.instance.is_enterprise?()
-      true
-    else
-      false
-    end
   end
 end

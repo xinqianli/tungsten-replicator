@@ -43,6 +43,10 @@ public class OracleCDCReaderExtractor implements RawExtractor
 {
     private static Logger                  logger                = Logger.getLogger(OracleCDCReaderExtractor.class);
 
+    private String                         url                   = null;
+    private String                         user                  = "root";
+    private String                         password              = "rootpass";
+
     List<OracleCDCSource>                  sources;
 
     private String                         lastSCN               = null;
@@ -55,9 +59,7 @@ public class OracleCDCReaderExtractor implements RawExtractor
 
     private int                            transactionFragSize   = 0;
 
-    private int                            minSleepTimeInSeconds = 1;
     private int                            maxSleepTimeInSeconds = 1;
-    private int                            sleepAddition         = 0;
 
     private int                            queueSize             = 100;
 
@@ -68,7 +70,22 @@ public class OracleCDCReaderExtractor implements RawExtractor
     // the connection is older than the defined timeout.
     private long                           reconnectTimeout      = 60 * 60 * 1000;
 
-    private String                         dataSource;
+    private String                         serviceName;
+
+    public void setUrl(String url)
+    {
+        this.url = url;
+    }
+
+    public void setUser(String user)
+    {
+        this.user = user;
+    }
+
+    public void setPassword(String password)
+    {
+        this.password = password;
+    }
 
     /**
      * Sets the maximum sleep time : maximum time the extracting thread will
@@ -83,26 +100,6 @@ public class OracleCDCReaderExtractor implements RawExtractor
     public void setMaxSleepTime(int maxSleepTime)
     {
         this.maxSleepTimeInSeconds = maxSleepTime;
-    }
-
-    /**
-     * Sets the minSleepTimeInSeconds value.
-     * 
-     * @param minSleepTimeInSeconds The minSleepTimeInSeconds to set.
-     */
-    public void setMinSleepTime(int minSleepTimeInSeconds)
-    {
-        this.minSleepTimeInSeconds = minSleepTimeInSeconds;
-    }
-
-    /**
-     * Sets the sleepAddition value.
-     * 
-     * @param sleepAddition The sleepAddition to set.
-     */
-    public void setSleepAddition(int sleepAddition)
-    {
-        this.sleepAddition = sleepAddition;
     }
 
     /**
@@ -154,6 +151,14 @@ public class OracleCDCReaderExtractor implements RawExtractor
     }
 
     /**
+     * @param serviceName the serviceName to set
+     */
+    public void setServiceName(String serviceName)
+    {
+        this.serviceName = serviceName;
+    }
+
+    /**
      * {@inheritDoc}
      * 
      * @see com.continuent.tungsten.replicator.plugin.ReplicatorPlugin#configure(com.continuent.tungsten.replicator.plugin.PluginContext)
@@ -174,10 +179,9 @@ public class OracleCDCReaderExtractor implements RawExtractor
             InterruptedException
     {
         queue = new ArrayBlockingQueue<CDCMessage>(queueSize);
-        readerThread = new OracleCDCReaderThread(context, dataSource, queue,
-                lastSCN, minSleepTimeInSeconds, maxSleepTimeInSeconds,
-                sleepAddition, maxRowsByBlock, reconnectTimeout);
-
+        readerThread = new OracleCDCReaderThread(url, user, password, queue,
+                lastSCN, maxSleepTimeInSeconds, maxRowsByBlock,
+                reconnectTimeout, serviceName);
         readerThread.prepare();
     }
 
@@ -296,11 +300,6 @@ public class OracleCDCReaderExtractor implements RawExtractor
             InterruptedException
     {
         return null;
-    }
-
-    public void setDataSource(String dataSource)
-    {
-        this.dataSource = dataSource;
     }
 
 }

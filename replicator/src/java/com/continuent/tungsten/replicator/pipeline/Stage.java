@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2014 Continuent Inc.
+ * Copyright (C) 2010-2012 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -29,7 +29,6 @@ import java.util.concurrent.Future;
 
 import org.apache.log4j.Logger;
 
-import com.continuent.tungsten.common.config.Interval;
 import com.continuent.tungsten.fsm.event.EventDispatcher;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.applier.Applier;
@@ -51,7 +50,6 @@ import com.continuent.tungsten.replicator.plugin.ReplicatorPlugin;
 public class Stage implements ReplicatorPlugin
 {
     private static Logger             logger              = Logger.getLogger(Stage.class);
-
     // Stage elements.
     private String                    name;
     private PluginSpecification       extractorSpec;
@@ -59,9 +57,6 @@ public class Stage implements ReplicatorPlugin
     private PluginSpecification       applierSpec;
     private PluginContext             pluginContext;
     private int                       blockCommitRowCount = 1;
-    private Interval                  blockCommitInterval = new Interval(0);
-    private String                    blockCommitPolicy   = "strict";
-    private BlockCommitPolicy         commitPolicy;
     private boolean                   autoSync            = false;
 
     // Read-only parameters.
@@ -128,19 +123,9 @@ public class Stage implements ReplicatorPlugin
         return pluginContext;
     }
 
-    /** Returns the maximum number of transactions to apply before committing. */
     public int getBlockCommitRowCount()
     {
         return blockCommitRowCount;
-    }
-
-    /**
-     * Return the minimum time interval to wait before committing when using
-     * block commit. If set to zero has no effect.
-     */
-    public Interval getBlockCommitInterval()
-    {
-        return blockCommitInterval;
     }
 
     public void setName(String name)
@@ -171,28 +156,6 @@ public class Stage implements ReplicatorPlugin
     public void setBlockCommitRowCount(int blockCommitRowCount)
     {
         this.blockCommitRowCount = blockCommitRowCount;
-    }
-
-    public void setBlockCommitInterval(Interval blockCommitInterval)
-    {
-        this.blockCommitInterval = blockCommitInterval;
-    }
-
-    /** Returns block commit policy as a string. */
-    public String getBlockCommitPolicy()
-    {
-        return blockCommitPolicy;
-    }
-
-    public void setBlockCommitPolicy(String blockCommitPolicy)
-    {
-        this.blockCommitPolicy = blockCommitPolicy;
-    }
-
-    /** Returns the block commit policy as an enum for typed operation. */
-    public BlockCommitPolicy getCommitPolicy()
-    {
-        return this.commitPolicy;
     }
 
     public void setLoggingInterval(long loggingInterval)
@@ -270,26 +233,12 @@ public class Stage implements ReplicatorPlugin
     public synchronized void configure(PluginContext context)
             throws ReplicatorException, InterruptedException
     {
-        // Check the task count.
         this.pluginContext = context;
         if (taskCount < 1)
             throw new ReplicatorException(
                     "Stage task count may not be less than 1: stage=" + name
                             + " taskCount=" + taskCount);
 
-        // Store the block commit policy.
-        if ("lax".equals(blockCommitPolicy))
-            commitPolicy = BlockCommitPolicy.lax;
-        else if ("strict".equals(blockCommitPolicy))
-            commitPolicy = BlockCommitPolicy.strict;
-        else
-        {
-            throw new ReplicatorException("Unrecognized block commit policy;"
-                    + " allowed values are lax or strict: stage=" + name
-                    + " policy=" + blockCommitPolicy);
-        }
-
-        // Set up control structures for managing stage tasks.
         progressTracker = new StageProgressTracker(name, taskCount);
         taskGroup = new StageTaskGroup(this, taskCount, progressTracker);
         taskGroup.configure(context);

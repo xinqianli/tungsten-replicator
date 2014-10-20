@@ -33,7 +33,6 @@ import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.dbms.DBMSData;
 import com.continuent.tungsten.replicator.dbms.OneRowChange;
 import com.continuent.tungsten.replicator.dbms.RowChangeData;
-import com.continuent.tungsten.replicator.dbms.RowChangeData.ActionType;
 import com.continuent.tungsten.replicator.dbms.StatementData;
 import com.continuent.tungsten.replicator.event.DBMSEmptyEvent;
 import com.continuent.tungsten.replicator.event.ReplDBMSEvent;
@@ -50,7 +49,8 @@ import com.continuent.tungsten.replicator.plugin.PluginContext;
  */
 public class HeartbeatFilter implements Filter
 {
-    private static Logger logger               = Logger.getLogger(HeartbeatFilter.class);
+    private static Logger logger               = Logger
+                                                       .getLogger(HeartbeatFilter.class);
     private PluginContext context;
     // Pattern to match UPDATE fragment: "name = '<name>'.
     private Pattern       heartbeatNamePattern = Pattern
@@ -88,45 +88,37 @@ public class HeartbeatFilter implements Filter
         {
             StatementData sd = (StatementData) dbmsData;
 
-            String query = null;
-            boolean usingWholeQuery = true;
+            String query = sd.getQuery();
+            boolean bytesFullyDecoded = true;
+            if (query == null)
+                // Is the query stored as bytes ?
+                if (sd.getQueryAsBytes() != null)
+                {
+                    if (sd.getQueryAsBytes().length <= 500)
+                    {
+                        query = new String(sd.getQueryAsBytes(), 0, sd
+                                .getQueryAsBytes().length);
 
-            if (sd.getQueryAsBytes() == null)
-            {
-                if (sd.getQuery().length() <= 500)
-                    query = sd.getQuery();
-                else
-                {
-                    usingWholeQuery = false;
-                    query = sd.getQuery().substring(0, 500);
+                    }
+                    else
+                    {
+                        bytesFullyDecoded = false;
+                        query = new String(sd.getQueryAsBytes(), 0, 500);
+                    }
                 }
-            }
-            else
-            // Is the query stored as bytes ?
-            {
-                if (sd.getQueryAsBytes().length <= 500)
-                {
-                    query = new String(sd.getQueryAsBytes());
-                }
-                else
-                {
-                    usingWholeQuery = false;
-                    query = new String(sd.getQueryAsBytes(), 0, 500);
-                }
-            }
 
             if (!query.toUpperCase().startsWith("UPDATE")
                     || !query.contains(HeartbeatTable.TABLE_NAME))
             {
                 return event;
             }
-            // usingWholeQuery is set to false when and only when the length of
-            // the statement was greater than what was used for checking if it
-            // started with UPDATE and contained the heartbeat table name.
-            // In that case, we want to extract the whole statement as it is
-            // likely to be a heartbeat statement.
-            if (!(usingWholeQuery))
-                query = sd.getQuery();
+            // bytesFullyDecoded is set to false when and only when
+            // statements are stored as bytes and the length of the statement
+            // was greater than what was decoded. In that case, we want to
+            // extract the whole statement as it is likely to be a heartbeat
+            // statement.
+            if (!(bytesFullyDecoded))
+                query = new String(sd.getQueryAsBytes());
 
             // Get the heartbeat name.
             Matcher m = heartbeatNamePattern.matcher(query);
@@ -144,12 +136,6 @@ public class HeartbeatFilter implements Filter
             if (orc.getSchemaName().equals(context.getReplicatorSchemaName())
                     && orc.getTableName().equals(HeartbeatTable.TABLE_NAME))
             {
-                if (orc.getAction() == ActionType.INSERT
-                        || orc.getAction() == ActionType.DELETE)
-                    // Code below expects an UPDATE of table HEARTBEAT. Don't
-                    // process INSERT or DELETE
-                    return event;
-
                 // MySQL Row replication uses before/after images which result
                 // in all before-image values looking like keys. For heartbeat
                 // events we need to allow only the first column as a key.
@@ -180,8 +166,8 @@ public class HeartbeatFilter implements Filter
                 ArrayList<OneRowChange.ColumnVal> colValue0 = colValues.get(0);
                 if (colValue0 != null)
                 {
-                    // TUC-228. Have to translate bytes to String. Heartbeat
-                    // must be ASCII-only.
+                    // TUC-228.  Have to translate bytes to String. Heartbeat 
+                    // must be ASCII-only. 
                     if (colValue0.size() >= 7)
                     {
                         Object value = colValue0.get(7).getValue();

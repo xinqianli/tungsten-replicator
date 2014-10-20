@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2010 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -42,14 +42,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
-import org.apache.log4j.Logger;
-
 import junit.framework.Assert;
 import junit.framework.TestCase;
 
 import com.continuent.tungsten.common.config.Interval;
 import com.continuent.tungsten.common.config.TungstenProperties;
-import com.continuent.tungsten.common.utils.CLUtils;
 
 /**
  * Implements a simple unit test for Tungsten properties.
@@ -59,8 +56,6 @@ import com.continuent.tungsten.common.utils.CLUtils;
  */
 public class TungstenPropertiesTest extends TestCase
 {
-    private static Logger logger = Logger.getLogger(TungstenPropertiesTest.class);
-
     /**
      * Tests round trip use of accessors for properties.
      */
@@ -144,28 +139,6 @@ public class TungstenPropertiesTest extends TestCase
         props.setString("interval2", "3m");
         assertEquals("Checking string interval", 180000,
                 props.getInterval("interval2").longValue());
-
-        // TungstenPorperties
-        TungstenProperties embeddedProp = this.makeProperties();
-        props.setTungstenProperties("myEmbeddedProps", embeddedProp);
-        assertEquals("Checking TungstenProperties", embeddedProp,
-                props.getTungstenProperties("myEmbeddedProps"));
-        
-        String propsToString = props.toString();
-        System.out.println(propsToString);
-        Properties theProperties = props.getProperties();
-
-        for (Object key : theProperties.keySet())
-        {
-            Object value = theProperties.get(key);
-
-            
-            Assert.assertTrue(
-                    String.format("toString output contains %s=%s", key,
-                            value.toString()),
-                    propsToString.contains(String.format("%s=%s", key, value)));
-        }
-
     }
 
     /**
@@ -682,53 +655,6 @@ public class TungstenPropertiesTest extends TestCase
                 props, props2);
     }
 
-    /**
-     * Ensure that we can emit and load properties that contain special
-     * characters like \n and \u0001. We do this by writing values to a binary
-     * stream and reading back in.
-     */
-    public void testSpecialCharacters() throws Exception
-    {
-        // Add the special characters.
-        TungstenProperties p1 = new TungstenProperties();
-        p1.setString("cr", "\r");
-        p1.setString("lf", "\n");
-        p1.setString("x01-x02", "\u0001\u0002");
-
-        // Write to binary array output. Clear the properties instance
-        // to prevent accidents.
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        p1.store(baos);
-        baos.flush();
-        byte[] bytes = baos.toByteArray();
-        p1.clear();
-
-        // Read back in.
-        ByteArrayInputStream bais = new ByteArrayInputStream(bytes);
-        TungstenProperties p2 = new TungstenProperties();
-        p2.load(bais);
-
-        // Check values.
-        String toString = p2.toString();
-        logger.info("Reading back escaped properties: " + toString);
-        Assert.assertEquals("load handles escaped cr character", "\r",
-                p2.getString("cr"));
-        Assert.assertEquals("load handles escaped lf character", "\n",
-                p2.getString("lf"));
-        Assert.assertEquals("load handles escaped unicode characters",
-                "\u0001\u0002", p2.getString("x01-x02"));
-
-        // Create a new TungstenProperties from this one and ensure values are
-        // copied over.
-        TungstenProperties p3 = new TungstenProperties(p2.map());
-        Assert.assertEquals("copy handles escaped cr character", "\r",
-                p3.getString("cr"));
-        Assert.assertEquals("copy handles escaped lf character", "\n",
-                p3.getString("lf"));
-        Assert.assertEquals("copy handles escaped unicode characters",
-                "\u0001\u0002", p3.getString("x01-x02"));
-    }
-
     // Make a basic Tungsten properties instance.
     public TungstenProperties makeProperties()
     {
@@ -1009,64 +935,24 @@ public class TungstenPropertiesTest extends TestCase
         pw.close();
         br.close();
     }
-
+    
     public void testShallowCopy() throws Exception
     {
         TungstenProperties prop1 = new TungstenProperties();
         String value1 = "value1    ";
-
+        
         prop1.put("key1", value1);
-
+        
+        
         TungstenProperties prop2 = new TungstenProperties(prop1.hashMap());
         String value11 = prop2.get("key1");
-
-        assertEquals(value1, value11); // there's indeed a copy
-
+        
+        assertEquals(value1, value11);                  // there's indeed a copy
+        
         prop2.trim();
-        assertEquals(value1, prop1.get("key1")); // value1 in prop1 hasn't
-        // changed
-        assertEquals(prop2.get("key1"), value1.trim()); // value in prop2 is the
-                                                        // same as value 1 but
-                                                        // trimmed
+        assertEquals(value1, prop1.get("key1"));           // value1 in prop1 hasn't changed
+        assertEquals(prop2.get("key1"), value1.trim());    // value in prop2 is the same as value 1 but trimmed
 
     }
-
-    /**
-     * Confirm that we can serialize/deserialize into JSON using Jackson
-     */
-    public void testJson()
-    {
-        TungstenProperties prop = this.makeProperties();
-        TungstenProperties propEmbedded = this.makeProperties();
-
-        prop.setTungstenProperties("myEmbeddedProp", propEmbedded);
-
-        try
-        {
-            String jsonString = null;
-
-            // --- Serialise ---
-            jsonString = prop.toJSON(true);
-            // System.out.println("Serializing TungstenProperties to JSON:\n" +
-            // jsonString);
-
-            // --- Deserialise ---
-            // Sanity check that we can convert the string back to an object
-            TungstenProperties propFromJson = TungstenProperties
-                    .loadFromJSON(jsonString);
-
-            String stringProp = propFromJson.get("string");
-            assertNotNull(stringProp);
-
-            TungstenProperties tungstenProp = propFromJson
-                    .getTungstenProperties("myEmbeddedProp");
-            assertNotNull(tungstenProp);
-        }
-        catch (Exception e)
-        {
-            assertFalse("Problem during JSON serialization/deserialization",
-                    true);
-        }
-    }
-
+    
 }

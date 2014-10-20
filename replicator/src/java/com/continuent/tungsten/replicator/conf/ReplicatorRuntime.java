@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,7 +22,6 @@
 
 package com.continuent.tungsten.replicator.conf;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -35,13 +34,8 @@ import org.apache.log4j.MDC;
 import com.continuent.tungsten.common.cluster.resource.OpenReplicatorParams;
 import com.continuent.tungsten.common.config.PropertyException;
 import com.continuent.tungsten.common.config.TungstenProperties;
-import com.continuent.tungsten.common.config.TungstenPropertiesIO;
-import com.continuent.tungsten.common.file.FileIOException;
 import com.continuent.tungsten.fsm.event.EventDispatcher;
 import com.continuent.tungsten.replicator.ReplicatorException;
-import com.continuent.tungsten.replicator.datasource.DataSourceService;
-import com.continuent.tungsten.replicator.datasource.DummyDataSource;
-import com.continuent.tungsten.replicator.datasource.UniversalDataSource;
 import com.continuent.tungsten.replicator.event.ReplDBMSHeader;
 import com.continuent.tungsten.replicator.filter.FilterManualProperties;
 import com.continuent.tungsten.replicator.management.OpenReplicatorContext;
@@ -93,13 +87,6 @@ public class ReplicatorRuntime implements PluginContext
 
     /** Replicator role. */
     private ReplicatorRole                    role;
-
-    // Variables used to maintain value of last online role.
-    // These are not used if we are running without a full replicator
-    // release directory as there is no place to write the file.
-    private static final String               ONLINE_ROLE_KEY = "replicator.lastOnlineRole";
-    private TungstenPropertiesIO              onlineRoleFile;
-    private String                            lastOnlineRoleName;
 
     /** True if replicator should go online automatically at startup. */
     private boolean                           autoEnable;
@@ -169,15 +156,7 @@ public class ReplicatorRuntime implements PluginContext
         // Determine the replicator role, providing a proper exception if the
         // role is not correctly set.
         roleName = properties.getString(ReplicatorConf.ROLE);
-
-        if (isProvisioning())
-        {
-            if (!ReplicatorConf.ROLE_MASTER.equals(roleName))
-                throw new ReplicatorException(
-                        "Provisioning can happen only on master");
-            roleName = ReplicatorConf.ROLE_MASTER + "-provision";
-        }
-        else if (ReplicatorConf.ROLE_MASTER.equals(roleName))
+        if (ReplicatorConf.ROLE_MASTER.equals(roleName))
             role = ReplicatorRole.MASTER;
         else if (ReplicatorConf.ROLE_SLAVE.equals(roleName))
             role = ReplicatorRole.SLAVE;
@@ -205,20 +184,6 @@ public class ReplicatorRuntime implements PluginContext
         String autoEnableSetting = assertPropertyDefault(
                 ReplicatorConf.AUTO_ENABLE, ReplicatorConf.AUTO_ENABLE_DEFAULT);
         autoEnable = new Boolean(autoEnableSetting);
-
-        // Ensure auto-master repositioning property is set to an acceptable
-        // value.
-        String autoMasterRepositioningSetting = assertPropertyDefault(
-                ReplicatorConf.AUTO_MASTER_REPOSITIONING,
-                ReplicatorConf.AUTO_MASTER_REPOSITIONING_DEFAULT);
-        if (!"false".equals(autoMasterRepositioningSetting)
-                && !"true".equals(autoMasterRepositioningSetting))
-        {
-            throw new ReplicatorException(String.format(
-                    "%s property must be set to true or false: %s",
-                    ReplicatorConf.AUTO_MASTER_REPOSITIONING,
-                    autoMasterRepositioningSetting));
-        }
 
         // Ensure source ID is available.
         sourceId = assertPropertyDefault(ReplicatorConf.SOURCE_ID,
@@ -436,30 +401,6 @@ public class ReplicatorRuntime implements PluginContext
                             + properties
                                     .getString(ReplicatorConf.APPLIER_FAIL_ON_0_ROW_UPDATE));
 
-        }
-
-        // If we have a role file location, use that to configure a manager
-        // for same and fetch the current value.
-        File roleFileLocation = ReplicatorRuntimeConf
-                .locateReplicatorRoleFile(serviceName);
-        if (roleFileLocation != null)
-        {
-            onlineRoleFile = new TungstenPropertiesIO(roleFileLocation);
-            if (onlineRoleFile.exists())
-            {
-                try
-                {
-                    TungstenProperties onlineRoleProps = onlineRoleFile.read();
-                    lastOnlineRoleName = onlineRoleProps.get(ONLINE_ROLE_KEY);
-                }
-                catch (FileIOException e)
-                {
-                    throw new ReplicatorException(
-                            "Unable to read online role file; try removing to get past this error: file="
-                                    + roleFileLocation.getAbsolutePath()
-                                    + " message=" + e.getMessage(), e);
-                }
-            }
         }
 
         // Instantiate and configure extensions.
@@ -784,14 +725,6 @@ public class ReplicatorRuntime implements PluginContext
     }
 
     /**
-     * Returns OpenReplicatorContext used for registering current runtime.
-     */
-    public OpenReplicatorContext getOpenReplicatorContext()
-    {
-        return context;
-    }
-
-    /**
      * Returns the current replicator properties.
      */
     public TungstenProperties getReplicatorProperties()
@@ -875,18 +808,6 @@ public class ReplicatorRuntime implements PluginContext
     /**
      * {@inheritDoc}
      * 
-     * @see com.continuent.tungsten.replicator.plugin.PluginContext#isProvisioning()
-     */
-    public boolean isProvisioning()
-    {
-        // Return the online option for whether to do provision.
-        return getOnlineOptions().getBoolean(OpenReplicatorParams.DO_PROVISION,
-                "false", true);
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
      * @see com.continuent.tungsten.replicator.plugin.PluginContext#getJdbcUrl(java.lang.String)
      */
     public String getJdbcUrl(String database)
@@ -941,35 +862,6 @@ public class ReplicatorRuntime implements PluginContext
     public String getRoleName()
     {
         return roleName;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.plugin.PluginContext#getLastOnlineRoleName()
-     */
-    public String getLastOnlineRoleName()
-    {
-        return lastOnlineRoleName;
-    }
-
-    /** Writes the value of the last online role to storage. */
-    public void setLastOnlineRoleName(String roleName)
-            throws ReplicatorException
-    {
-        try
-        {
-            TungstenProperties onlineRoleProps = new TungstenProperties();
-            onlineRoleProps.set("replicator.lastOnlineRole", roleName);
-            onlineRoleFile.write(onlineRoleProps, true);
-            lastOnlineRoleName = roleName;
-        }
-        catch (Exception e)
-        {
-            throw new ReplicatorException(
-                    "Unable to write online role file to storage: message="
-                            + e.getMessage(), e);
-        }
     }
 
     /**
@@ -1091,48 +983,6 @@ public class ReplicatorRuntime implements PluginContext
         for (String name : pipeline.getServiceNames())
             services.add(pipeline.getService(name));
         return services;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.plugin.PluginContext#getDataSource(java.lang.String)
-     * @see com.continuent.tungsten.replicator.datasource.DataSourceService#find(java.lang.String)
-     */
-    public UniversalDataSource getDataSource(String name)
-            throws ReplicatorException
-    {
-        // If the name is null or blank, we just return nothing.
-        if (name == null || "".equals(name))
-        {
-            return null;
-        }
-
-        // Make sure the data source service exists.
-        DataSourceService datasourceService = (DataSourceService) getService("datasource");
-        if (datasourceService == null)
-        {
-            throw new ReplicatorException(
-                    "Unable to locate data source service; check replicator properties file to ensure it is running in pipeline");
-        }
-
-        // Now look up and return the data source according to a set of rules.
-        UniversalDataSource ds = datasourceService.find(name);
-        if (ds == null)
-        {
-            // Not finding a name data source is bad.
-            throw new ReplicatorException("Data source not found: name=" + name);
-        }
-        else if (ds instanceof DummyDataSource)
-        {
-            // Dummy data sources are like no data source.
-            return null;
-        }
-        else
-        {
-            // Everything else goes back.
-            return ds;
-        }
     }
 
     /**
@@ -1279,7 +1129,7 @@ public class ReplicatorRuntime implements PluginContext
         catch (Throwable t)
         {
             String message = "Unable to configure plugin: class name="
-                    + pluginClassName + " message=[" + t.getMessage() + "]";
+                    + pluginClassName;
 
             logger.error(message, t);
             throw new ReplicatorException(message, t);
@@ -1309,7 +1159,7 @@ public class ReplicatorRuntime implements PluginContext
         catch (Throwable t)
         {
             String message = "Unable to prepare plugin: class name="
-                    + pluginClassName + " message=[" + t.getMessage() + "]";
+                    + pluginClassName;
 
             logger.error(message, t);
             throw new ReplicatorException(message, t);
@@ -1354,23 +1204,12 @@ public class ReplicatorRuntime implements PluginContext
     /**
      * {@inheritDoc}
      * 
-     * @see com.continuent.tungsten.replicator.plugin.PluginContext#isPrivilegedSlave()
+     * @see com.continuent.tungsten.replicator.plugin.PluginContext#isPrivilegedSlaveUpdate()
      */
-    public boolean isPrivilegedSlave()
+    public boolean isPrivilegedSlaveUpdate()
     {
-        return properties.getBoolean(ReplicatorConf.PRIVILEGED_SLAVE,
-                ReplicatorConf.PRIVILEGED_SLAVE_DEFAULT, true);
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.plugin.PluginContext#isPrivilegedMaster()
-     */
-    public boolean isPrivilegedMaster()
-    {
-        return properties.getBoolean(ReplicatorConf.PRIVILEGED_MASTER,
-                ReplicatorConf.PRIVILEGED_MASTER_DEFAULT, true);
+        return properties.getBoolean(ReplicatorConf.PRIVILEGED_SLAVE_UPDATE,
+                ReplicatorConf.PRIVILEGED_SLAVE_UPDATE_DEFAULT, true);
     }
 
     /**

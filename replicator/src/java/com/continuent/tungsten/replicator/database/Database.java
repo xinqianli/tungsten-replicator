@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -32,12 +32,10 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.continuent.tungsten.common.csv.CsvSpecification;
 import com.continuent.tungsten.common.csv.CsvWriter;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.consistency.ConsistencyCheck;
 import com.continuent.tungsten.replicator.consistency.ConsistencyException;
-import com.continuent.tungsten.replicator.datasource.UniversalConnection;
 import com.continuent.tungsten.replicator.dbms.OneRowChange;
 
 /**
@@ -48,7 +46,7 @@ import com.continuent.tungsten.replicator.dbms.OneRowChange;
  * @author <a href="mailto:scott.martin@continuent.com">Scott Martin</a>
  * @version 1.0
  */
-public interface Database extends UniversalConnection
+public interface Database
 {
     /** String to denote MySQL DBMS dialect in metadata. */
     public static String MYSQL      = "mysql";
@@ -61,27 +59,6 @@ public interface Database extends UniversalConnection
 
     /** String to denote PostgreSQL dialect in metadata. */
     public static String UNKNOWN    = "unknown";
-
-    // START UNIVERSALCONNECTOR API.
-    /**
-     * Commit the current transaction.
-     */
-    @Override
-    public void commit() throws SQLException;
-
-    /**
-     * Rollback the current transaction.
-     */
-    @Override
-    public void rollback() throws SQLException;
-
-    /**
-     * Toggles autocommit by calling Connection.setAutocommit().
-     */
-    @Override
-    public void setAutoCommit(boolean autoCommit) throws SQLException;
-
-    // END UNIVERSALCONNECTOR API.
 
     /** Returns the type of DBMS behind the interface */
     public DBMS getType();
@@ -116,15 +93,19 @@ public interface Database extends UniversalConnection
     public boolean isPrivileged();
 
     /**
-     * Sets the CSV specification use to generate CSV output parameters.
-     */
-    public void setCsvSpecification(CsvSpecification csvSpecification);
-
-    /**
      * Connects to the database. You must set the url, user, and password then
      * do this. Connection does not log queries by default.
      */
     public void connect() throws SQLException;
+
+    /**
+     * Connects to the database. You must set the url, user, and password then
+     * do this.
+     * 
+     * @param binlog log connection updates.
+     * @throws SQLException
+     */
+    public void connect(boolean binlog) throws SQLException;
 
     /**
      * Disconnects from the database. This is also accomplished by close().
@@ -315,18 +296,6 @@ public interface Database extends UniversalConnection
             throws SQLException;
 
     /**
-     * Return the Table with all its accompanying Columns.
-     * 
-     * @param schemaName name of schema containing the table
-     * @param tableName name of the table
-     * @param withUniqueIndex should unique indexes be fetched or not ?
-     * @return a Table if matching was found
-     * @throws SQLException if an error occurs
-     */
-    public Table findTable(String schemaName, String tableName,
-            boolean withUniqueIndex) throws SQLException;
-
-    /**
      * Returns a query that can be used to set the timestamp.
      * 
      * @param timestamp A Java time value consisting of milliseconds since
@@ -372,11 +341,6 @@ public interface Database extends UniversalConnection
     public boolean supportsReplace();
 
     /**
-     * Returns true if the implementation supports a SQL REPLACE command.
-     */
-    public boolean supportsBLOB();
-
-    /**
      * Replaces a row in the table using the data supplied by the Table
      * specification. The Table instance's primary key is used to locate the
      * matching row. This uses a REPLACE command if it is available.
@@ -412,9 +376,19 @@ public interface Database extends UniversalConnection
     public Statement createStatement() throws SQLException;
 
     /**
-     * Provides a script file to be executed when initializing connection.
+     * Commit the current transaction.
      */
-    public void setInitScript(String pathToScript);
+    public void commit() throws SQLException;
+
+    /**
+     * Rollback the current transaction.
+     */
+    public void rollback() throws SQLException;
+
+    /**
+     * Toggles autocommit by calling Connection.setAutocommit().
+     */
+    public void setAutoCommit(boolean autoCommit) throws SQLException;
 
     /**
      * Return a place holder in a prepared statement for a column of type
@@ -482,19 +456,6 @@ public interface Database extends UniversalConnection
      * @param schema Name of the schema
      * @param baseTablesOnly If true, only return real tables and not catalogs
      *            or views
-     * @param withUniqueIndex should unique indexes be fetched or not ?
-     * @return list of tables in the schema
-     * @throws SQLException
-     */
-    public ArrayList<Table> getTables(String schema, boolean baseTablesOnly,
-            boolean withUniqueIndex) throws SQLException;
-
-    /**
-     * Returns a list of tables available in the schema
-     * 
-     * @param schema Name of the schema
-     * @param baseTablesOnly If true, only return real tables and not catalogs
-     *            or views
      * @return list of tables in the schema
      * @throws SQLException
      */
@@ -523,28 +484,6 @@ public interface Database extends UniversalConnection
      */
     public void consistencyCheck(Table ct, ConsistencyCheck cc)
             throws SQLException, ConsistencyException;
-
-    /**
-     * Runs consistency check transaction:<br/>
-     * a.) If masterCrc==null - normal (master side) consistency check is
-     * executed, which is expected to be replicated to the slaves by
-     * replication.<br/>
-     * b.) If masterCrc!=null, then masterCrc and masterCnt are put into
-     * corresponding columns, while executed check's results are put into
-     * this_crc and this_cnt columns. The idea behind this is that if there's no
-     * replication running, that would usually copy over the consistency check
-     * from master to slave, it inserts consistency check results of the master
-     * to this slave, runs consistency check on this slave and updates the slave
-     * part (this_crc and this_cnt) in the created consistency row accordingly.
-     * 
-     * @param ct Consistency table.
-     * @param cc ConsistencyCheck specification.
-     * @param masterCrc CRC value of this check on the master.
-     * @param masterCnt Count of rows of this check on the master.
-     */
-    public void consistencyCheck(Table ct, ConsistencyCheck cc,
-            String masterCrc, int masterCnt) throws SQLException,
-            ConsistencyException;
 
     /**
      * getNowFunction returns the database-specific way to get current date and
@@ -629,7 +568,7 @@ public interface Database extends UniversalConnection
      * @return A property configured CsvWriter instance
      */
     public CsvWriter getCsvWriter(BufferedWriter writer);
-
+    
     /**
      * Returns a list of reserved words used by the DBMS, which cannot be used
      * as table and column names.<br/>
@@ -640,50 +579,4 @@ public interface Database extends UniversalConnection
      * @return A list of reserved words.
      */
     public ArrayList<String> getReservedWords();
-
-    /**
-     * dropTungstenCatalog removes Tungsten catalog tables.
-     * 
-     * @param schemaName The schema name where Tungsten catalog is stored
-     * @param tungstenTableType The type of table used to store Tungsten
-     *            metadata
-     * @param serviceName The service name for which the catalog has to be
-     *            dropped
-     * @throws SQLException when an error occurs
-     */
-    public void dropTungstenCatalogTables(String schemaName,
-            String tungstenTableType, String serviceName) throws SQLException;
-
-    /**
-     * Returns true if the given schema is a system schema.
-     * 
-     * @param schemaName a schema
-     * @return true if schemaName matches a system schema
-     */
-    public boolean isSystemSchema(String schemaName);
-
-    /**
-     * Returns the current position of the database (binary log position for
-     * MySQL, SCN for Oracle, for example).
-     * 
-     * @param flush Should the database be flushed before reading the position?
-     * @return The current position as a string
-     * @throws ReplicatorException if an error occurs
-     */
-    public String getCurrentPosition(boolean flush) throws ReplicatorException;
-
-    /**
-     * Does the database support flashback query?
-     * 
-     * @return true if the database support flashback queries, false otherwise
-     */
-    public boolean supportsFlashbackQuery();
-
-    /**
-     * Returns the flashback clause based on the given position
-     * 
-     * @param position The position to be used for the flashback query
-     * @return the generated flashback clause based on the position
-     */
-    public String getFlashbackQuery(String position);
 }

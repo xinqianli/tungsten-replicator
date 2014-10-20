@@ -10,15 +10,14 @@ import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.common.cluster.resource.DataSource;
 import com.continuent.tungsten.common.cluster.resource.DatabaseVendors;
-import com.continuent.tungsten.common.utils.CLUtils;
 
 public class HighWaterResourceFactory
 {
     private static Logger logger                  = Logger.getLogger(HighWaterResource.class);
     static int            binlogPositionMaxLength = 0;
 
-    public static HighWaterResource getHighWater(DataSource ds,
-            Connection conn, String replicationSchemaName) throws SQLException
+    public static HighWaterResource getHighWater(DataSource ds, Connection conn)
+            throws SQLException
     {
         if (ds.getVendor() == null)
         {
@@ -29,7 +28,7 @@ public class HighWaterResourceFactory
 
         if (ds.getVendor().equals(DatabaseVendors.MYSQL))
         {
-            return mysqlHighWater(ds, conn, replicationSchemaName);
+            return mysqlHighWater(ds, conn);
         }
         else
         {
@@ -41,8 +40,9 @@ public class HighWaterResourceFactory
     }
 
     private static HighWaterResource mysqlHighWater(DataSource ds,
-            Connection conn, String replicationSchemaName) throws SQLException
+            Connection conn) throws SQLException
     {
+
         if (conn == null)
         {
             throw new SQLException("Connection is null");
@@ -57,15 +57,13 @@ public class HighWaterResourceFactory
             getMaxBinlogSize(conn);
         }
 
-        String queryToExecute = String.format("SHOW MASTER STATUS",
-                replicationSchemaName);
-
         ResultSet result = null;
+
         Statement stmt = conn.createStatement();
 
         try
         {
-            result = stmt.executeQuery(queryToExecute);
+            result = stmt.executeQuery("SHOW MASTER STATUS");
 
             if (!result.next())
             {
@@ -73,24 +71,18 @@ public class HighWaterResourceFactory
                         "Unable to get master status; is the MySQL binlog enabled?");
             }
 
-            /*
-             * We need to process 2 result sets. The first one will be the
-             * master status and the second the epoch_number from
-             * trep_commit_seqno.
-             */
-
-            String eventId = null;
             String binlogFile = result.getString(1);
             int binlogOffset = result.getInt(2);
             String binlogOffsetAsString = String.format("%0"
                     + (binlogPositionMaxLength + 1) + "d", new Integer(
                     binlogOffset));
 
-            eventId = String.format("%s:%s", binlogFile, binlogOffsetAsString);
+            long epochNumber = ds.getHighWater().getHighWaterEpoch();
+            String eventId = String.format("%s:%s", binlogFile,
+                    binlogOffsetAsString);
 
-            HighWaterResource highWater = new HighWaterResource(ds
-                    .getHighWater().getHighWaterEpoch(), eventId);
-
+            HighWaterResource highWater = new HighWaterResource(epochNumber,
+                    eventId);
             return highWater;
         }
         finally

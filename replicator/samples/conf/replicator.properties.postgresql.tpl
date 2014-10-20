@@ -19,31 +19,14 @@ replicator.master.connect.uri=wal://@{REPL_MASTERHOST}/
 
 # URI for our listener when we are acting as a master.  Slaves 
 # use this as their connect URI.  
-replicator.master.listen.uri=@{REPL_THL_PROTOCOL}://@{HOST.HOST}:@{REPL_SVC_THL_PORT}/
+replicator.master.listen.uri=thl://@{HOST.HOST}:@{REPL_SVC_THL_PORT}/
 
 # Replicator auto-enable.  If true, replicator automatically goes online 
 # at start-up time. 
 replicator.auto_enable=@{REPL_AUTOENABLE}
 
-# Replicator auto-recovery.  If greater than 0, the replicator service
-# attempts to go back online up to this number of times before failing.
-replicator.autoRecoveryMaxAttempts=@{REPL_AUTO_RECOVERY_MAX_ATTEMPTS}
-
-# Replicator auto-recovery delay.  How long to wait before going online.
-# Settings are milliseconds by default.  You can also apply settings in
-# seconds, minutes, hours, and days, as in 10s, 30m, 2h, etc. This
-# setting allows time for resources to clean up or recover after a failure.
-replicator.autoRecoveryDelayInterval=@{REPL_AUTO_RECOVERY_DELAY_INTERVAL}
-
-# Replicator auto-recover reset interval.  If the replicator is online for
-# this amount of time, reset the count of auto-recovery attempts.  This value
-# may need to be large for services that commit large blocks as apply errors
-# may take a while to show up after going online again.
-replicator.autoRecoveryResetInterval=@{REPL_AUTO_RECOVERY_RESET_INTERVAL}
-
-# Source ID.  Identifies the replication event source.  It must be 
-# unique for each replicator node and normally is the host name.
-# Do not use values like localhost or 127.0.0.1. 
+# Source ID. This required parameter is used to identify replication
+# event source.  It must be unique for each replicator node.
 replicator.source_id=@{EXTRACTOR.REPL_DBHOST}
 
 # Cluster name to which the replicator belongs.
@@ -59,7 +42,6 @@ service.name=@{SERVICE.DEPLOYMENT_SERVICE}
 # Used by manager to create datasources dynamically
 replicator.resourceJdbcUrl=@{APPLIER.REPL_DBJDBCURL}
 replicator.resourceJdbcDriver=@{APPLIER.REPL_DBJDBCDRIVER}
-@{#(APPLIER.REPL_SVC_DATASOURCE_APPLIER_INIT_SCRIPT)}replicator.resourceJdbcInitScript=@{APPLIER.REPL_SVC_DATASOURCE_APPLIER_INIT_SCRIPT}
 replicator.resourceVendor=@{APPLIER.REPL_DBJDBCVENDOR}
 replicator.resourcePrecedence=99
 
@@ -73,7 +55,7 @@ replicator.backup.agents=@{APPLIER.REPL_DBBACKUPAGENTS}
 # Default backup agent.
 replicator.backup.default=@{REPL_BACKUP_METHOD}
 
-@{includeAll(REPL_SVC_BACKUP_CONFIG)}
+@{REPL_SVC_BACKUP_CONFIG}
 
 # List of configured storage agents.  Uncomment appropriately for your site. 
 #replicator.storage.agents=fs

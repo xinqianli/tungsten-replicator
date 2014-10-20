@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Linas Virbalas
- * Contributor(s): Robert Hodges
+ * Contributor(s): 
  */
 
 package com.continuent.tungsten.replicator.ddlscan;
@@ -28,23 +28,22 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Hashtable;
 
-import org.apache.velocity.Template;
 import org.apache.velocity.VelocityContext;
+import org.apache.velocity.Template;
 import org.apache.velocity.app.VelocityEngine;
-import org.apache.velocity.exception.MethodInvocationException;
-import org.apache.velocity.exception.ParseErrorException;
 import org.apache.velocity.exception.ResourceNotFoundException;
+import org.apache.velocity.exception.ParseErrorException;
+import org.apache.velocity.exception.MethodInvocationException;
 import org.apache.velocity.runtime.RuntimeConstants;
 import org.apache.velocity.runtime.log.Log4JLogChute;
 
 import com.continuent.tungsten.replicator.ReplicatorException;
-import com.continuent.tungsten.replicator.conf.ReplicatorRuntimeConf;
 import com.continuent.tungsten.replicator.database.Column;
 import com.continuent.tungsten.replicator.database.Database;
 import com.continuent.tungsten.replicator.database.DatabaseFactory;
-import com.continuent.tungsten.replicator.database.MySQLDatabase;
 import com.continuent.tungsten.replicator.database.OracleDatabase;
 import com.continuent.tungsten.replicator.database.Table;
+import com.continuent.tungsten.replicator.database.TableMatcher;
 import com.continuent.tungsten.replicator.filter.EnumToStringFilter;
 import com.continuent.tungsten.replicator.filter.RenameDefinitions;
 
@@ -66,7 +65,6 @@ public class DDLScan
     private Database          db                  = null;
 
     private ArrayList<String> reservedWordsOracle = null;
-    private ArrayList<String> reservedWordsMySQL  = null;
 
     VelocityEngine            velocity            = null;
     RenameDefinitions         renameDefinitions   = null;
@@ -93,22 +91,15 @@ public class DDLScan
      * 
      * @throws ReplicatorException
      */
-    public void prepare(String additionalPath) throws ReplicatorException,
-            InterruptedException, SQLException
+    public void prepare() throws ReplicatorException, InterruptedException,
+            SQLException
     {
         db = DatabaseFactory.createDatabase(url, user, pass);
         db.connect();
-
+        
         // Prepare reserved words lists.
         OracleDatabase oracle = new OracleDatabase();
         reservedWordsOracle = oracle.getReservedWords();
-        MySQLDatabase mysql = new MySQLDatabase();
-        reservedWordsMySQL = mysql.getReservedWords();
-
-        // Do we need additional paths for loader?
-        String userPath = "";
-        if (additionalPath != null)
-            userPath = "," + additionalPath;
 
         // Configure and initialize Velocity engine. Using ourselves as a
         // logger.
@@ -117,19 +108,32 @@ public class DDLScan
                 "org.apache.velocity.runtime.log.Log4JLogChute");
         velocity.setProperty(Log4JLogChute.RUNTIME_LOG_LOG4J_LOGGER,
                 DDLScan.class.toString());
-        velocity.setProperty(RuntimeConstants.FILE_RESOURCE_LOADER_PATH, ".,"
-                + ReplicatorRuntimeConf.locateReplicatorHomeDir()
-                + "/samples/extensions/velocity" + userPath);
-        // Must allow setting of null values in the RHS #set operator to be
-        // compatible with the way JAVA methods communicate.
-        velocity.setProperty(RuntimeConstants.SET_NULL_ALLOWED, true);
+        velocity.setProperty(RuntimeConstants.FILE_RESOURCE_LOADER_PATH,
+                ".,../samples/extensions/velocity");
         velocity.init();
+    }
+
+    /**
+     * Prepares table regex matcher.
+     * 
+     * @param filter Regex enabled list of tables.
+     */
+    private TableMatcher extractFilter(String filter)
+    {
+        // If empty, we do nothing.
+        if (filter == null || filter.length() == 0)
+            return null;
+
+        TableMatcher tableMatcher = new TableMatcher();
+        tableMatcher.prepare(filter);
+        return tableMatcher;
     }
 
     /**
      * Compiles the given Velocity template file.
      */
-    public void parseTemplate(String templateFile) throws ReplicatorException
+    public void parseTemplate(String templateFile)
+            throws ReplicatorException
     {
         try
         {
@@ -145,7 +149,7 @@ public class DDLScan
             throw new ReplicatorException("Problem parsing the template", pee);
         }
     }
-
+    
     /**
      * Tries to load rename definitions file. It will be used for all subsequent
      * scan calls.
@@ -153,7 +157,7 @@ public class DDLScan
      * @throws ReplicatorException On parsing or CSV format errors.
      * @throws IOException If file cannot be read.
      * @see #resetRenameDefinitions()
-     * @see #scan(String, Hashtable, Writer)
+     * @see #scan(String, Writer)
      */
     public void parseRenameDefinitions(String definitionsFile)
             throws ReplicatorException, IOException
@@ -161,12 +165,12 @@ public class DDLScan
         renameDefinitions = new RenameDefinitions(definitionsFile);
         renameDefinitions.parseFile();
     }
-
+    
     /**
      * Stop using rename definitions file for future scan(...) calls.
      * 
      * @see #parseRenameDefinitions(String)
-     * @see #scan(String, Hashtable, Writer)
+     * @see #scan(String, Writer)
      */
     public void resetRenameDefinitions()
     {
@@ -177,9 +181,8 @@ public class DDLScan
      * Scans and extracts metadata from the database of requested tables. Calls
      * merge(...) against each found table.
      * 
-     * @param tablesToFind Comma-separated list of tables to find (don't specify
-     *            schema name), null for all tables in schema. Regular
-     *            expressions are *not* supported.
+     * @param tablesToFind Regular expression enable list of tables to find or
+     *            null for all tables.
      * @param templateOptions Options (option->value) to pass to the template.
      * @param writer Writer object to use for appending rendered template. Make
      *            sure to initialize it before and flush/close it after
@@ -191,27 +194,13 @@ public class DDLScan
             throws ReplicatorException, InterruptedException, SQLException,
             IOException
     {
-        // How many tables were actually matched?
-        int tablesRendered = 0;
+        // Regular expression matcher for tables.
+        TableMatcher tableMatcher = null;
+        if (tablesToFind != null)
+            tableMatcher = extractFilter(tablesToFind);
 
-        ArrayList<Table> tables = null;
-        if (tablesToFind == null)
-        {
-            // Retrieve all tables available with unique index information.
-            tables = db.getTables(dbName, true, true);
-        }
-        else
-        {
-            // Retrieve only requested tables.
-            tables = new ArrayList<Table>();
-            String[] tableNames = tablesToFind.split(",");
-            for (String tableName : tableNames)
-            {
-                Table table = db.findTable(dbName, tableName, true);
-                if (table != null)
-                    tables.add(table);
-            }
-        }
+        // Retrieve all tables available.
+        ArrayList<Table> tables = db.getTables(dbName, true);
 
         // Make a context object and populate with the data. This is where
         // the Velocity engine gets the data to resolve the references in
@@ -239,41 +228,20 @@ public class DDLScan
         context.put("enum", EnumToStringFilter.class);
         context.put("date", new java.util.Date()); // Current time.
         context.put("reservedWordsOracle", reservedWordsOracle);
-        context.put("reservedWordsMySQL", reservedWordsMySQL);
-        context.put("velocity", velocity);
-        
+
         // Iterate through all available tables in the database.
-        int size = tables.size();
-        for (int i = 0; i < size; i++)
+        for (Table table : tables)
         {
-            Table table = tables.get(i);
+            // Is this table requested by the user?
+            if (tableMatcher == null
+                    || tableMatcher.match(table.getSchema(), table.getName()))
+            {
+                // If requested, do the renaming.
+                rename(table);
 
-            // If this is the first table, mark the context appropriately.
-            if (i == 0)
-                context.put("first", true);
-            else
-                context.put("first", false);
-
-            // Similarly for the last table mark the context accordingly.
-            if (i >= size - 1)
-                context.put("last", true);
-            else
-                context.put("last", false);
-
-            // If requested, do the renaming.
-            rename(table);
-
-            // Velocity merge.
-            merge(context, table, writer);
-
-            tablesRendered++;
-        }
-
-        // No tables have been found and/or matched.
-        if (tablesRendered == 0)
-        {
-            // Render the template once without table data. Eg. to output help.
-            merge(context, null, writer);
+                // Velocity merge.
+                merge(context, table, writer);
+            }
         }
 
         return writer.toString();

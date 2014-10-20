@@ -1,6 +1,6 @@
 /**
  * Tungsten: An Application Server for uni/cluster.
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,19 +22,13 @@
 
 package com.continuent.tungsten.replicator.database;
 
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -45,7 +39,6 @@ import com.continuent.tungsten.common.csv.CsvWriter;
 import com.continuent.tungsten.common.csv.NullPolicy;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.dbms.OneRowChange;
-import com.continuent.tungsten.replicator.extractor.ExtractorException;
 
 /**
  * Implements DBMS-specific operations for MySQL.
@@ -54,55 +47,9 @@ import com.continuent.tungsten.replicator.extractor.ExtractorException;
  */
 public class MySQLDatabase extends AbstractDatabase
 {
-    private static Logger                  logger                        = Logger.getLogger(MySQLDatabase.class);
+    private static Logger logger                        = Logger.getLogger(MySQLDatabase.class);
 
-    private boolean                        sessionLevelLoggingSuppressed = false;
-
-    /** A list of words that can't be used in table and column names. */
-    private static final ArrayList<String> reservedWords                 = new ArrayList<String>(
-                                                                                 Arrays.asList(new String[]{
-            "ACCESSIBLE", "ALTER", "AS", "BEFORE", "BINARY", "BY", "CASE",
-            "CHARACTER", "COLUMN", "CONTINUE", "CROSS", "CURRENT_TIMESTAMP",
-            "DATABASE", "DAY_MICROSECOND", "DEC", "DEFAULT", "DESC",
-            "DISTINCT", "DOUBLE", "EACH", "ENCLOSED", "EXIT", "FETCH",
-            "FLOAT8", "FOREIGN", "GRANT", "HIGH_PRIORITY", "HOUR_SECOND", "IN",
-            "INNER", "INSERT", "INT2", "INT8", "INTO", "JOIN", "KILL", "LEFT",
-            "LINEAR", "LOCALTIME", "LONG", "LOOP", "MATCH", "MEDIUMTEXT",
-            "MINUTE_SECOND", "NATURAL", "NULL", "OPTIMIZE", "OR", "OUTER",
-            "PRIMARY", "RANGE", "READ_WRITE", "REGEXP", "REPEAT", "RESTRICT",
-            "RIGHT", "SCHEMAS", "SENSITIVE", "SHOW", "SPECIFIC", "SQLSTATE",
-            "SQL_CALC_FOUND_ROWS", "STARTING", "TERMINATED", "TINYINT",
-            "TRAILING", "UNDO", "UNLOCK", "USAGE", "UTC_DATE", "VALUES",
-            "VARCHARACTER", "WHERE", "WRITE", "ZEROFILL", "ALL", "AND",
-            "ASENSITIVE", "BIGINT", "BOTH", "CASCADE", "CHAR", "COLLATE",
-            "CONSTRAINT", "CREATE", "CURRENT_TIME", "CURSOR", "DAY_HOUR",
-            "DAY_SECOND", "DECLARE", "DELETE", "DETERMINISTIC", "DIV", "DUAL",
-            "ELSEIF", "EXISTS", "FALSE", "FLOAT4", "FORCE", "FULLTEXT",
-            "HAVING", "HOUR_MINUTE", "IGNORE", "INFILE", "INSENSITIVE", "INT1",
-            "INT4", "INTERVAL", "ITERATE", "KEYS", "LEAVE", "LIMIT", "LOAD",
-            "LOCK", "LONGTEXT", "MASTER_SSL_VERIFY_SERVER_CERT", "MEDIUMINT",
-            "MINUTE_MICROSECOND", "MODIFIES", "NO_WRITE_TO_BINLOG", "ON",
-            "OPTIONALLY", "OUT", "PRECISION", "PURGE", "READS", "REFERENCES",
-            "RENAME", "REQUIRE", "REVOKE", "SCHEMA", "SELECT", "SET",
-            "SPATIAL", "SQLEXCEPTION", "SQL_BIG_RESULT", "SSL", "TABLE",
-            "TINYBLOB", "TO", "TRUE", "UNIQUE", "UPDATE", "USING",
-            "UTC_TIMESTAMP", "VARCHAR", "WHEN", "WITH", "YEAR_MONTH", "ADD",
-            "ANALYZE", "ASC", "BETWEEN", "BLOB", "CALL", "CHANGE", "CHECK",
-            "CONDITION", "CONVERT", "CURRENT_DATE", "CURRENT_USER",
-            "DATABASES", "DAY_MINUTE", "DECIMAL", "DELAYED", "DESCRIBE",
-            "DISTINCTROW", "DROP", "ELSE", "ESCAPED", "EXPLAIN", "FLOAT",
-            "FOR", "FROM", "GROUP", "HOUR_MICROSECOND", "IF", "INDEX", "INOUT",
-            "INT", "INT3", "INTEGER", "IS", "KEY", "LEADING", "LIKE", "LINES",
-            "LOCALTIMESTAMP", "LONGBLOB", "LOW_PRIORITY", "MEDIUMBLOB",
-            "MIDDLEINT", "MOD", "NOT", "NUMERIC", "OPTION", "ORDER", "OUTFILE",
-            "PROCEDURE", "READ", "REAL", "RELEASE", "REPLACE", "RETURN",
-            "RLIKE", "SECOND_MICROSECOND", "SEPARATOR", "SMALLINT", "SQL",
-            "SQLWARNING", "SQL_SMALL_RESULT", "STRAIGHT_JOIN", "THEN",
-            "TINYTEXT", "TRIGGER", "UNION", "UNSIGNED", "USE", "UTC_TIME",
-            "VARBINARY", "VARYING", "WHILE", "XOR"                               }));
-
-    private static final List<String>      SYSTEM_SCHEMAS                = Arrays.asList(new String[]{
-            "mysql", "performance_schema", "information_schema"          });
+    private boolean       sessionLevelLoggingSuppressed = false;
 
     public MySQLDatabase() throws SQLException
     {
@@ -152,29 +99,6 @@ public class MySQLDatabase extends AbstractDatabase
                 return "UNKNOWN";
         }
     }
-    
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    protected Column addColumn(ResultSet rs)
-            throws SQLException
-    {
-        // Generic initialization.
-        Column column = super.addColumn(rs);
-        String typeDesc = column.getTypeDescription();
-        String columnName = column.getName();
-
-        // MySQL specifics.
-        boolean isSigned = !typeDesc.contains("UNSIGNED");
-        int dataType = rs.getInt("DATA_TYPE");
-        if (logger.isDebugEnabled())
-            logger.debug("Adding column " + columnName + " (TYPE " + dataType
-                    + " - " + (isSigned ? "SIGNED" : "UNSIGNED") + ")");
-        column.setSigned(isSigned);
-
-        return column;
-    }
 
     /**
      * Connect to a MySQL database, which includes setting the wait_timeout to a
@@ -184,9 +108,20 @@ public class MySQLDatabase extends AbstractDatabase
      */
     public void connect() throws SQLException
     {
+        connect(false);
+    }
+
+    /**
+     * Connect to a MySQL database, which includes setting the wait_timeout to a
+     * very high value so we don't lose our connection. {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#connect(boolean)
+     */
+    public void connect(boolean binlog) throws SQLException
+    {
         // Use superclass method to avoid missing things like loading the
         // driver class.
-        super.connect();
+        super.connect(binlog);
 
         // set connection timeout to maximum to prevent timeout on the
         // server side
@@ -202,61 +137,6 @@ public class MySQLDatabase extends AbstractDatabase
             {
                 logger.debug("Unable to set wait_timeout to maximum value of 2147483");
                 logger.debug("Please consider using an explicit JDBC URL setting to avoid connection timeouts");
-            }
-        }
-
-        if (initScript != null)
-        {
-            // Load the file : one sql statement per line
-            File file = new File(initScript);
-            FileReader reader = null;
-            Statement stmt = null;
-            try
-            {
-                reader = new FileReader(file);
-            }
-            catch (FileNotFoundException e)
-            {
-                throw new SQLException("Init script not found", e);
-            }
-
-            try
-            {
-                // Add to support misleading Eclipse warning. 
-                @SuppressWarnings("resource")
-                BufferedReader br = new BufferedReader(reader);
-                String sql = null;
-                stmt = dbConn.createStatement();
-
-                while ((sql = br.readLine()) != null)
-                {
-                    sql = sql.trim();
-                    if (sql.startsWith("#") || sql.length() == 0)
-                        continue;
-
-                    // For now, we don't care for the results. 
-                    stmt.execute(sql);
-                }
-            }
-            catch (IOException e)
-            {
-                throw new SQLException("Failed reading init script ("
-                        + initScript + ")", e);
-            }
-            finally
-            {
-                if (reader != null)
-                {
-                    try
-                    {
-                        reader.close();
-                    }
-                    catch (IOException e)
-                    {
-                    }
-                }
-                if (stmt != null)
-                    stmt.close();
             }
         }
     }
@@ -294,10 +174,7 @@ public class MySQLDatabase extends AbstractDatabase
 
     public boolean supportsCreateDropSchema()
     {
-        // MySQL allows schema creation but setting this to true creates extra
-        // transactions in the binlog. So we set it to false, since any needed
-        // schema will be created via the JDBC URL.
-        return false;
+        return true;
     }
 
     public void createSchema(String schema) throws SQLException
@@ -502,13 +379,6 @@ public class MySQLDatabase extends AbstractDatabase
             String schemaName, String tableName) throws SQLException
     {
         return md.getPrimaryKeys(schemaName, null, tableName);
-    }
-
-    protected ResultSet getIndexResultSet(DatabaseMetaData md,
-            String schemaName, String tableName, boolean unique)
-            throws SQLException
-    {
-        return md.getIndexInfo(schemaName, null, tableName, unique, true);
     }
 
     protected ResultSet getTablesResultSet(DatabaseMetaData md,
@@ -727,20 +597,15 @@ public class MySQLDatabase extends AbstractDatabase
      */
     public CsvWriter getCsvWriter(BufferedWriter writer)
     {
-        if (this.csvSpec == null)
-        {
-            CsvWriter csv = new CsvWriter(writer);
-            csv.setQuoteChar('"');
-            csv.setQuoted(true);
-            csv.setEscapeChar('\\');
-            csv.setEscapedChars("\\");
-            csv.setNullPolicy(NullPolicy.nullValue);
-            csv.setNullValue("\\N");
-            csv.setWriteHeaders(false);
-            return csv;
-        }
-        else
-            return csvSpec.createCsvWriter(writer);
+        CsvWriter csv = new CsvWriter(writer);
+        csv.setQuoteChar('"');
+        csv.setQuoted(true);
+        csv.setEscapeChar('\\');
+        csv.setEscapedChars("\\");
+        csv.setNullPolicy(NullPolicy.nullValue);
+        csv.setNullValue("\\N");
+        csv.setWriteHeaders(false);
+        return csv;
     }
 
     /**
@@ -750,10 +615,10 @@ public class MySQLDatabase extends AbstractDatabase
      */
     public boolean supportsUserManagement()
     {
-        // This requires a privileged account.
+        // This requires a privileged account. 
         if (isPrivileged())
             return true;
-        else
+        else 
             return false;
     }
 
@@ -768,48 +633,12 @@ public class MySQLDatabase extends AbstractDatabase
     {
         String skeleton;
         if (user.isPrivileged())
-        {
             skeleton = "grant all on *.* to %s@'%%' identified by '%s' with grant option";
-            String sql = String.format(skeleton, user.getLogin(),
-                    user.getPassword());
-            execute(sql);
-        }
         else
-        {
-            // Grant select on all schemas.
             skeleton = "grant select on *.* to %s@'%%' identified by '%s' with grant option";
-            String sql = String.format(skeleton, user.getLogin(),
-                    user.getPassword());
-            execute(sql);
-
-            // Grant all on current schema. This is a hack to get around a
-            // limitation of the drizzle JDBC driver, which issues a CREATE
-            // DATABASE even for non-privileged accounts.
-            Statement stmt = null;
-            ResultSet rs = null;
-            String currentSchema = null;
-            try
-            {
-                stmt = dbConn.createStatement();
-                rs = stmt.executeQuery("select database() as \"database\"");
-                while (rs.next())
-                {
-                    currentSchema = rs.getString("database");
-                }
-            }
-            finally
-            {
-                if (rs != null)
-                    rs.close();
-                if (stmt != null)
-                    stmt.close();
-            }
-
-            skeleton = "grant all on %s.* to %s@'%%' identified  by '%s' with grant option";
-            String sql2 = String.format(skeleton, currentSchema,
-                    user.getLogin(), user.getPassword());
-            execute(sql2);
-        }
+        String sql = String.format(skeleton, user.getLogin(),
+                user.getPassword());
+        execute(sql);
     }
 
     /**
@@ -883,7 +712,7 @@ public class MySQLDatabase extends AbstractDatabase
     @Override
     public void kill(Session session) throws SQLException, ReplicatorException
     {
-        // This requires a privileged account.
+        // This requires a privileged account. 
         if (!isPrivileged())
         {
             throw new ReplicatorException(
@@ -891,90 +720,5 @@ public class MySQLDatabase extends AbstractDatabase
         }
         String sql = String.format("kill %s", session.getIdentifier());
         execute(sql);
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#isSystemSchema(java.lang.String)
-     */
-    @Override
-    public boolean isSystemSchema(String schemaName)
-    {
-        return SYSTEM_SCHEMAS.contains(schemaName);
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see <a
-     *      href="http://dev.mysql.com/doc/mysqld-version-reference/en/mysqld-version-reference-reservedwords-5-6.html">MySQL
-     *      Docs</a>
-     */
-    @Override
-    public ArrayList<String> getReservedWords()
-    {
-        return reservedWords;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @throws ExtractorException
-     */
-    @Override
-    public String getCurrentPosition(boolean flush) throws ReplicatorException
-    {
-        Statement st = null;
-        ResultSet rs = null;
-        try
-        {
-            st = createStatement();
-            if (flush)
-            {
-                logger.debug("Flushing logs");
-                st.executeUpdate("FLUSH LOGS");
-            }
-            logger.debug("Seeking head position in binlog");
-            rs = st.executeQuery("SHOW MASTER STATUS");
-            if (!rs.next())
-                throw new ReplicatorException(
-                        "Error getting master status; is the MySQL binlog enabled?");
-            String binlogFile = rs.getString(1);
-            long binlogOffset = rs.getLong(2);
-
-            logger.info("Starting from current position: " + binlogFile + ":"
-                    + binlogOffset);
-            return binlogFile + ":" + binlogOffset;
-        }
-        catch (SQLException e)
-        {
-            throw new ReplicatorException(
-                    "Error getting master status; is the MySQL binlog enabled?",
-                    e);
-        }
-        finally
-        {
-            if (rs != null)
-            {
-                try
-                {
-                    rs.close();
-                }
-                catch (SQLException ignore)
-                {
-                }
-            }
-            if (st != null)
-            {
-                try
-                {
-                    st.close();
-                }
-                catch (SQLException ignore)
-                {
-                }
-            }
-        }
     }
 }

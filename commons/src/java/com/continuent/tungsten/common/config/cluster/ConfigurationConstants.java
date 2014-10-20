@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Teemu Ollakka
- * Contributor(s): Robert Hodges, Ludovic Launer
+ * Contributor(s): Robert Hodges
  */
 
 package com.continuent.tungsten.common.config.cluster;
@@ -40,10 +40,8 @@ public class ConfigurationConstants
     static public final String CLUSTER_CLUSTERNAME                                            = "clusterName";
     static public final String CLUSTER_MEMBERNAME                                             = "memberName";
     static public final String CLUSTER_PORT                                                   = "port";
-    static public final String CLUSTER_MANAGER_LIST                                           = "managerList";
 
-    static public final String CLUSTER_STATE_MAP_OVERRIDE_PROPS                               = "statemap.properties";
-    static public final String CLUSTER_STATE_MAP_DEFAULT_PROPS                                = "statemap.properties.defaults";
+    static public final String CLUSTER_STATE_MAP_PROPS                                        = "statemap.properties";
 
     /** SQLROUTER MANAGER */
     static public final String TR_PROPERTIES                                                  = "router.properties";
@@ -71,6 +69,5 @@ public class ConfigurationConstants
     public static final int    DELAY_BEFORE_OFFLINE_IN_MAINTENANCE_MODE_IF_NO_MANAGER_DEFAULT = 5 * 60;
     public static final int    GATEWAY_CONNECT_TIMEOUT_MS_DEFAULT                             = 5000;
     public static final int    GATEWAY_CONNECT_TIMEOUT_MS_MAX                                 = 30000;
-    public static final long   READ_COMMAND_RETRY_TIMEOUT_MS_DEFAULT                          = 10000;
 
 }

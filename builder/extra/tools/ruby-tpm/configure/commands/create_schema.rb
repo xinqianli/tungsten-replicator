@@ -21,10 +21,14 @@ class CreateSchemaCommand
   
   def validate_commit
     super()
-    
-    include_promotion_setting(SCHEMA_NAME, @schema_name)
-    
-    is_valid?()
+   
+    # Load option values.
+    @promotion_settings.props.each_key{
+      |h_alias|
+      @promotion_settings.include([h_alias], {
+        SCHEMA_NAME => @schema_name
+      })
+    }
   end
   
   def parsed_options?(arguments)
@@ -71,7 +75,6 @@ module CreateSchemaDeploymentStep
   module_function :get_methods
   
   def create_service_schemas
-    Configurator.instance.command.build_topologies(@config)
     Configurator.instance.command.command_dataservices().each{
       |ds_alias|
       @config.getPropertyOr([REPL_SERVICES], {}).each_key{

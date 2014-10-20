@@ -3,17 +3,27 @@ module ClusterCommandModule
   
   def initialize(config)
     super(config)
-    reset_cluster_options()
+    
+    @general_options = Properties.new()
+    @dataservice_options = Properties.new()
+    @host_options = Properties.new()
+    @manager_options = Properties.new()
+    @connector_options = Properties.new()
+    @replication_options = Properties.new()
+    
+    @add_members = nil
+    @remove_members = nil
+    @add_connectors = nil
+    @remove_connectors = nil
   end
   
   def get_prompts
     [
       ConfigTargetBasenamePrompt.new(),
       DeploymentCommandPrompt.new(),
-      DeploymentExternalConfigurationTypePrompt.new(),
-      DeploymentExternalConfigurationSourcePrompt.new(),
-      DeploymentConfigurationKeyPrompt.new(),
       RemotePackagePath.new(),
+      DeployCurrentPackagePrompt.new(),
+      DeployPackageURIPrompt.new(),
       DeploymentHost.new(),
       StagingHost.new(),
       StagingUser.new(),
@@ -53,6 +63,7 @@ module ClusterCommandModule
     modules << ConfigureDeploymentStepReplicationDataservice
     modules << ConfigureDeploymentStepConnector
     modules << ConfigureDeploymentStepServices
+    modules << ConfigureDeploymentStepDataService
   
     DatabaseTypeDeploymentStep.submodules().each{
       |klass|
@@ -65,27 +76,6 @@ module ClusterCommandModule
   
   def allow_command_line_cluster_options?
     true
-  end
-  
-  def reset_cluster_options
-    @general_options = Properties.new()
-    @dataservice_options = Properties.new()
-    @host_options = Properties.new()
-    @manager_options = Properties.new()
-    @connector_options = Properties.new()
-    @replication_options = Properties.new()
-    
-    @add_members = nil
-    @remove_members = nil
-    @add_connectors = nil
-    @remove_connectors = nil
-    
-    @add_fixed_properties = []
-    @remove_fixed_properties = []
-    @skip_validation_checks = []
-    @enable_validation_checks = []
-    @skip_validation_warnings = []
-    @enable_validation_warnings = []
   end
   
   def parsed_options?(arguments)
@@ -103,10 +93,6 @@ module ClusterCommandModule
       return arguments
     end
     
-    return parse_cluster_options(arguments, defaults_only?())
-  end
-  
-  def parse_cluster_options(arguments, defaults = false)
     opts = OptionParser.new
     
     each_prompt(nil){
@@ -141,11 +127,17 @@ module ClusterCommandModule
     
     each_prompt(ReplicationServices){
       |prompt|
-
+      if prompt.is_a?(MySQLServerID)
+        next
+      end
+      if prompt.is_a?(DatasourceDBHost)
+        next
+      end
+      
       add_prompt(opts, prompt, @replication_options, [REPL_SERVICES])
     }
     
-    unless defaults
+    unless defaults_only?
       opts.on("--members+ String") {
         |val|
         @add_members = val.split(",")
@@ -166,245 +158,8 @@ module ClusterCommandModule
         }
       end
     end
-    
-    opts.on("--property String")      {|val|
-                                        if val.index('=') == nil
-                                          error "Invalid value #{val} given for '--property'. There should be a key/value pair joined by a single =."
-                                        end
-                                        @add_fixed_properties << val
-                                      }
-    opts.on("--remove-property String") {|val|
-                                        @remove_fixed_properties << val
-                                      }
-    opts.on("--skip-validation-check String")      {|val|
-                                        val.split(",").each{
-                                          |v|
-                                          @skip_validation_checks << v
-                                        }
-                                      }
-    opts.on("--enable-validation-check String")      {|val|
-                                        val.split(",").each{
-                                          |v|
-                                          @enable_validation_checks << v
-                                        }
-                                      }
-    opts.on("--skip-validation-warnings String")      {|val|
-                                        val.split(",").each{
-                                          |v|
-                                          @skip_validation_warnings << v
-                                        }
-                                      }
-    opts.on("--enable-validation-warnings String")      {|val|
-                                        val.split(",").each{
-                                          |v|
-                                          @enable_validation_warnings << v
-                                        }
-                                      }
 
     return Configurator.instance.run_option_parser(opts, arguments)
-  end
-  
-  def arguments_valid?
-    super()
-    
-    if use_external_configuration?() && cluster_options_provided?()
-      error("Command line arguments are not allowed because configuration is driven by #{external_configuration_summary()}. Update the configuration there and run `tpm update` to apply changes.")
-    end
-    
-    return is_valid?()
-  end
-  
-  def load_external_configurations
-    external_configs = []
-    external_option_sets = get_external_option_sets()
-    
-    external_option_sets.each{
-      |option_set|
-      @config.reset()
-      external_options = option_set[:options]
-      
-      external_options.each{
-        |section_options|
-        section = section_options[:key]
-        arguments = section_options[:arguments]
-        reset_cluster_options()
-
-        if section == DEFAULTS
-          parse_cluster_options(arguments, true)
-          load_cluster_defaults()
-        else
-          parse_cluster_options(arguments)
-          load_cluster_options([to_identifier(section)])
-        end
-      }
-      
-      @config.setProperty(DEPLOYMENT_EXTERNAL_CONFIGURATION_TYPE, option_set[:type])
-      @config.setProperty(DEPLOYMENT_EXTERNAL_CONFIGURATION_SOURCE, option_set[:source])
-      
-      if Configurator.instance.is_locked?()
-        # Read the staging directory information from the current file
-        original_config_file = Configurator.instance.get_base_path() + "/" + Configurator::HOST_CONFIG
-        if File.exist?(original_config_file)
-          original_config = Properties.new()
-          original_config.load(original_config_file)
-          @config.setProperty(DEPLOYMENT_HOST, original_config.getProperty(DEPLOYMENT_HOST))
-          @config.setProperty(STAGING_HOST, original_config.getProperty(STAGING_HOST))
-          @config.setProperty(STAGING_USER, original_config.getProperty(STAGING_USER))
-          @config.setProperty(STAGING_DIRECTORY, original_config.getProperty(STAGING_DIRECTORY))
-        end
-      end
-      
-      external_configs << @config.dup()
-    }
-    
-    external_configs
-  end
-  
-  def get_external_option_sets
-    option_sets = []
-    
-    if @config_ini_paths.size() != nil
-      @config_ini_paths.each{
-        |path|
-        external_options = get_external_options_from_ini(path)
-        external_options.sort!{
-          |a,b|
-
-          (a[:weight] <=> b[:weight])
-        }
-
-        option_sets << {
-          :type => "ini",
-          :source => path,
-          :options => external_options
-        }
-      }
-    end
-    
-    option_sets
-  end
-  
-  def get_external_options_from_ini(path)
-    external_arguments = []
-    hostname = Configurator.instance.hostname()
-    natural_order = 0
-    
-    debug("Load external configuration from #{path}")
-    
-    ini = IniParse.open(path)
-    ini.each{
-      |section|
-      key = section.key
-      
-      if section.key == "defaults"
-        key = DEFAULTS
-      elsif section.key == "defaults.replicator"
-        if Configurator.instance.is_enterprise?() == false
-          key = DEFAULTS
-        else
-          debug("Bypassing the defaults.replicator section because this is not a Tungsten Replicator build")
-          next
-        end
-      else
-        match = section.key.match(/^([A-Za-z0-9_]+)@([A-Za-z0-9_.\-]+)$/)
-        if match != nil
-          if match[2] == hostname
-            if match[1] == "defaults"
-              key = DEFAULTS
-            else
-              key = match[1]
-            end
-          else
-            debug("Bypassing the #{section.key} section because it does not apply to this host")
-            next
-          end
-        end
-      end
-      
-      args = []
-      section.each{
-        |line|
-        unless line.is_a?(Array)
-          values = [line]
-        else
-          values = line
-        end
-        
-        values.each{
-          |value|
-          argument = value.key.gsub(/_/, "-")
-          unless argument[0,2] == "--"
-            argument = "--" + argument
-          end
-          
-          v_string = value.value.to_s()
-          if v_string[-2,2].to_s() == " \\"
-            v_string = v_string[0, (v_string.length()-2)]
-            Configurator.instance.warning("Extra ' \\' characters were found at the end of #{value.key}=#{value.value}. They have been automatically removed. You may wrap the value with double-quotes in order to keep the extra characters.")
-          end
-          args << "#{argument}=#{v_string}"
-        }
-      }
-      
-      external_arguments << {
-        :key => key,
-        :arguments => args,
-        :weight => calculate_external_section_weight(section.key, key, args)
-      }
-    }
-    
-    external_arguments
-  end
-  
-  def calculate_external_section_weight(original_key, key, args)
-    @natural_order = 0 unless @natural_order
-    
-    # This is an indication that this section was relabeled to modify another section
-    if original_key != key
-      is_modification = true
-    else
-      is_modification = false
-    end
-    
-    # Provide metadata about the arguments for this section
-    is_composite = false
-    has_relay_source = false
-    args.each{
-      |arg|
-      if arg =~ /^--composite-datasources=|--dataservice-composite-datasources=/
-        is_composite = true
-        break
-      end
-      if arg =~ /^--relay-source=|--master-dataservice=|--dataservice-relay-source=/
-        has_relay_source = true
-        break
-      end
-    }
-    
-    # Calculate a weight for this section so we can sort on it
-    # DEFAULTS
-    # Services
-    # Services that reference a relay source
-    # Composite services
-    # Sections that modify the above specifically for this host
-    weight = 0
-    if is_modification == true
-      weight = 10**12
-    elsif is_composite == true
-      weight = 10**10
-    elsif has_relay_source == true
-      weight = 10**8
-    elsif key == DEFAULTS
-      weight = 10**4
-    else
-      weight = 10**6
-    end
-    
-    # Add the order from the file as a tie breaker
-    weight = weight + @natural_order
-    @natural_order = @natural_order+1
-    
-    weight
   end
   
   def load_prompts
@@ -442,16 +197,13 @@ module ClusterCommandModule
       begin
         validated = prompt.accept?(val)
       rescue => e
-        debug(e.message + "\n" + e.backtrace.join("\n"))
         error("Unable to parse \"--#{prompt.get_command_line_argument()}\": #{e.message}")
         next
       end
       
-      unless use_external_configuration?()
-        if Configurator.instance.is_locked?() && prompt.allow_inplace_upgrade?() == false
-          error("Unable to accept \"--#{prompt.get_command_line_argument()}\" in an installed directory.  Try running 'tpm update' from a staging directory.")
-          next
-        end
+      if Configurator.instance.is_locked?() && prompt.allow_inplace_upgrade?() == false
+        error("Unable to accept \"--#{prompt.get_command_line_argument()}\" in an installed directory.  Try running 'tpm update' from a staging directory.")
+        next
       end
       
       if prompt.is_a?(GroupConfigurePromptMember) && prompt.allow_group_default()
@@ -472,24 +224,21 @@ module ClusterCommandModule
     @config.override([REPL_SERVICES, DEFAULTS], @replication_options.getProperty([REPL_SERVICES, DEFAULTS]))
     
     _load_fixed_properties([HOSTS, DEFAULTS, FIXED_PROPERTY_STRINGS])
-    _load_fixed_properties([HOSTS, DEFAULTS, FIXED_PROPERTY_STRINGS], @add_fixed_properties, @remove_fixed_properties)
     _load_skipped_validation_classes([HOSTS, DEFAULTS, SKIPPED_VALIDATION_CLASSES])
-    _load_skipped_validation_classes([HOSTS, DEFAULTS, SKIPPED_VALIDATION_CLASSES], @skip_validation_checks, @enable_validation_checks)
     _load_skipped_validation_warnings([HOSTS, DEFAULTS, SKIPPED_VALIDATION_WARNINGS])
-    _load_skipped_validation_warnings([HOSTS, DEFAULTS, SKIPPED_VALIDATION_WARNINGS], @skip_validation_warnings, @enable_validation_warnings)
   
     clean_cluster_configuration()
     
     if is_valid?()
-      unless use_external_configuration?()
-        notice("Configuration defaults updated in #{Configurator.instance.get_config_filename()}")
-        save_config_file()
-      end
+      notice("Configuration defaults updated in #{Configurator.instance.get_config_filename()}")
+      save_config_file()
     end
   end
   
-  def cluster_options_provided?
-    options_provided=false
+  def load_cluster_options
+    @config.props = @config.props.merge(@general_options.getPropertyOr([COMMAND], {}))
+    
+    all_empty = true
     [
       @dataservice_options,
       @host_options,
@@ -505,44 +254,25 @@ module ClusterCommandModule
       ConfigureValidationHandler.get_skipped_validation_classes(),
       ConfigureValidationHandler.get_enabled_validation_classes(),
       ConfigureValidationHandler.get_skipped_validation_warnings(),
-      ConfigureValidationHandler.get_enabled_validation_warnings(),
-      @add_fixed_properties,
-      @remove_fixed_properties,
-      @skip_validation_checks,
-      @enable_validation_checks,
-      @skip_validation_warnings,
-      @enable_validation_warnings,
+      ConfigureValidationHandler.get_enabled_validation_warnings()
     ].each{
       |opts|
       
-      if opts == nil
-        next
-      end
-      unless opts.empty?()
-        options_provided = true
+      unless opts == nil || opts.empty?()
+        all_empty = false
       end
     }
     
-    return options_provided
-  end
-  
-  def load_cluster_options(dataservices = nil)
-    @config.props = @config.props.merge(@general_options.getPropertyOr([COMMAND], {}))
-    
-    if cluster_options_provided?() == false
+    if all_empty
       debug("No options given so skipping load_cluster_options")
       return
     end
     
-    include_all_dataservices = false
-    if dataservices == nil
-      dataservices = command_dataservices()
-      if dataservices.empty?()
-        include_all_dataservices = true
-        dataservices = @config.getPropertyOr([DATASERVICES], {}).keys().delete_if{|v| (v == DEFAULTS)}
-        if dataservices.size() == 0
-          raise "You must specify a dataservice name after the command or by the --dataservice-name argument"
-        end
+    dataservices = command_dataservices()
+    if dataservices.empty?()
+      dataservices = @config.getPropertyOr([DATASERVICES], {}).keys().delete_if{|v| (v == DEFAULTS)}
+      if dataservices.size() == 0
+        raise "You must specify a dataservice name after the command or by the --dataservice-name argument"
       end
     end
     
@@ -608,10 +338,10 @@ module ClusterCommandModule
           next
         end
       
-        @config.setDefault([HOSTS, h_alias, HOST], host)
+        @config.setProperty([HOSTS, h_alias, HOST], host)
       }
       
-      if include_all_hosts?() || (dataservice_hosts+connector_hosts).uniq().size() == 0
+      if include_all_hosts?()
         if @config.getProperty([DATASERVICES, dataservice_alias, DATASERVICE_IS_COMPOSITE]) == "true"
           @config.getProperty([DATASERVICES, dataservice_alias, DATASERVICE_COMPOSITE_DATASOURCES]).to_s().split(",").each{
             |composite_ds_member|
@@ -625,7 +355,6 @@ module ClusterCommandModule
         (dataservice_hosts+connector_hosts).uniq().each{
           |host|
           h_alias = to_identifier(host)
-          hs_alias = dataservice_alias + "_" + h_alias
           if h_alias == ""
             next
           end
@@ -638,18 +367,9 @@ module ClusterCommandModule
           @config.override([HOSTS, h_alias], @host_options.getProperty([HOSTS, DEFAULTS]))
           @config.override([HOSTS, h_alias], @host_options.getProperty([HOSTS, COMMAND]))
 
-          if include_all_dataservices == true
-            _load_fixed_properties([HOSTS, h_alias, FIXED_PROPERTY_STRINGS])
-            _load_fixed_properties([HOSTS, h_alias, FIXED_PROPERTY_STRINGS], @add_fixed_properties, @remove_fixed_properties)
-          else
-            _load_fixed_properties([REPL_SERVICES, hs_alias, FIXED_PROPERTY_STRINGS])
-            _load_fixed_properties([REPL_SERVICES, hs_alias, FIXED_PROPERTY_STRINGS], @add_fixed_properties, @remove_fixed_properties)
-          end
-          
+          _load_fixed_properties([HOSTS, h_alias, FIXED_PROPERTY_STRINGS])
           _load_skipped_validation_classes([HOSTS, h_alias, SKIPPED_VALIDATION_CLASSES])
-          _load_skipped_validation_classes([HOSTS, h_alias, SKIPPED_VALIDATION_CLASSES], @skip_validation_checks, @enable_validation_checks)
           _load_skipped_validation_warnings([HOSTS, h_alias, SKIPPED_VALIDATION_WARNINGS])
-          _load_skipped_validation_warnings([HOSTS, h_alias, SKIPPED_VALIDATION_WARNINGS], @skip_validation_warnings, @enable_validation_warnings)
         }
         
         dataservice_hosts.each{
@@ -665,16 +385,11 @@ module ClusterCommandModule
             next
           end
         
-          enable_replicator_service = true
           if topology.use_management?()
             @config.override([MANAGERS, hs_alias], @manager_options.getProperty([MANAGERS, DEFAULTS]))
             @config.override([MANAGERS, hs_alias], @manager_options.getProperty([MANAGERS, COMMAND]))
-            
-            if @config.getProperty([MANAGERS, hs_alias, MGR_IS_WITNESS]) == "true"
-              enable_replicator_service = false
-            end
           end
-          if enable_replicator_service == true && topology.use_replicator?()
+          if topology.use_replicator?()
             @config.override([REPL_SERVICES, hs_alias], @replication_options.getProperty([REPL_SERVICES, DEFAULTS]))
             @config.override([REPL_SERVICES, hs_alias], @replication_options.getProperty([REPL_SERVICES, COMMAND]))
           end
@@ -700,6 +415,16 @@ module ClusterCommandModule
       end
     }
     
+    unless include_all_hosts?()
+      command_hosts().each{
+        |host|
+        
+        if @config.getPropertyOr([HOSTS, to_identifier(host)], nil) == nil
+          warning("Unable to find an entry for #{host}")
+        end
+      }
+    end
+    
     clean_cluster_configuration()
     
     if is_valid?()
@@ -708,106 +433,50 @@ module ClusterCommandModule
         dataservices = @config.getPropertyOr([DATASERVICES], {}).keys().delete_if{|v| (v == DEFAULTS)}
       end
       
-      unless use_external_configuration?()
-        notice("Data service(s) #{dataservices.join(',')} updated in #{Configurator.instance.get_config_filename()}")
-        save_config_file()
-      end
+      notice("Data service(s) #{dataservices.join(',')} updated in #{Configurator.instance.get_config_filename()}")
+      save_config_file()
       
-      if Configurator.instance.is_locked?() && use_external_configuration?() != true
+      if Configurator.instance.is_locked?()
         warning("Updating individual hosts may cause an inconsistent configuration file on your staging server.  You should refresh the configuration by running `tools/tpm fetch #{dataservices.join(',')}`.")
       end
     end
   end
   
-  def _load_fixed_properties(target_key, add = nil, remove = nil)
-    if add == nil
-      add = fixed_properties()
-    end
-    if remove == nil
-      remove = removed_properties()
-    end
+  def _load_fixed_properties(target_key)
+    @config.append(target_key, fixed_properties())
     
-    # Parse the current fixed properties into the key and value
-    current_properties = []
-    (@config.getNestedProperty(target_key) || []).each{
-      |val|
-      unless val =~ /=/
-        raise "Invalid value #{val} given for '--property'.  There should be a key/value pair joined by a single =."
+    if removed_properties().size() > 0
+      props = @config.getNestedProperty(target_key)
+      if props == nil
+        return
       end
       
-      parts = val.split("=")
-      prop_key = parts.shift()
-      current_properties << {:key => prop_key, :value => parts.join("=")}
-    }
-    
-    # Remove any keys that match
-    remove.each{
-      |remove_key|
-      
-      current_properties.delete_if{
-        |prop|
-        if prop[:key] =~ /^#{remove_key}[+~]?/
-          true
-        else
-          false
-        end
-      }
-    }
-    
-    # Add new fixed properties being sure to update existing entries
-    # instead of adding them to the end
-    add.each{
-      |val|
-      unless val =~ /=/
-        raise "Invalid value #{val} given for '--property'.  There should be a key/value pair joined by a single =."
-      end
-      
-      parts = val.split("=")
-      prop_key = parts.shift()
-      
-      is_found=false
-      current_properties.each{
-        |prop|
+      removed_properties().each{
+        |remove_key|
         
-        if prop[:key] == prop_key
-          prop[:value] = parts.join("=")
-          is_found = true
-        end
-      }
-      
-      if is_found == false
-        current_properties << {:key => prop_key, :value => parts.join("=")}
-      end
-    }
-    
-    # Rebuild the configuration value using the new list
-    if current_properties.size() == 0
-      @config.setProperty(target_key, nil)
-    else
-      @config.setProperty(target_key, current_properties.map{
-        |prop|
-        "#{prop[:key]}=#{prop[:value]}"
-      })
+        props.delete_if{
+          |prop_val|
+          if prop_val =~ /^#{remove_key}[+~]?=/
+            true
+          else
+            false
+          end
+        }
+      }  
+      @config.setProperty(target_key, props)
     end
   end
   
-  def _load_skipped_validation_classes(target_key, skip = nil, enable = nil)
-    if skip == nil
-      skip = ConfigureValidationHandler.get_skipped_validation_classes()
-    end
-    if enable == nil
-      enable = ConfigureValidationHandler.get_enabled_validation_classes()
-    end
+  def _load_skipped_validation_classes(target_key)
+    @config.append(target_key, ConfigureValidationHandler.get_skipped_validation_classes())
     
-    @config.append(target_key, skip)
-    
-    if enable.size() > 0
+    if ConfigureValidationHandler.get_enabled_validation_classes().size() > 0
       klasses = @config.getNestedProperty(target_key)
       if klasses == nil
         return
       end
       
-      enable.each{
+      ConfigureValidationHandler.get_enabled_validation_classes().each{
         |enable_class|
         
         klasses.delete_if{
@@ -823,23 +492,16 @@ module ClusterCommandModule
     end
   end
   
-  def _load_skipped_validation_warnings(target_key, skip = nil, enable = nil)
-    if skip == nil
-      skip = ConfigureValidationHandler.get_skipped_validation_warnings()
-    end
-    if enable == nil
-      enable = ConfigureValidationHandler.get_enabled_validation_warnings()
-    end
+  def _load_skipped_validation_warnings(target_key)
+    @config.append(target_key, ConfigureValidationHandler.get_skipped_validation_warnings())
     
-    @config.append(target_key, skip)
-    
-    if enable.size() > 0
+    if ConfigureValidationHandler.get_enabled_validation_warnings().size() > 0
       klasses = @config.getNestedProperty(target_key)
       if klasses == nil
         return
       end
       
-      enable.each{
+      ConfigureValidationHandler.get_enabled_validation_warnings().each{
         |enable_class|
         
         klasses.delete_if{
@@ -861,11 +523,8 @@ module ClusterCommandModule
     @config.override([DATASERVICE_HOST_OPTIONS, dataservice_alias], @host_options.getProperty([HOSTS, COMMAND]))
     
     _load_fixed_properties([DATASERVICE_HOST_OPTIONS, dataservice_alias, FIXED_PROPERTY_STRINGS])
-    _load_fixed_properties([DATASERVICE_HOST_OPTIONS, dataservice_alias, FIXED_PROPERTY_STRINGS], @add_fixed_properties, @remove_fixed_properties)
     _load_skipped_validation_classes([DATASERVICE_HOST_OPTIONS, dataservice_alias, SKIPPED_VALIDATION_CLASSES])
-    _load_skipped_validation_classes([DATASERVICE_HOST_OPTIONS, dataservice_alias, SKIPPED_VALIDATION_CLASSES], @skip_validation_checks, @enable_validation_checks)
     _load_skipped_validation_warnings([DATASERVICE_HOST_OPTIONS, dataservice_alias, SKIPPED_VALIDATION_WARNINGS])
-    _load_skipped_validation_warnings([DATASERVICE_HOST_OPTIONS, dataservice_alias, SKIPPED_VALIDATION_WARNINGS], @skip_validation_warnings, @enable_validation_warnings)
   
     if topology.use_management?()
       @config.override([DATASERVICE_MANAGER_OPTIONS, dataservice_alias], @manager_options.getProperty([MANAGERS, DEFAULTS]))
@@ -882,12 +541,6 @@ module ClusterCommandModule
   end
   
   def clean_cluster_configuration
-    # Clear the SYSTEM hash here so that all classes must regenerate their
-    # default values. This ensures the values selected here reflect any changes
-    # made.
-    @config.setProperty([SYSTEM], nil)
-    update_deprecated_keys()
-    
     # Reduce the component options to remove values that are the same as their defaults
     [DATASERVICES, HOSTS, MANAGERS, CONNECTORS, REPL_SERVICES].each{
       |group_name|
@@ -956,16 +609,11 @@ module ClusterCommandModule
           next
         end
         
-        enable_replicator_service = true
         if topology.use_management?()
           @config.setProperty([MANAGERS, hs_alias, DEPLOYMENT_HOST], h_alias)
           @config.setProperty([MANAGERS, hs_alias, DEPLOYMENT_DATASERVICE], ds_alias)
-          
-          if @config.getProperty([MANAGERS, hs_alias, MGR_IS_WITNESS]) == "true"
-            enable_replicator_service = false
-          end
         end
-        if enable_replicator_service == true && topology.use_replicator?()
+        if topology.use_replicator?()
           @config.setProperty([REPL_SERVICES, hs_alias, DEPLOYMENT_HOST], h_alias)
           @config.setProperty([REPL_SERVICES, hs_alias, DEPLOYMENT_DATASERVICE], ds_alias)
         end
@@ -1004,25 +652,10 @@ module ClusterCommandModule
         hostname = @config.getProperty([HOSTS, h_alias, HOST])
         ds_alias = @config.getProperty([group_name, m_alias, DEPLOYMENT_DATASERVICE])
         
-        unless @config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_MEMBERS]).include_alias?(h_alias)
+        unless @config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_MEMBERS], "").split(",").include?(hostname)
           @config.setProperty([group_name, m_alias], nil)
         end
       }
-    }
-    
-    # Remove REPL_SERVICES entries for active witness hosts
-    @config.getPropertyOr(REPL_SERVICES, {}).keys().each{
-      |m_alias|
-      if m_alias == DEFAULTS
-        next
-      end
-      
-      h_alias = @config.getProperty([CONNECTORS, m_alias, DEPLOYMENT_HOST])
-      hostname = @config.getProperty([HOSTS, h_alias, HOST])
-      
-      if @config.getProperty([MANAGERS, m_alias, MGR_IS_WITNESS]) == "true"
-        @config.setProperty([REPL_SERVICES, m_alias], nil)
-      end
     }
     
     # Remove CONNECTORS entries that do not appear in a data service
@@ -1037,7 +670,7 @@ module ClusterCommandModule
       
       ds_list = @config.getPropertyOr([CONNECTORS, m_alias, DEPLOYMENT_DATASERVICE], []).delete_if{
         |ds_alias|
-        (@config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_CONNECTORS]).include_alias?(h_alias) != true)
+        (@config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_CONNECTORS], "").split(",").include?(hostname) != true)
       }
       
       if ds_list.size > 0
@@ -1280,11 +913,19 @@ module ClusterCommandModule
     nil
   end
   
-  def get_deployment_configuration(host_alias, config_obj)
+  def get_deployment_configuration(host_alias)
     unless include_host?(host_alias)
       return nil
     end
     
+    if @config.getProperty(DEPLOY_PACKAGE_URI)
+      uri = URI::parse(@config.getProperty(DEPLOY_PACKAGE_URI))
+      package_basename = File.basename(uri.path)
+    else
+      uri = nil
+    end
+    
+    config_obj = @config.dup()
     config_obj.setProperty(DEPLOYMENT_HOST, host_alias)
     
     unless Configurator.instance.is_locked?()
@@ -1321,13 +962,13 @@ module ClusterCommandModule
         config_obj.setProperty([SYSTEM, CONFIG_TARGET_BASENAME], File.basename(current_full_path))
         config_obj.setProperty([CONFIG_TARGET_BASENAME], File.basename(current_full_path))
       else
-        config_obj.setProperty([SYSTEM, CONFIG_TARGET_BASENAME], config_obj.getProperty(CONFIG_TARGET_BASENAME))
-        config_obj.setProperty([CONFIG_TARGET_BASENAME], config_obj.getProperty(CONFIG_TARGET_BASENAME))
+        config_obj.setProperty([SYSTEM, CONFIG_TARGET_BASENAME], @config.getProperty(CONFIG_TARGET_BASENAME))
+        config_obj.setProperty([CONFIG_TARGET_BASENAME], @config.getProperty(CONFIG_TARGET_BASENAME))
+        
+        config_obj.setProperty(STAGING_HOST, Configurator.instance.hostname())
+        config_obj.setProperty(STAGING_USER, Configurator.instance.whoami())
+        config_obj.setProperty(STAGING_DIRECTORY, Configurator.instance.get_base_path())
       end
-      
-      config_obj.setProperty(STAGING_HOST, Configurator.instance.hostname())
-      config_obj.setProperty(STAGING_USER, Configurator.instance.whoami())
-      config_obj.setProperty(STAGING_DIRECTORY, Configurator.instance.get_base_path())
     end
 
     [
@@ -1352,28 +993,19 @@ module ClusterCommandModule
       
       config_obj.getPropertyOr(path, {}).delete_if{
         |g_alias, g_props|
-        drop = true
-        
-        if g_alias == DEFAULTS
-          drop = false
+
+        (g_alias != DEFAULTS && g_props[DEPLOYMENT_HOST] != config_obj.getNestedProperty([DEPLOYMENT_HOST]))
+      }
+      
+      config_obj.getPropertyOr(path, {}).keys().each{
+        |p_alias|
+        if p_alias == DEFAULTS
+          next
         end
         
-        if g_props[DEPLOYMENT_HOST] == config_obj.getNestedProperty([DEPLOYMENT_HOST])
-          Array(config_obj.getProperty(path + [g_alias, DEPLOYMENT_DATASERVICE])).each{
-            |ds_alias|
-            topology = Topology.build(ds_alias, config_obj)
-          
-            if topology.enabled?()
-              drop = false
-              ds_list << ds_alias
-            end
-          }
-        end
-        
-        drop
+        ds_list = ds_list + Array(config_obj.getProperty(path + [p_alias, DEPLOYMENT_DATASERVICE]))
       }
     }
-    ds_list.uniq!()
     
     # Are any of the data services for this host to be deployed?
     found_included_dataservice = false
@@ -1411,33 +1043,12 @@ module ClusterCommandModule
         }
       end
     }
-    ds_list.uniq!()
     
     ds_list.each{
       |ds_alias|
       config_obj.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_RELAY_SOURCE], "").split(",").each{
         |rds_alias|
-        unless ds_list.include?(rds_alias)
-          ds_list << rds_alias
-        end
-      }
-      config_obj.getPropertyOr([DATASERVICES, ds_alias, TARGET_DATASERVICE], "").split(",").each{
-        |tds_alias|
-        unless ds_list.include?(tds_alias)
-          ds_list << tds_alias
-        end
-      }
-      config_obj.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_MASTER_SERVICES], "").split(",").each{
-        |mds_alias|
-        unless ds_list.include?(mds_alias)
-          ds_list << mds_alias
-        end
-      }
-      config_obj.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_HUB_SERVICE], "").split(",").each{
-        |hds_alias|
-        unless ds_list.include?(hds_alias)
-          ds_list << hds_alias
-        end
+        ds_list << rds_alias
       }
     }
     
@@ -1492,37 +1103,41 @@ module ClusterCommandModule
       }
     }
     
-    if !(Configurator.instance.is_localhost?(config_obj.getProperty([HOSTS, host_alias, HOST])))
-      if config_obj.getProperty([HOSTS, host_alias, REPL_MYSQL_CONNECTOR_PATH])
-        config_obj.setProperty([HOSTS, host_alias, GLOBAL_REPL_MYSQL_CONNECTOR_PATH], config_obj.getProperty([HOSTS, host_alias, REPL_MYSQL_CONNECTOR_PATH]))
-        config_obj.setProperty([HOSTS, host_alias, REPL_MYSQL_CONNECTOR_PATH], "#{config_obj.getProperty([HOSTS, host_alias, TEMP_DIRECTORY])}/#{config_obj.getProperty(CONFIG_TARGET_BASENAME)}/#{File.basename(config_obj.getProperty([HOSTS, host_alias, REPL_MYSQL_CONNECTOR_PATH]))}")
-      end
-      
-      DeploymentFiles.prompts.each{
-        |p|
-        config_obj.getPropertyOr(p[:group], {}).keys().each{
-          |g_alias|
-          if g_alias == DEFAULTS
-            next
-          end
-          
-          if config_obj.getProperty([p[:group], g_alias, p[:local]]) != nil
-            config_obj.setProperty([p[:group], g_alias, p[:global]], config_obj.getProperty([p[:group], g_alias, p[:local]]))
-            config_obj.setProperty([p[:group], g_alias, p[:local]], "#{config_obj.getProperty(TEMP_DIRECTORY)}/#{config_obj.getProperty(CONFIG_TARGET_BASENAME)}/#{File.basename(config_obj.getProperty([p[:group], g_alias, p[:local]]))}")
-          end
-        }
-      }
+    if uri && uri.scheme == "file" && (uri.host == nil || uri.host == "localhost") && !(Configurator.instance.is_localhost?(@config.getProperty([HOSTS, host_alias, HOST])))
+      config_obj.setProperty(GLOBAL_DEPLOY_PACKAGE_URI, @config.getProperty(DEPLOY_PACKAGE_URI))
+      config_obj.setProperty(DEPLOY_PACKAGE_URI, "file://localhost#{config_obj.getProperty([HOSTS, host_alias, TEMP_DIRECTORY])}/#{package_basename}")
+    end
+    
+    if !(Configurator.instance.is_localhost?(config_obj.getProperty([HOSTS, host_alias, HOST]))) && config_obj.getProperty([HOSTS, host_alias, REPL_MYSQL_CONNECTOR_PATH])
+      config_obj.setProperty([HOSTS, host_alias, GLOBAL_REPL_MYSQL_CONNECTOR_PATH], config_obj.getProperty([HOSTS, host_alias, REPL_MYSQL_CONNECTOR_PATH]))
+      config_obj.setProperty([HOSTS, host_alias, REPL_MYSQL_CONNECTOR_PATH], "#{config_obj.getProperty([HOSTS, host_alias, TEMP_DIRECTORY])}/#{config_obj.getProperty(CONFIG_TARGET_BASENAME)}/#{File.basename(config_obj.getProperty([HOSTS, host_alias, REPL_MYSQL_CONNECTOR_PATH]))}")
     end
     
     return config_obj
   end
   
-  def build_topologies(config)
-    config.getPropertyOr(DATASERVICES, {}).keys().each{
-      |ds_alias|
-      topology = Topology.build(ds_alias, config)
-      topology.build_services()
+  def post_build_deployment_configurations(config_objs)
+    config_objs.each{
+      |p_cfg|
+      p_alias = p_cfg.getProperty([DEPLOYMENT_HOST])
+      
+      config_objs.each{
+        |c_cfg|
+        c_alias = c_cfg.getProperty([DEPLOYMENT_HOST])
+
+        if c_cfg == p_cfg
+          next
+        end
+        
+        c_cfg.setProperty([REMOTE, HOSTS, p_alias, HOST], p_cfg.getProperty([HOSTS, p_alias, HOST]))
+        c_cfg.setProperty([REMOTE, HOSTS, p_alias, PORTS_FOR_USERS], p_cfg.getProperty([HOSTS, p_alias, PORTS_FOR_USERS]))
+        c_cfg.setProperty([REMOTE, HOSTS, p_alias, PORTS_FOR_CONNECTORS], p_cfg.getProperty([HOSTS, p_alias, PORTS_FOR_CONNECTORS]))
+        c_cfg.setProperty([REMOTE, HOSTS, p_alias, PORTS_FOR_MANAGERS], p_cfg.getProperty([HOSTS, p_alias, PORTS_FOR_MANAGERS]))
+        c_cfg.setProperty([REMOTE, HOSTS, p_alias, PORTS_FOR_REPLICATORS], p_cfg.getProperty([HOSTS, p_alias, PORTS_FOR_REPLICATORS]))
+      }
     }
+    
+    super(config_objs)
   end
   
   def output_cluster_completion_text
@@ -1547,31 +1162,22 @@ module ClusterCommandModule
       hosts_arg = "--hosts=#{command_hosts().join(',')}"
     end
     
-    output = []
+    output = ""
     
-    has_replicator = false
     display_promote_connectors = false
     display_start = true
-    root = "$CONTINUENT_ROOT"
     get_deployment_configurations().each{
       |cfg|
       
-      c_key = cfg.getProperty(DEPLOYMENT_CONFIGURATION_KEY)
       h_alias = cfg.getProperty(DEPLOYMENT_HOST)
 
-      if cfg.getProperty(HOST_ENABLE_REPLICATOR) == "true"
-        has_replicator = true
-      end
-
       if cfg.getProperty(HOST_ENABLE_CONNECTOR) == "true"
-        if @promotion_settings.getProperty([c_key, RESTART_CONNECTORS]) == false
-          if @promotion_settings.getProperty([c_key, RESTART_CONNECTORS_NEEDED]) == true
-            display_promote_connectors = true
-          end
+        if @promotion_settings.getProperty([h_alias, RESTART_CONNECTORS]) == false
+          display_promote_connectors = true
         end
       
-        if @promotion_settings.getProperty([c_key, ACTIVE_DIRECTORY_PATH]) && @promotion_settings.getProperty([c_key, CONNECTOR_ENABLED]) == "true"
-          unless @promotion_settings.getProperty([c_key, CONNECTOR_IS_RUNNING]) == "true"
+        if @promotion_settings.getProperty([h_alias, ACTIVE_DIRECTORY_PATH]) && @promotion_settings.getProperty([h_alias, CONNECTOR_ENABLED]) == "true"
+          unless @promotion_settings.getProperty([h_alias, CONNECTOR_IS_RUNNING]) == "true"
             display_promote_connectors = true
           end
         elsif cfg.getProperty(SVC_START) != "true"
@@ -1582,30 +1188,28 @@ module ClusterCommandModule
       if cfg.getProperty(SVC_START) == "true" || cfg.getProperty(SVC_REPORT) == "true"
         display_start = false
       end
-      
-      root = cfg.getProperty(HOME_DIRECTORY)
     }
     if display_promote_connectors == true && Configurator.instance.command.is_a?(UpdateCommand)
-      str = <<OUT
+      output = <<OUT
 The connectors are not running the latest version.  In order to complete 
 the process you must promote the connectors.
 
-  #{root}/tungsten/tools/tpm promote-connector #{command_dataservices().join(',')}
+  tools/tpm promote-connector #{command_dataservices().join(',')}
+
 OUT
-      output << str
     end
     
     if display_start == true
-      str = <<OUT
-Unless automatically started, you must start the Tungsten services before the 
-cluster will be available.
+      output = <<OUT
+#{output}Unless automatically started, you must start the Tungsten services before the 
+cluster will be available.  Use the tpm command to start the services:
 
-  #{root}/tungsten/cluster-home/bin/startall
+  tools/tpm start #{command_dataservices().join(',')} #{hosts_arg}
 
 Wait a minute for the services to start up and configure themselves.  After 
 that you may proceed.
+
 OUT
-      output << str
     end
     
     display_profile_info = true
@@ -1616,45 +1220,41 @@ OUT
           Configurator.instance.is_localhost?(cfg.getProperty(HOST)) && 
           Configurator.instance.whoami == cfg.getProperty(USERID)
           
-        str = <<OUT
-We have added Tungsten environment variables to #{cfg.getProperty(PROFILE_SCRIPT)}.
+        output = <<OUT
+#{output}We have added Tungsten environment variables to #{cfg.getProperty(PROFILE_SCRIPT)}.
 Run `source #{cfg.getProperty(PROFILE_SCRIPT)}` to rebuild your environment.
+
 OUT
-        output << str
         
         display_profile_info = false
       end
     }
-    
-    if has_replicator == true
-      if Configurator.instance.is_enterprise?()
-        str = <<OUT
-Once your services start successfully you may begin to use the cluster.
+     
+    if Configurator.instance.is_enterprise?()
+      output = <<OUT
+#{output}Once your services start successfully you may begin to use the cluster.
 To look at services and perform administration, run the following command
 from any database server.
 
-  #{root}/tungsten/tungsten-manager/bin/cctrl
+  $CONTINUENT_ROOT/tungsten/tungsten-manager/bin/cctrl
 
 Configuration is now complete.  For further information, please consult
 Tungsten documentation, which is available at docs.continuent.com.
 OUT
-        output << str
-      else
-        str = <<OUT
-Once your services start successfully replication will begin.
+  else
+    output = <<OUT
+#{output}Once your services start successfully replication will begin.
 To look at services and perform administration, run the following command
 from any database server.
 
-  #{root}/tungsten/tungsten-replicator/bin/trepctl services
+$CONTINUENT_ROOT/tungsten/tungsten-replicator/bin/trepctl services
 
 Configuration is now complete.  For further information, please consult
 Tungsten documentation, which is available at docs.continuent.com.
 OUT
-        output << str
-      end
-    end
+  end
 
-    return output.join("\n")
+    return output
   end
 end
 
@@ -1667,8 +1267,8 @@ module ClusterConfigurationsModule
     # Then use that to load the configuration for each host.  Only hosts that 
     # are accessible
     if Configurator.instance.is_locked?()
-      threads = []
-      mtx = Mutex.new
+      pids = {}
+      results = {}
       additional_hosts = []
     
       config_objs.each{
@@ -1679,7 +1279,6 @@ module ClusterConfigurationsModule
           additional_hosts = additional_hosts + config_obj.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_CONNECTORS]).split(',')
         }
       }
-      additional_hosts.uniq!()
 
       begin
         additional_hosts.each{
@@ -1688,33 +1287,48 @@ module ClusterConfigurationsModule
             next
           end
 
-          threads << Thread.new(host) {
-            |host|
-
+          results[host] = Tempfile.new('tpm')
+          pids[host] = fork {
             begin
-              contents = nil
               Timeout.timeout(15) {
-                contents = ssh_result("if [ -f #{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tools/tpm ]; then #{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tools/tpm query config; else echo \"\"; fi", host, @config.getProperty(USERID))
+                results[host].write(ssh_result("if [ -f #{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tools/tpm ]; then #{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tools/tpm query config; else echo \"\"; fi", host, @config.getProperty(USERID)))
               }
-              
+            rescue CommandError
+            rescue RemoteCommandError
+            rescue MessageError
+            rescue Timeout::Error
+            end
+          }
+        }
+        pids.each_value{|pid| Process.waitpid(pid) }
+
+        results.each_value{
+          |file|
+          file.rewind()
+
+          begin
+            contents = file.read()
+            unless contents == ""
               result = result = JSON.parse(contents)
               if result.instance_of?(Hash)
                 config_obj = Properties.new()
                 config_obj.import(result)
 
-                mtx.synchronize do
-                  config_objs << config_obj
-                end
+                config_objs << config_obj
               end
-            rescue CommandError
-            rescue RemoteCommandError
-            rescue MessageError => me
-              Configurator.instance.warning(me.message)
-            rescue Timeout::Error
             end
-          }
+          rescue TypeError => te
+            raise "Cannot read the parallel result: #{result_dump}"
+          rescue ArgumentError => ae
+            error("Unable to load the parallel result.  This can happen due to a bug in Ruby.  Try updating to a newer version and retry the installation.")
+          end
         }
-        threads.each{|t| t.join() }
+      ensure
+        results.each_value{
+          |file|
+          file.close()
+          file.unlink()
+        }
       end
     end
   

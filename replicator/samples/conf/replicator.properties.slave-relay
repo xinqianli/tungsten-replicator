@@ -1,6 +1,6 @@
-#####################################
-# REPLICATOR.PROPERTIES.SLAVE-RELAY #
-#####################################
+#################################
+# REPLICATOR.PROPERTIES.DIRECT  #
+#################################
 #
 # This file contains properties for MySQL replication.
 #
@@ -21,12 +21,6 @@ replicator.global.db.port=@{APPLIER.REPL_DBPORT}
 replicator.global.db.user=@{APPLIER.REPL_DBLOGIN}
 replicator.global.db.password=@{APPLIER.REPL_DBPASSWORD}
 
-# Properties for SSL. To enable SSL set sslEnabled to true and add a URL option 
-# like the following: 
-#   useSSL=true
-replicator.global.db.sslEnabled=@{APPLIER.REPL_ENABLE_DBSSL}
-replicator.global.db.sslOptions=@{APPLIER.REPL_DBJDBCURLSSLOPTIONS}
-
 # Replicator role.  You must specify a value that corresponds to a 
 # pipeline name like master, slave, direct, etc.  There is no default 
 # for this value--it must be set or the replicator will not go online.  
@@ -43,27 +37,21 @@ replicator.master.connect.uri=@{REPL_MASTER_URI}
 
 # URI for our listener when we are acting as a master.  Slaves 
 # use this as their connect URI.
-replicator.master.listen.uri=@{REPL_THL_PROTOCOL}://@{HOST.HOST}:@{REPL_SVC_THL_PORT}/
+replicator.master.listen.uri=thl://@{HOST.HOST}:@{REPL_SVC_THL_PORT}/
+
+# Force replicator to check if THL is in sync with database. 
+# This check is enabled by default. Set the following property 
+# to false in order to disable the check.
+# replicator.master.thl_check=true
 
 # Replicator auto-enable.  If true, replicator automatically goes online 
 # at start-up time. 
 replicator.auto_enable=@{REPL_AUTOENABLE}
 
-# Replicator auto-recovery.  If greater than 0, the replicator service
-# attempts to go back online up to this number of times before failing.
-replicator.autoRecoveryMaxAttempts=@{REPL_AUTO_RECOVERY_MAX_ATTEMPTS}
-
-# Replicator auto-recovery delay.  How long to wait before going online.
-# Settings are milliseconds by default.  You can also apply settings in
-# seconds, minutes, hours, and days, as in 10s, 30m, 2h, etc. This
-# setting allows time for resources to clean up or recover after a failure.
-replicator.autoRecoveryDelayInterval=@{REPL_AUTO_RECOVERY_DELAY_INTERVAL}
-
-# Replicator auto-recover reset interval.  If the replicator is online for
-# this amount of time, reset the count of auto-recovery attempts.  This value
-# may need to be large for services that commit large blocks as apply errors
-# may take a while to show up after going online again.
-replicator.autoRecoveryResetInterval=@{REPL_AUTO_RECOVERY_RESET_INTERVAL}
+# Determines whether replication service is started up
+# as a thread internal to the ReplicationServiceManager or
+# whether it runs in a separate, detached JVM.
+replicator.detached=false
 
 # Source ID. This required parameter is used to identify replication
 # event source.  It must be unique for each replicator node.
@@ -97,19 +85,13 @@ local.service.name=@{SERVICE.DSNAME}
 # Whether to log slave updates or not.  This is normally false but can
 # be enabled so that updates inserted into the slave can be extracted again
 # by another replicator.  This can be useful for multi-master and some
-# chained replication topologies.  (Note: setting to false on MySQL
-# requires a privileged login on the slave.) 
+# chained replication topologies.
 replicator.log.slave.updates=@{LOG_SLAVE_UPDATES}
 
 # Whether slave updates have a privileged account for updates.  Certain
 # stores such as Amazon RDS do not allow slave to have superuser privileges.
 # If this values is false we try to apply using non-superuser capabilites.
-replicator.privileged.slave=@{PRIVILEGED_SLAVE}
-
-# Whether master extraction operates using a privileged account.  This is 
-# helpful for Tungsten topologies in the Tungsten master reads from a 
-# locked-down instance.  
-replicator.privileged.master=@{PRIVILEGED_MASTER}
+replicator.privileged.slave.update=@{SLAVE_PRIVILEGED_UPDATES}
 
 # Schema to store Replicator catalog tables. 
 replicator.schema=@{REPL_SVC_SCHEMA}
@@ -137,7 +119,6 @@ replicator.shard.default.db=@{REPL_SVC_SHARD_DEFAULT_DB}
 # Used by manager to create datasources dynamically
 replicator.resourceJdbcUrl=@{APPLIER.REPL_DBJDBCURL}
 replicator.resourceJdbcDriver=@{APPLIER.REPL_DBJDBCDRIVER}
-@{#(APPLIER.REPL_SVC_DATASOURCE_APPLIER_INIT_SCRIPT)}replicator.resourceJdbcInitScript=@{APPLIER.REPL_SVC_DATASOURCE_APPLIER_INIT_SCRIPT}
 replicator.resourceVendor=@{APPLIER.REPL_DBJDBCVENDOR}
 replicator.resourcePrecedence=99
 replicator.vipInterface=eth0:0
@@ -161,26 +142,6 @@ replicator.plugin=tungsten
 #################################
 # REPLICATOR PIPELINES          #
 #################################
-
-# Pipeline stages use block commit to commit multiple source transactions
-# simultaneously.  Block commit is controlled by the following settings on
-# stages: 
-#   blockCommitRowCount -- Commit when this number of transactions is
-#   reached or stage runs out of in-coming transactions
-#   blockCommitInterval -- Commit when time interval elapses *or* number of
-#   transactions for blockCommitRowCount is reached.
-#   blockCommitPolicy -- Values are strict and lax. 
-#
-# If neither block commit setting is in effect, we commit transactions
-# individually.  Interval settings are milliseconds by default.  You can also
-# apply settings in seconds, minutes, hours, and days, as in 10s, 30m, 2h, 
-# or 1d respectively. 
-#
-# Strict block commit forces a commit on fragmented events, service changes
-# and events marked as unsafe for block commit.  It is default and required
-# for correct operation on RDBMS.  Lax block commit ignores these hence allows
-# consistently large blocks.  It is the best setting for data warehouse 
-# loading where updates are idempotent (e.g., Hadoop). 
 
 # Generic pipelines.
 replicator.pipelines=slave-relay
@@ -207,13 +168,10 @@ replicator.stage.remote-to-relay-thl.filters=
 # a single implementation. 
 replicator.store.thl=com.continuent.tungsten.replicator.thl.THL
 
-# THL implementations require database access to store metadata.
-replicator.store.thl.dataSource=global
-
-# Force replicator to check if THL is in sync with database.
-# This check is enabled by default. Set the following property
-# to false in order to disable the check.
-replicator.store.thl.logConsistencyCheck=true
+# All THL implementations require database access to store metadata. 
+replicator.store.thl.url=@{APPLIER.REPL_DBTHLURL}
+replicator.store.thl.user=${replicator.global.db.user}
+replicator.store.thl.password=${replicator.global.db.password}
 
 # Uncomment the following properties to control disk log storage location
 # and size of files.  These are default values.  NOTE:  naming the logs by 
@@ -231,6 +189,7 @@ replicator.store.thl.log_file_size=@{REPL_THL_LOG_FILE_SIZE}
 # with new client connections, and if too long, will result in excessively
 # slow transitions to offline etc.
 replicator.thl.server.accept.timeout=5000
+
 
 # Change the following property to control the buffer size used for THL
 # I/O operations.  The default of 128k seems to work well. 
@@ -269,12 +228,12 @@ replicator.store.thl.doChecksum=@{REPL_THL_DO_CHECKSUM}
 # but as with queue store sizes require more memory.
 replicator.thl.protocol.buffer_size=10
 
-# THL listener address for remote access.  To listen on all interfaces,
-# use a host value of 0.0.0.0, as in thl://0.0.0.0:2112/.  The port
-# defaults to 2112 if you do not specify a value.  To enable SSL use
-# 'thls' instead of 'thl'.  Note that clients must exactly match the
-# scheme (thl vs. thls), host, and port to connect. 
-replicator.store.thl.storageListenerUri=@{REPL_THL_PROTOCOL}://0.0.0.0:@{REPL_SVC_THL_PORT}
+# THL listener address for remote access.  To listen on all ports, 
+# use a value like thl://0.0.0.0:2112/.  (2112 is default
+# port for Tungsten configurations.)  Note that this URI must provide
+# a listener that corresponds to the URL in replicator.master.listen.uri, or 
+# slaves may connect to the wrong port. 
+replicator.store.thl.storageListenerUri=thl://0.0.0.0:@{REPL_SVC_THL_PORT}
 
 # The transfer rate between the master and the slave can be improved
 # by setting the following setting to a value greater than 1, which
@@ -328,7 +287,7 @@ replicator.applier.thl-applier.storeName=thl
 # FILTERS # 
 ###########
 
-@{includeAll(REPL_SVC_FILTER_CONFIG)}
+@{REPL_SVC_FILTER_CONFIG}
 
 #####################
 # PIPELINE SERVICES #
@@ -339,9 +298,8 @@ replicator.applier.thl-applier.storeName=thl
 # shard.list.  The number of configured channels must be correctly configured
 # to avoid replication errors. 
 replicator.service.channel-assignment=com.continuent.tungsten.replicator.channel.ChannelAssignmentService
-replicator.service.channel-assignment.dataSource=global
+replicator.service.channel-assignment.url=@{APPLIER.REPL_DBTHLURL}
 replicator.service.channel-assignment.channels=${replicator.global.apply.channels}
-replicator.service.channel-assignment.reconnectTimeoutInSeconds=60
 
 ####################################################
 # ERROR-HANDLING AND CONSISTENCY-CHECKING POLICIES #
@@ -353,10 +311,6 @@ replicator.extractor.failure_policy=stop
 # How to react on applier failure. Possible values are 'stop' or 'warn'. 
 replicator.applier.failure_policy=stop
 
-# How applier should react when detecting a row update that did not change anything.
-# Possible values are 'stop', 'warn' or 'ignore'. 
-replicator.applier.failOnZeroRowUpdate=@{REPL_SVC_FAIL_ON_ZERO_ROW_UPDATE}
-
 # How to react on consistency check failure.  Possible values are 'stop' or 
 # 'warn'. 
 replicator.applier.consistency_policy=@{REPL_CONSISTENCY_POLICY}
@@ -364,4 +318,6 @@ replicator.applier.consistency_policy=@{REPL_CONSISTENCY_POLICY}
 # Should consistency check be sensitive to column names and/or types? Settings
 # on a slave must be identical to master's. Values are 'true' or 'false'.
 replicator.applier.consistency_column_names=true
-replicator.applier.consistency_column_types=true
+# TUC-20:  Must disable column type checking when going from
+# Connector/J on master to drizzle on slave.
+replicator.applier.consistency_column_types=false

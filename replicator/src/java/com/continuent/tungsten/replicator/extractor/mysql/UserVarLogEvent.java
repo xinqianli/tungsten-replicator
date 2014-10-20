@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2009-2014 Continuent Inc.
+ * Copyright (C) 2009 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -39,8 +39,8 @@ public class UserVarLogEvent extends LogEvent
      * <p>
      * Variable data part:
      * <ul>
-     * <li>4 bytes. the size of the user variable name.</li>
-     * <li>The user variable name.</li>
+     * <li>4 bytes. the size of the user variable name. </li>
+     * <li>The user variable name. </li>
      * <li>1 byte. Non-zero if the variable value is the SQL NULL value, 0
      * otherwise. If this byte is 0, the following parts exist in the event.</li>
      * <li>1 byte. The user variable type. The value corresponds to elements of
@@ -48,14 +48,15 @@ public class UserVarLogEvent extends LogEvent
      * <li>4 bytes. The number of the character set for the user variable
      * (needed for a string variable). The character set number is really a
      * collation number that indicates a character set/collation pair.</li>
-     * <li>4 bytes. The size of the user variable value (corresponds to member
+     * <li> 4 bytes. The size of the user variable value (corresponds to member
      * val_len of class Item_string).</li>
-     * <li>Variable-sized. For a string variable, this is the string. For a
+     * <li> Variable-sized. For a string variable, this is the string. For a
      * float or integer variable, this is its value in 8 bytes.</li>
      * </ul>
      * Source : http://forge.mysql.com/wiki/MySQL_Internals_Binary_Log
      */
-    static Logger            logger         = Logger.getLogger(UserVarLogEvent.class);
+    static Logger            logger         = Logger
+                                                    .getLogger(MySQLExtractor.class);
 
     private String           query;
     private int              variableNameLength;
@@ -65,8 +66,11 @@ public class UserVarLogEvent extends LogEvent
     private int              variableValueLength;
     private int              variableValueIndex;
 
-    // Variable type markers from in binlog internal spec description of
-    // USER_VAR_EVENT.
+    // TODO The following fields are not used for now
+    // private int variableCharset;
+    // private boolean charset_inited = false;
+
+    /* types of variable values from include/mysql_com.h */
     private static final int STRING_RESULT  = 0;
     private static final int REAL_RESULT    = 1;
     private static final int INT_RESULT     = 2;
@@ -79,15 +83,10 @@ public class UserVarLogEvent extends LogEvent
     }
 
     public UserVarLogEvent(byte[] buffer, int eventLength,
-            FormatDescriptionLogEvent descriptionEvent, String currentPosition)
+            FormatDescriptionLogEvent descriptionEvent)
             throws ReplicatorException
     {
         super(buffer, descriptionEvent, MysqlBinlog.USER_VAR_EVENT);
-
-        this.startPosition = currentPosition;
-        if (logger.isDebugEnabled())
-            logger.debug("Extracting event at position  : " + startPosition
-                    + " -> " + getNextEventPosition());
 
         int commonHeaderLength, postHeaderLength;
         int offset;
@@ -108,12 +107,6 @@ public class UserVarLogEvent extends LogEvent
         {
             throw new MySQLExtractException(
                     "user var event length is too short");
-        }
-
-        if (descriptionEvent.useChecksum())
-        {
-            // Removing the checksum from the size of the event
-            eventLength -= 4;
         }
 
         try
@@ -138,6 +131,9 @@ public class UserVarLogEvent extends LogEvent
                 variableType = LittleEndianConversion.convert1ByteToInt(buffer,
                         offset);
                 offset = offset + MysqlBinlog.UV_VAL_TYPE_SIZE;
+                // variableCharset = (int) LittleEndianConversion
+                // .convert4BytesToLong(buffer, offset);
+                // charset_inited = true;
                 offset = offset + MysqlBinlog.UV_CHARSET_NUMBER_SIZE;
                 variableValueLength = (int) LittleEndianConversion
                         .convert4BytesToLong(buffer, offset);
@@ -157,8 +153,7 @@ public class UserVarLogEvent extends LogEvent
                         // TODO: use charset info
                         value = "'"
                                 + new String(buffer, variableValueIndex,
-                                        variableValueLength).replaceAll("'",
-                                        "''") + "'";
+                                        variableValueLength).replaceAll("'", "''") + "'";
                         break;
                     case REAL_RESULT :
                         if (variableValueLength != 8)
@@ -177,8 +172,10 @@ public class UserVarLogEvent extends LogEvent
                                 buffer, variableValueIndex);
                         value = String.valueOf(Double.longBitsToDouble(l));
                         if (logger.isDebugEnabled())
-                            logger.debug("Real value : long="
-                                    + Long.toHexString(l) + ", double=" + value);
+                            logger
+                                    .debug("Real value : long="
+                                            + Long.toHexString(l) + ", double="
+                                            + value);
                         break;
                     case INT_RESULT :
                         if (variableValueLength == 8)
@@ -205,22 +202,12 @@ public class UserVarLogEvent extends LogEvent
                         throw new MySQLExtractException(
                                 "ROW_RESULT user variable type is unsupported");
                     case DECIMAL_RESULT :
-                        byte precision = buffer[variableValueIndex];
-                        byte scale = buffer[variableValueIndex + 1];
-
                         if (logger.isDebugEnabled())
                             logger.debug("Decimal value dump: "
-                                    + hexdump(buffer, variableValueIndex + 2)
-                                    + " precision = " + precision + " scale = "
-                                    + scale);
-                        int bin_size = getDecimalBinarySize(precision, scale);
-                        byte[] dec = new byte[bin_size];
-                        for (int i = 0; i < bin_size; i++)
-                            dec[i] = buffer[variableValueIndex + 2 + i];
+                                    + hexdump(buffer, variableValueIndex));
 
-                        value = extractDecimal(dec, precision, scale)
-                                .toString();
-
+                        value = MysqlBinlog.convertDecimalToString(buffer,
+                                variableValueIndex, variableValueLength);
                         break;
                     default :
                         throw new MySQLExtractException(
@@ -231,12 +218,12 @@ public class UserVarLogEvent extends LogEvent
             query = new String("SET @" + variableName + " := " + value);
             if (logger.isDebugEnabled())
                 logger.debug("USER_VAR_EVENT: " + query);
-
-            doChecksum(buffer, eventLength, descriptionEvent);
         }
         catch (Exception e)
         {
             throw new MySQLExtractException("Unable to read user var event", e);
         }
+
+        return;
     }
 }

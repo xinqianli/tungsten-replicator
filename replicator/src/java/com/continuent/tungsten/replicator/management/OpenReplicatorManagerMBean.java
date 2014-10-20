@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,12 +17,11 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Teemu Ollakka
- * Contributor(s): Alex Yurchenko, Robert Hodges, Seppo Jaakola, Stephane Giron
+ * Contributor(s): Alex Yurchenko, Robert Hodges, Seppo Jaakola
  */
 
 package com.continuent.tungsten.replicator.management;
 
-import java.net.URISyntaxException;
 import java.util.List;
 import java.util.Map;
 
@@ -106,19 +105,9 @@ public interface OpenReplicatorManagerMBean
     public String getMasterListenUri();
 
     /**
-     * Returns true if the Replicator uses SSL connections.
-     */
-    public Boolean getUseSSLConnection() throws URISyntaxException;
-
-    /**
      * Returns the port on which the replicator will listen when it's a master.
      */
     public int getMasterListenPort();
-
-    /**
-     * Returns clients (slaves) of this server.
-     */
-    public List<Map<String, String>> getClients() throws Exception;
 
     /**
      * Returns the current replicator state.
@@ -162,7 +151,7 @@ public interface OpenReplicatorManagerMBean
 
     /**
      * Puts the replicator into the online state. This call returns when the
-     * request to go online has been accepted. The replicator must be in the
+     * request to go online has been accepted. The replicator must be in thstope
      * OFFLINE state for this call to be processed.
      * <p/>
      * The online operation accepts name-value control parameters that allow
@@ -401,10 +390,9 @@ public interface OpenReplicatorManagerMBean
      *            with 0). If negative - whole table is checked.
      * @param rowLimit limit consistency check to that many rows. If rowOffset
      *            is negative this is ignored.
-     * @return Executed consistency check's ID.
      * @throws Exception
      */
-    public int consistencyCheck(String method, String schemaName,
+    public void consistencyCheck(String method, String schemaName,
             String tableName, int rowOffset, int rowLimit) throws Exception;
 
     /**
@@ -431,12 +419,11 @@ public interface OpenReplicatorManagerMBean
      * @param uri URI of the backup to load
      * @param timeout Number of seconds to wait. 0 is indefinite, negative means
      *            no wait.
-     * @return the URI of the restored backup if the restore is known to have
-     *         completed successfully, otherwise null, which means restore is
-     *         still pending
+     * @return true if the restore is known to have completed successfully,
+     *         otherwise false, which means restore is still pending
      * @throws Exception if there is a restore failure
      */
-    public String restore(String uri, long timeout) throws Exception;
+    public boolean restore(String uri, long timeout) throws Exception;
 
     /**
      * Provisions a database from another copy and optionally waits for
@@ -537,12 +524,4 @@ public interface OpenReplicatorManagerMBean
      * Gets the replicator capabilities.
      */
     public Map<String, String> capabilities() throws Exception;
-
-    /**
-     * This makes the replicator go into the provisioning state before going
-     * online.
-     * 
-     * @see OpenReplicatorManager#online2(Map)
-     */
-    public void provisionOnline(Map<String, String> map) throws Exception;
 }

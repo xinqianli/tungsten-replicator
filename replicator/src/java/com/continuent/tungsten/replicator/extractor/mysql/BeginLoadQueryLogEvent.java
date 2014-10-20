@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2013 Continuent Inc.
+ * Copyright (C) 2010 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -32,24 +32,16 @@ import com.continuent.tungsten.replicator.extractor.mysql.conversion.LittleEndia
  * @version 1.0
  */
 public class BeginLoadQueryLogEvent extends LogEvent
-        implements
-            LoadDataInfileEvent
 {
-    int             fileID;
-    byte[]          fileData;
-    private String  schemaName;
-    private boolean nextEventCanBeAppended = false;
+    int            fileID;
+    byte[]         fileData;
+    private String schemaName;
 
     public BeginLoadQueryLogEvent(byte[] buffer, int eventLength,
-            FormatDescriptionLogEvent descriptionEvent, String currentPosition)
+            FormatDescriptionLogEvent descriptionEvent)
             throws ReplicatorException
     {
         super(buffer, descriptionEvent, MysqlBinlog.BEGIN_LOAD_QUERY_EVENT);
-
-        this.startPosition = currentPosition;
-        if (logger.isDebugEnabled())
-            logger.debug("Extracting event at position  : " + startPosition
-                    + " -> " + getNextEventPosition());
 
         int commonHeaderLength, postHeaderLength;
 
@@ -66,12 +58,6 @@ public class BeginLoadQueryLogEvent extends LogEvent
         /* Read the fixed data part */
         fixedPartIndex = commonHeaderLength;
 
-        if (descriptionEvent.useChecksum())
-        {
-            // Removing the checksum from the size of the event
-            eventLength -= 4;
-        }
-
         try
         {
             /* 4 Bytes for file ID */
@@ -83,7 +69,7 @@ public class BeginLoadQueryLogEvent extends LogEvent
              * the remaining bytes represent the first bytes of the files to be
              * loaded
              */
-            int dataLength = eventLength - fixedPartIndex;
+            int dataLength = buffer.length - fixedPartIndex;
             fileData = new byte[dataLength];
             System.arraycopy(buffer, fixedPartIndex, fileData, 0, dataLength);
         }
@@ -91,8 +77,6 @@ public class BeginLoadQueryLogEvent extends LogEvent
         {
             logger.error("Rows log event parsing failed : ", e);
         }
-
-        doChecksum(buffer, eventLength, descriptionEvent);
     }
 
     public int getFileID()
@@ -114,17 +98,4 @@ public class BeginLoadQueryLogEvent extends LogEvent
     {
         return schemaName;
     }
-
-    @Override
-    public void setNextEventCanBeAppended(boolean b)
-    {
-        this.nextEventCanBeAppended = b;
-    }
-
-    @Override
-    public boolean canNextEventBeAppended()
-    {
-        return nextEventCanBeAppended;
-    }
-
 }

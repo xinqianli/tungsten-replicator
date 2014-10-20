@@ -1,3 +1,5 @@
+# Prompts that include this module will be collected for each datasource 
+# across interactive mode, the tungsten-installer script
 module DatasourcePrompt
   include GroupConfigurePromptMember
   include HashPromptDefaultsModule
@@ -15,14 +17,6 @@ module DatasourcePrompt
   
   def get_datasource
     ConfigureDatabasePlatform.build([@parent_group.name, get_member()], @config)
-  end
-  
-  def get_extractor_datasource
-    if @config.getProperty(get_member_key(REPL_ROLE)) == REPL_ROLE_DI
-      ConfigureDatabasePlatform.build([@parent_group.name, get_member()], @config, true)
-    else
-      get_datasource()
-    end
   end
   
   def get_command_line_argument()
@@ -113,7 +107,7 @@ class DatasourceDBHost < ConfigurePrompt
   
   def initialize
     super(REPL_DBHOST, "Database server hostname", PV_HOSTNAME)
-    override_command_line_argument("replication-host")
+    self.extend(NotTungstenInstallerPrompt)
   end
   
   def load_default_value
@@ -121,6 +115,10 @@ class DatasourceDBHost < ConfigurePrompt
   end
   
   def allow_group_default
+    false
+  end
+  
+  def enabled_for_command_line?
     false
   end
 end
@@ -140,10 +138,6 @@ class DatasourceDBPort < ConfigurePrompt
   def update_deprecated_keys()
     replace_deprecated_key(get_member_key('repl_dbport'))
     super()
-  end
-  
-  def required?
-    super() && get_datasource().get_default_port() != nil
   end
   
   PortForConnectors.register(REPL_SERVICES, REPL_DBPORT)
@@ -168,7 +162,6 @@ end
 class DatasourceDBPassword < ConfigurePrompt
   include DatasourcePrompt
   include ManagerRestart
-  include PrivateArgumentModule
   
   def initialize
     super(REPL_DBPASSWORD, "Database password", 
@@ -179,19 +172,6 @@ class DatasourceDBPassword < ConfigurePrompt
   def update_deprecated_keys()
     replace_deprecated_key(get_member_key('repl_admin_password'))
     super()
-  end
-end
-
-class DatasourceEnableDBSSL < ConfigurePrompt
-  include DatasourcePrompt
-
-  def initialize
-    super(REPL_ENABLE_DBSSL, "Enable SSL connection to DBMS server",
-      PV_BOOLEAN, "false")
-  end
-
-  def required?
-    false
   end
 end
 
@@ -321,8 +301,8 @@ class DatasourceDisableRelayLogs < ConfigurePrompt
     end
   end
   
-  def get_template_value
-    v = super()
+  def get_template_value(transform_values_method)
+    v = super(transform_values_method)
     
     if v == "false"
       "true"
@@ -360,7 +340,6 @@ class DirectDatasourceDBHost < ConfigurePrompt
 
   def initialize
     super(EXTRACTOR_REPL_DBHOST, "Database server hostname", PV_HOSTNAME)
-    override_command_line_argument("direct-replication-host")
   end
 
   def load_default_value
@@ -381,15 +360,10 @@ class DirectDatasourceDBPort < ConfigurePrompt
 
   def initialize
     super(EXTRACTOR_REPL_DBPORT, "Database server port", PV_INTEGER)
-    override_command_line_argument("direct-replication-port")
   end
 
   def load_default_value
-    @default = @config.getProperty(get_member_key(REPL_DBPORT))
-  end
-  
-  def required?
-    super() && get_datasource().get_default_port() != nil
+    @default = get_datasource().get_default_port()
   end
 
   PortForConnectors.register(REPL_SERVICES, EXTRACTOR_REPL_DBPORT)
@@ -412,7 +386,6 @@ end
 
 class DirectDatasourceDBPassword < ConfigurePrompt
   include DatasourcePrompt
-  include PrivateArgumentModule
 
   def initialize
     super(EXTRACTOR_REPL_DBPASSWORD, "Database password", 
@@ -467,8 +440,8 @@ class DirectDatasourceDisableRelayLogs < ConfigurePrompt
       PV_BOOLEAN)
   end
   
-  def get_template_value
-    @config.getTemplateValue(get_member_key(REPL_DISABLE_RELAY_LOGS))
+  def get_template_value(transform_values_method)
+    @config.getTemplateValue(get_member_key(REPL_DISABLE_RELAY_LOGS), transform_values_method)
   end
 end
 
@@ -480,7 +453,7 @@ class DatasourceTHLURL < ConfigurePrompt
     super(REPL_DBTHLURL, "Datasource THL URL")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     get_datasource().get_thl_uri()
   end
 end
@@ -493,60 +466,8 @@ class DatasourceJDBCURL < ConfigurePrompt
     super(REPL_DBJDBCURL, "Datasource JDBC URL")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     get_datasource().getJdbcUrl()
-  end
-end
-
-class DatasourceJDBCSSLOptions < ConfigurePrompt
-  include DatasourcePrompt
-  include ConstantValueModule
- 
-  def initialize
-    super(REPL_DBJDBCURLSSLOPTIONS, "Datasource JDBC URL SSL options")
-  end
- 
-  def get_template_value
-    get_datasource().getJdbcUrlSSLOptions()
-  end
-end
-
-class DatasourceExtractorJDBCURL < ConfigurePrompt
-  include DatasourcePrompt
-  include ConstantValueModule
-  
-  def initialize
-    super(EXTRACTOR_REPL_DBJDBCURL, "Datasource Extraction JDBC URL")
-  end
-  
-  def get_template_value
-    get_datasource().getExtractorJdbcUrl()
-  end
-end
-
-class DatasourceJDBCQueryURL < ConfigurePrompt
-  include DatasourcePrompt
-  include ConstantValueModule
-  
-  def initialize
-    super(REPL_DBJDBCQUERYURL, "Datasource JDBC Query URL")
-  end
-  
-  def load_default_value
-    @default = get_datasource().getJdbcQueryUrl()
-  end
-end
-
-class DatasourceExtractorJDBCQueryURL < ConfigurePrompt
-  include DatasourcePrompt
-  include ConstantValueModule
-  
-  def initialize
-    super(EXTRACTOR_REPL_DBJDBCQUERYURL, "Datasource Extraction JDBC Query URL")
-  end
-  
-  def load_default_value
-    @default = get_extractor_datasource().getJdbcQueryUrl()
   end
 end
 
@@ -558,7 +479,7 @@ class DatasourceJDBCDriver < ConfigurePrompt
     super(REPL_DBJDBCDRIVER, "Datasource JDBC Driver")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     get_datasource().getJdbcDriver()
   end
 end
@@ -571,21 +492,8 @@ class DatasourceVendor < ConfigurePrompt
     super(REPL_DBJDBCVENDOR, "Datasource Vendor")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     get_datasource().getVendor()
-  end
-end
-
-class DatasourceJDBCScheme < ConfigurePrompt
-  include DatasourcePrompt
-  include ConstantValueModule
-  
-  def initialize
-    super(REPL_DBJDBCSCHEME, "Datasource JDBC Scheme")
-  end
-  
-  def get_template_value
-    get_datasource().getJdbcScheme()
   end
 end
 
@@ -597,7 +505,7 @@ class DatasourceBackupAgents < ConfigurePrompt
     super(REPL_DBBACKUPAGENTS, "Datasource Backup Agents")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     get_datasource().get_backup_agents().join(",")
   end
 end
@@ -610,7 +518,7 @@ class DatasourceDefaultBackupAgent < ConfigurePrompt
     super(REPL_DBDEFAULTBACKUPAGENT, "Datasource Default Backup Agent")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     get_datasource().get_default_backup_agent().split(",").at(0).to_s()
   end
 end

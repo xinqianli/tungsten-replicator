@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2013 Continuent Inc.
+ * Copyright (C) 2007-2012 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -30,15 +30,11 @@ import java.math.BigInteger;
 import java.net.SocketTimeoutException;
 import java.sql.Date;
 import java.sql.Time;
-import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
 
-import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
-
-import com.continuent.tungsten.common.io.WrappedInputStream;
 
 /**
  * A MySQL packet with helper functions to ease the reading and writting of
@@ -141,7 +137,7 @@ public class MySQLPacket
         }
         catch (IOException e)
         {
-            logger.error("I/O error while reading from socket");
+            logger.error("I/O error while reading from client socket", e);
         }
 
         return null;
@@ -203,8 +199,8 @@ public class MySQLPacket
         p.setInputStream(in);
         return p;
     }
-
-    /**
+    
+     /**
      * Reads a MySQL packet from the input stream.
      * 
      * @param in the data input stream from where we read the MySQL packet
@@ -243,14 +239,6 @@ public class MySQLPacket
             packetData[2] = (byte) packetLen3;
             packetData[3] = (byte) packetNumber;
 
-            // See if we can trust the availability from this stream.
-            boolean deterministicAvailability = true;
-            if (in instanceof WrappedInputStream)
-            {
-                deterministicAvailability = ((WrappedInputStream) in)
-                        .isDeterministic();
-            }
-
             // read() returns the number of actual bytes read, which might be
             // less that the desired length this loop ensures that the whole
             // packet is read
@@ -260,7 +248,7 @@ public class MySQLPacket
                 // Issue 281. Wait until at least one byte is available to avoid
                 // a possible out of data condition when reading from the
                 // network.
-                if (deterministicAvailability && in.available() == 0)
+                if (in.available() == 0)
                 {
                     long readStartTime = System.currentTimeMillis();
                     long delay = -1;
@@ -329,8 +317,8 @@ public class MySQLPacket
 
         return null;
     }
-
-    /**
+    
+      /**
      * Reads a MySQL packet from the input stream using a default partial read
      * timeout of 5 seconds.
      * 
@@ -341,6 +329,7 @@ public class MySQLPacket
     {
         return readPacket(in, 10000);
     }
+    
 
     /**
      * Returns the raw byte buffer.
@@ -348,12 +337,6 @@ public class MySQLPacket
     public byte[] getByteBuffer()
     {
         return byteBuffer;
-    }
-
-    public void setByteBuffer(byte[] newByteBuffer)
-    {
-        this.byteBuffer = newByteBuffer;
-        this.dataLength = newByteBuffer.length - HEADER_LENGTH;
     }
 
     /**
@@ -374,25 +357,6 @@ public class MySQLPacket
     public int getDataLength()
     {
         return this.dataLength;
-    }
-
-    /**
-     * Whether or not this packet is a large packet, thus part of a large query
-     * or result
-     */
-    public boolean isLargePacket()
-    {
-        return getDataLength() == MySQLPacket.MAX_LENGTH;
-    }
-
-    /**
-     * Empty packets have a zero size data
-     * 
-     * @return true if the data length is zero
-     */
-    public boolean isEmpty()
-    {
-        return getDataLength() == 0;
     }
 
     /**
@@ -496,7 +460,7 @@ public class MySQLPacket
      */
     public boolean isOK()
     {
-        return (this.byteBuffer[4] == (byte) 0x00) && getDataLength() > 3;
+        return this.byteBuffer[4] == (byte) 0x00;
     }
 
     /**
@@ -516,121 +480,40 @@ public class MySQLPacket
      */
     public boolean isEOF()
     {
-        // An EOF packet is composed of:
-        // 1byte 0xFE - the EOF header
-        // plus, if protocol >= 4.1:
-        // 2bytes - warningCount
-        // 2bytes - status flags
-        // So the data is never larger than 5 bytes
-        return this.byteBuffer[4] == (byte) 0xFE && this.getDataLength() <= 5;
-    }
-    
-    /**
-     * Whether or not this packet has the SERVER_STATUS_IN_TRANS flag. See:
-     * http://dev.mysql.com/doc/internals/en/status-flags.html
-     * 
-     * @return true if it has. flase otherwise
-     */
-    public boolean isSERVER_STATUS_IN_TRANS()
-    {
-        return this.isServerFlagSet(MySQLConstants.SERVER_STATUS_IN_TRANS);
+        return this.byteBuffer[4] == (byte) 0xFE;
     }
 
     /**
-     * Whether or not this packet has the SERVER_STATUS_AUTOCOMMIT flag. See:
-     * http://dev.mysql.com/doc/internals/en/status-flags.html
+     * Tests special packet "server status" flag to tell whether or not more
+     * results exist on the server
      * 
-     * @return true if it has. flase otherwise
-     */
-    public boolean isSERVER_STATUS_AUTOCOMMIT()
-    {
-        return this.isServerFlagSet(MySQLConstants.SERVER_STATUS_AUTOCOMMIT);
-    }
-
-    /**
-     * Tests "server status" bytes in a OK or EOF packet to tell whether or not
-     * the given flag is set. A warning will be printed if the packet is neither
-     * an EOF nor a OK, and false will be returned
-     * 
-     * @return true if and only if the packet is OK or EOF packet and if the
-     *         given flag is set in the server status bytes.
-     */
-    public boolean isServerFlagSet(short flag)
-    {
-        boolean flagSet = false;
-        int originalPos = position;
-
-        // we need to position the cursor (position right before the server
-        // flag. This is different between a OK and a EOF
-        if (isOK())
-        {
-            reset();
-            getByte(); // always 0, that's a OK packet
-            getFieldLength(); // affectedRows
-            getFieldLength(); // insertId
-        }
-        else if (isEOF())
-        {
-            // here, the HEADER_LENGTH + 3 stands for:
-            // 4 bytes header (HEADER_LENGTH)
-            // 1 byte EOF marker (HEADER_LENGTH + 1)
-            // 2 bytes warningCount (HEADER_LENGTH + 3)
-            position = HEADER_LENGTH + 3;
-        }
-        else
-        {
-            logger.warn("Probable bug here: testing server status on a packet that's neither EOF nor OK. "
-                    + this.toString());
-        }
-
-        // next 2 bytes are the serverStatus
-        flagSet = (getShort() & flag) != 0;
-        position = originalPos;
-        return flagSet;
-    }
-
-    /**
-     * Tells whether or not more results exist on the server.
-     * 
-     * @return true if and only if the packet is a OK or EOF packet and that
-     *         SERVER_MORE_RESULTS_EXISTS is set in the server status bytes.
+     * @return true if SERVER_MORE_RESULTS_EXISTS is set, false otherwise
      */
     public boolean hasMoreResults()
     {
-        return isServerFlagSet(MySQLConstants.SERVER_MORE_RESULTS_EXISTS);
+        return (this.byteBuffer[position - 2] & MySQLConstants.SERVER_MORE_RESULTS_EXISTS) != 0;
     }
 
     /**
-     * Tells whether or not a cursor exists.
+     * Tests special packet "server status" flag to tell whether or not a cursor
+     * exists for this result
      * 
-     * @return true if and only if the packet is a OK or EOF packet and that
-     *         SERVER_STATUS_CURSOR_EXISTS is set in the server status bytes.
+     * @return true if SERVER_STATUS_CURSOR_EXISTS is set, false otherwise
      */
     public boolean hasCursor()
     {
-        return isServerFlagSet(MySQLConstants.SERVER_STATUS_CURSOR_EXISTS);
+        return (this.byteBuffer[position - 2] & MySQLConstants.SERVER_STATUS_CURSOR_EXISTS) != 0;
     }
 
     /**
-     * Tells whether the end of a result set has been reached upon
-     * COM_STMT_FETCH command
+     * Tests special packet "server status" flag to tell whether or not the end
+     * of result set has been reached
      * 
-     * @return true if and only if the packet is a OK or EOF packet and that
-     *         SERVER_STATUS_LAST_ROW_SENT is set in the server status bytes.
+     * @return true if SERVER_STATUS_LAST_ROW_SENT is set, false otherwise
      */
     public boolean hasLastRowSent()
     {
-        return isServerFlagSet(MySQLConstants.SERVER_STATUS_LAST_ROW_SENT);
-    }
-
-    public long peekFieldCount()
-    {
-        int originalPosition = position;
-        reset();
-        // Get the column count so we know where the column list finishes
-        long fieldCount = getFieldLength();
-        position = originalPosition;
-        return fieldCount;
+        return (this.byteBuffer[position - 2] & MySQLConstants.SERVER_STATUS_LAST_ROW_SENT) != 0;
     }
 
     /**
@@ -1001,6 +884,14 @@ public class MySQLPacket
                 // seconds) => %1000
                 millis += mil % 1000;
             }
+            // TODO: as jdbc time cannot handle hours over 24, we ignore it =>
+            // document this fact
+            // if (hour > 838) {
+            // hour = 838;
+            // min = 59;
+            // sec = 59;
+            // }
+            // millis += day * 24 * 60 * 60 * 1000;
         }
         return new Time(neg ? -millis : millis);
     }
@@ -1108,36 +999,6 @@ public class MySQLPacket
             putByte((byte) 254);
             putLong(length);
         }
-    }
-
-    public long getFieldLength()
-    {
-        if (this.position > this.byteBuffer.length)
-        {
-            return 0;
-        }
-        byte encoding = getByte();
-        if ((encoding & 0xff) < 251)
-        {
-            return (long) encoding & 0xff;
-        }
-        if ((encoding & 0xff) == 251)
-        {
-            return -1;
-        }
-        if ((encoding & 0xff) == 252)
-        {
-            return (long) getShort() & 0xffff;
-        }
-        if ((encoding & 0xff) == 253)
-        {
-            return (long) getInt24() & 0xffffff;
-        }
-        if ((encoding & 0xff) == 254)
-        {
-            return getLong();
-        }
-        return 0;
     }
 
     /**
@@ -1262,6 +1123,7 @@ public class MySQLPacket
      */
     public void putFloat(float f)
     {
+        // TODO: test me
         putInt32(Float.floatToIntBits(f));
     }
 
@@ -1270,6 +1132,7 @@ public class MySQLPacket
      */
     public void putDouble(double d)
     {
+        // TODO: test me
         putLong(Double.doubleToLongBits(d));
     }
 
@@ -1320,6 +1183,7 @@ public class MySQLPacket
         putByte((byte) minutes);
         putByte((byte) seconds);
 
+        // TODO: millis - millis%1000 ?
         return millis - millis % 1000;
     }
 
@@ -1403,7 +1267,7 @@ public class MySQLPacket
     {
         int len = this.position - HEADER_LENGTH;
 
-        // handle packets bigger than 16 MB
+        // TODO handle packets bigger than 16 MB
         // for now only we return an error message
         if (len >= 256 * 256 * 256)
         {
@@ -1473,7 +1337,11 @@ public class MySQLPacket
                 return getUnsignedInt24();
 
             case 254 :
-                return getLong();
+                long l = getLong();
+                if (l > Integer.MAX_VALUE)
+                    logger.warn("field length bug here!");
+
+                return l;
 
             default :
                 return sw;
@@ -1545,65 +1413,6 @@ public class MySQLPacket
         dataLength = newSize;
     }
 
-    /**
-     * Close inputstream if we have one.
-     * 
-     * @throws IOException
-     */
-    public void close() throws IOException
-    {
-        if (inputStream != null)
-        {
-            try
-            {
-                inputStream.close();
-            }
-            finally
-            {
-                inputStream = null;
-            }
-        }
-    }
-
-    /**
-     * Print debug information on status received from the server
-     */
-    public void printServerStatus()
-    {
-        String statusMessageString = "";
-        if (this.isServerFlagSet(MySQLConstants.SERVER_STATUS_IN_TRANS))
-            statusMessageString = statusMessageString
-                    + "SERVER_STATUS_IN_TRANS | ";
-
-        if (this.isServerFlagSet(MySQLConstants.SERVER_STATUS_AUTOCOMMIT))
-            statusMessageString = statusMessageString
-                    + "SERVER_STATUS_AUTOCOMMIT | ";
-
-        if (this.isServerFlagSet(MySQLConstants.SERVER_MORE_RESULTS_EXISTS))
-            statusMessageString = statusMessageString
-                    + "SERVER_MORE_RESULTS_EXISTS | ";
-
-        if (this.isServerFlagSet(MySQLConstants.SERVER_QUERY_NO_GOOD_INDEX_USED))
-            statusMessageString = statusMessageString
-                    + "SERVER_QUERY_NO_GOOD_INDEX_USED | ";
-
-        if (this.isServerFlagSet(MySQLConstants.SERVER_QUERY_NO_INDEX_USED))
-            statusMessageString = statusMessageString
-                    + "SERVER_QUERY_NO_INDEX_USED | ";
-
-        if (this.isServerFlagSet(MySQLConstants.SERVER_STATUS_CURSOR_EXISTS))
-            statusMessageString = statusMessageString
-                    + "SERVER_STATUS_CURSOR_EXISTS | ";
-
-        if (this.isServerFlagSet(MySQLConstants.SERVER_STATUS_LAST_ROW_SENT))
-            statusMessageString = statusMessageString
-                    + "SERVER_STATUS_LAST_ROW_SENT | ";
-
-        statusMessageString = StringUtils.removeEnd(statusMessageString, "| ");
-        logger.debug(MessageFormat.format("Server Status= {0}",
-                statusMessageString));
-    }
-    
     @Override
     public String toString()
     {

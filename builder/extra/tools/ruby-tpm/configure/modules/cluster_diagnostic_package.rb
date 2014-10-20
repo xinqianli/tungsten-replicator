@@ -1,5 +1,5 @@
 module ClusterDiagnosticPackage
-  LOG_SIZE = 10*1024*1024
+  LOG_SIZE = 2*1024*1024
   
   def get_diagnostic_file
     @zip_file
@@ -11,51 +11,6 @@ module ClusterDiagnosticPackage
     @zip_file = nil
     
     return remainder
-  end
-
-  def call_mysql(config,h_alias,ds,sql)
-    ret=nil
-    begin
-      ret=ssh_result("mysql --defaults-file=#{config.getProperty([REPL_SERVICES, h_alias, REPL_MYSQL_SERVICE_CONF])}  --host=#{ds.host} --port=#{ds.port} --skip-column-names -e\"#{sql}\"", config.getProperty(HOST), config.getProperty(USERID),false)
-    rescue
-      ret=nil
-    end
-    ret
-  end
-
-  def write_file(file,contents)
-    out = File.open(file, "w")
-    out.puts(contents)
-    out.close
-  end
-
-  def run_command(config,command)
-
-    ret=nil
-
-    command_a=command.split(" ")
-    begin
-      path = ssh_result("which #{command_a[0]} 2>/dev/null", config.getProperty(HOST), config.getProperty(USERID))
-      if path != ""
-        ret=ssh_result(command, config.getProperty(HOST), config.getProperty(USERID))
-      end
-    rescue
-      ret=nil
-    end
-    ret
-  end
-
-  def get_log(config,source,dest)
-
-
-    if remote_file_exists?(source, config.getProperty(HOST), config.getProperty(USERID))
-      begin
-        scp_download(source, "#{dest}.tmp", config.getProperty(HOST), config.getProperty(USERID))
-        copy_log("#{dest}.tmp", dest, LOG_SIZE)
-        FileUtils.rm("#{dest}.tmp")
-      rescue
-      end
-    end
   end
   
   def commit
@@ -75,133 +30,62 @@ module ClusterDiagnosticPackage
     
     get_deployment_configurations().each{
       |config|
-      build_topologies(config)
-      c_key = config.getProperty(DEPLOYMENT_CONFIGURATION_KEY)
       h_alias = config.getProperty(DEPLOYMENT_HOST)
-
       FileUtils.mkdir_p("#{diag_dir}/#{h_alias}")
-      FileUtils.mkdir_p("#{diag_dir}/#{h_alias}/os_info")
-      FileUtils.mkdir_p("#{diag_dir}/#{h_alias}/conf")
       
-      write_file("#{diag_dir}/#{h_alias}/manifest.json",@promotion_settings.getProperty([c_key, "manifest"]))
-      write_file("#{diag_dir}/#{h_alias}/tpm.txt",@promotion_settings.getProperty([c_key, "tpm_reverse"]))
-      write_file("#{diag_dir}/#{h_alias}/tpm_diff.txt",@promotion_settings.getProperty([c_key, "tpm_diff"]))
-
-      get_log(config,"/etc/hosts", "#{diag_dir}/#{h_alias}/os_info/etc_hosts.txt")
-      get_log(config, "/etc/system-release", "#{diag_dir}/#{h_alias}/os_info/system-release.txt")
-
-      #Run a lsb_release -a  if it's available in the path
-      write_file("#{diag_dir}/#{h_alias}/os_info/lsb_release.txt",run_command(config,"lsb_release -a"))
-
-      if @promotion_settings.getProperty([c_key, REPLICATOR_ENABLED]) == "true"
-        if @promotion_settings.getProperty([c_key, MANAGER_ENABLED]) == "true"
-          write_file("#{diag_dir}/#{h_alias}/cctrl.txt",@promotion_settings.getProperty([c_key, "cctrl_status"]))
-          write_file("#{diag_dir}/#{h_alias}/cctrl_simple.txt",@promotion_settings.getProperty([c_key, "cctrl_status_simple"]))
-          write_file("#{diag_dir}/#{h_alias}/cctrl_ping.txt",@promotion_settings.getProperty([c_key, "cctrl_ping"]))
-          write_file("#{diag_dir}/#{h_alias}/cctrl_validate.txt",@promotion_settings.getProperty([c_key, "cctrl_validate"]))
-        end
+      if @promotion_settings.getProperty([h_alias, REPLICATOR_ENABLED]) == "true"
+        out = File.open("#{diag_dir}/#{h_alias}/cctrl.txt", "w")
+        out.puts(@promotion_settings.getProperty([h_alias, "cctrl_status"]))
+        out.close
       
-        write_file("#{diag_dir}/#{h_alias}/trepctl.json", @promotion_settings.getProperty([c_key, "replicator_json_status"]))
-        
         out = File.open("#{diag_dir}/#{h_alias}/trepctl.txt", "w")
-        config.getPropertyOr([REPL_SERVICES], {}).keys().sort().each{
-          |rs_alias|
-          if rs_alias == DEFAULTS
-            next
-          end
-          out.puts(@promotion_settings.getProperty([c_key, "replicator_status_#{rs_alias}"]))
-        }
+        out.puts(@promotion_settings.getProperty([h_alias, "replicator_status"]))
         out.close
       
         out = File.open("#{diag_dir}/#{h_alias}/thl.txt", "w")
-        config.getPropertyOr([REPL_SERVICES], {}).keys().sort().each{
-          |rs_alias|
-          if rs_alias == DEFAULTS
-            next
-          end
-          out.puts(@promotion_settings.getProperty([c_key, "thl_info_#{rs_alias}"]))
-        }
-        out.close
-
-        out = File.open("#{diag_dir}/#{h_alias}/thl_index.txt", "w")
-        config.getPropertyOr([REPL_SERVICES], {}).keys().sort().each{
-            |rs_alias|
-          if rs_alias == DEFAULTS
-            next
-          end
-          out.puts(@promotion_settings.getProperty([c_key, "thl_index_#{rs_alias}"]))
-        }
+        out.puts(@promotion_settings.getProperty([h_alias, "thl_info"]))
         out.close
         
-        get_log(config,"#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/log/trepsvc.log","#{diag_dir}/#{h_alias}/trepsvc.log.tmp")
-        get_log(config,"#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/log/xtrabackup.log", "#{diag_dir}/#{h_alias}/xtrabackup.log")
-        get_log(config,"#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/log/mysqldump.log", "#{diag_dir}/#{h_alias}/mysqldump.log")
-        get_log(config,"#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/log/script.log","#{diag_dir}/#{h_alias}/script.log")
-        get_log(config,"/home/#{config.getProperty(USERID)}/.cctrl_history","#{diag_dir}/#{h_alias}/cctrl_history.txt")
-
-        if @promotion_settings.getProperty([c_key, MANAGER_ENABLED]) == "true"
-          get_log(config,"#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-manager/log/tmsvc.log", "#{diag_dir}/#{h_alias}/tmsvc.log")
+        begin
+          scp_download("#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/log/trepsvc.log", "#{diag_dir}/#{h_alias}/trepsvc.log.tmp", config.getProperty(HOST), config.getProperty(USERID))
+          copy_log("#{diag_dir}/#{h_alias}/trepsvc.log.tmp", "#{diag_dir}/#{h_alias}/trepsvc.log", LOG_SIZE)
+          FileUtils.rm("#{diag_dir}/#{h_alias}/trepsvc.log.tmp")
+        rescue CommandError => ce
+          exception(ce)
+        rescue MessageError => me
+          exception(me)
         end
-
-
-        #Get Replicator Static/Dynamic properties from each host
-        config.getPropertyOr([REPL_SERVICES], {}).keys().sort().each{
-            |rs_alias|
-          if rs_alias == DEFAULTS
-            next
-          end
-          command="cat #{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/conf/static-#{config.getProperty([REPL_SERVICES, rs_alias, DEPLOYMENT_SERVICE])}.properties|grep -v password"
-          fileName="#{diag_dir}/#{h_alias}/conf/static-#{config.getProperty([REPL_SERVICES, rs_alias, DEPLOYMENT_SERVICE])}.properties"
-          write_file(fileName,run_command(config,command))
-
-          command="cat #{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/conf/dynamic-#{config.getProperty([REPL_SERVICES, rs_alias, DEPLOYMENT_SERVICE])}.properties|grep -v password"
-          fileName="#{diag_dir}/#{h_alias}/conf/dynamic-#{config.getProperty([REPL_SERVICES, rs_alias, DEPLOYMENT_SERVICE])}.properties"
-          write_file(fileName,run_command(config,command))
-        }
-
-
-        ds=ConfigureDatabasePlatform.build([REPL_SERVICES, h_alias], config)
-
-        if ds.getVendor == "mysql"
-          FileUtils.mkdir_p("#{diag_dir}/#{h_alias}/mysql")
-          write_file("#{diag_dir}/#{h_alias}/mysql/innodb_status.txt",call_mysql(config,h_alias,ds,'show engine innodb status'))
-          write_file("#{diag_dir}/#{h_alias}/mysql/global_variables.txt",call_mysql(config,h_alias,ds,'show global variables'))
-          write_file("#{diag_dir}/#{h_alias}/mysql/status.txt",call_mysql(config,h_alias,ds,'show status'))
-
-          #This will probably fail unless the tungsten user has access to the logfile
-          get_log(config,
-                call_mysql(config,h_alias,ds,"select variable_value from information_schema.global_variables where variable_name='log_error'"),
-                "#{diag_dir}/#{h_alias}/mysql/mysql_error.log")
+        
+        begin
+          scp_download("#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-manager/log/tmsvc.log", "#{diag_dir}/#{h_alias}/tmsvc.log.tmp", config.getProperty(HOST), config.getProperty(USERID))
+          copy_log("#{diag_dir}/#{h_alias}/tmsvc.log.tmp", "#{diag_dir}/#{h_alias}/tmsvc.log", LOG_SIZE)
+          FileUtils.rm("#{diag_dir}/#{h_alias}/tmsvc.log.tmp")
+        rescue CommandError => ce
+          exception(ce)
+        rescue MessageError => me
+          exception(me)
         end
       end
       
-      if @promotion_settings.getProperty([c_key, CONNECTOR_ENABLED]) == "true"
-        get_log(config,"#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/log/connector.log", "#{diag_dir}/#{h_alias}/connector.log" )
+      if @promotion_settings.getProperty([h_alias, CONNECTOR_ENABLED]) == "true"
+        begin
+          scp_download("#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/log/connector.log", "#{diag_dir}/#{h_alias}/connector.log.tmp", config.getProperty(HOST), config.getProperty(USERID))
+          copy_log("#{diag_dir}/#{h_alias}/connector.log.tmp", "#{diag_dir}/#{h_alias}/connector.log", LOG_SIZE)
+          FileUtils.rm("#{diag_dir}/#{h_alias}/connector.log.tmp")
+        rescue CommandError => ce
+          exception(ce)
+        rescue MessageError => me
+          exception(me)
+        end
       end
-
-      begin
-        df_output=ssh_result("df -hP| grep -v Filesystem", config.getProperty(HOST), config.getProperty(USERID)).split("\n")
-        out = File.open("#{diag_dir}/#{h_alias}/os_info/df.txt", "w")
-        df_output.each {|partition|
-          out.puts(partition)
-          partition_a=partition.split(" ")
-          if partition_a[4] == '100%'
-           error ("Partition #{partition_a[0]} on #{config.getProperty(HOST)} is full - Check and free disk space if required")
-          end
-        }
-        out.close
-      rescue CommandError => ce
-        exception(ce)
-      rescue MessageError => me
-        exception(me)
-      end
-
-      write_file("#{diag_dir}/#{h_alias}/os_info/ifconfig.txt",run_command(config,"ifconfig") )
-      write_file("#{diag_dir}/#{h_alias}/os_info/netstat.txt",run_command(config,"netstat -nap") )
-      write_file("#{diag_dir}/#{h_alias}/os_info/free.txt",run_command(config,"free -m") )
-      write_file("#{diag_dir}/#{h_alias}/os_info/java_info.txt",run_command(config,"java -version 2>&1") )
-      write_file("#{diag_dir}/#{h_alias}/os_info/ruby_info.txt",run_command(config,"ruby -v") )
-
+      
+      df_output=ssh_result("df -hP| grep -v Filesystem", config.getProperty(HOST), config.getProperty(USERID))
+      df_output.each {|partition|
+        partition_a=partition.split(" ")
+        if partition_a[4] == '100%'
+         error ("Partition #{partition_a[0]} on #{config.getProperty(HOST)} is full - Check and free disk space if required")
+        end
+      }
     }
     
     require 'zip/zip'
@@ -250,13 +134,8 @@ class ClusterDiagnosticCheck < ConfigureValidationCheck
     cctrl_cmd = c.get_cctrl_path(current_release_directory, @config.getProperty(MGR_RMI_PORT))
     trepctl_cmd = c.get_trepctl_path(current_release_directory, @config.getProperty(REPL_RMI_PORT))
     thl_cmd = c.get_thl_path(current_release_directory)
-    tpm_cmd = c.get_tpm_path(current_release_directory)
     
     begin
-      output_property("manifest", cmd_result("cat #{current_release_directory}/.manifest.json"))
-      output_property("tpm_reverse", cmd_result("#{tpm_cmd} reverse --public"))
-      output_property("tpm_diff", cmd_result("#{tpm_cmd} query modified-files"))
-      
       ["manager", "replicator", "connector"].each {
         |svc|
         svc_path = c.get_svc_path(svc, c.get_base_path())
@@ -266,28 +145,11 @@ class ClusterDiagnosticCheck < ConfigureValidationCheck
         end
       }
       
-      if c.svc_is_running?(c.get_svc_path("manager", c.get_base_path()))
-        cmd_result("echo 'physical;*/*/manager/ServiceManager/diag' | #{cctrl_cmd} -expert", true)
-        cmd_result("echo 'physical;*/*/router/RouterManager/diag' | #{cctrl_cmd} -expert", true)
-        output_property("cctrl_status", cmd_result("echo 'ls -l' | #{cctrl_cmd} -expert", true))
-        output_property("cctrl_status_simple", cmd_result("echo 'ls ' | #{cctrl_cmd} -expert", true))
-        output_property("cctrl_ping", cmd_result("echo 'ping ' | #{cctrl_cmd} -expert", true))
-        output_property("cctrl_validate", cmd_result("echo 'cluster validate ' | #{cctrl_cmd} -expert", true))
-      end
-      
-      if c.svc_is_running?(c.get_svc_path("replicator", c.get_base_path()))
-        output_property("replicator_json_status", cmd_result("#{trepctl_cmd} services -full -json", true))
-        
-        @config.getPropertyOr([REPL_SERVICES], {}).keys().sort().each{
-          |rs_alias|
-          if rs_alias == DEFAULTS
-            next
-          end
-          output_property("replicator_status_#{rs_alias}", cmd_result("#{trepctl_cmd} -service #{@config.getProperty([REPL_SERVICES, rs_alias, DEPLOYMENT_SERVICE])} status", true))
-          output_property("thl_info_#{rs_alias}", cmd_result("#{thl_cmd} -service #{@config.getProperty([REPL_SERVICES, rs_alias, DEPLOYMENT_SERVICE])} info", true))
-          output_property("thl_index_#{rs_alias}", cmd_result("#{thl_cmd} -service #{@config.getProperty([REPL_SERVICES, rs_alias, DEPLOYMENT_SERVICE])} index", true))
-        }
-      end
+      cmd_result("echo 'physical;*/*/manager/ServiceManager/diag' | #{cctrl_cmd} -expert", true)
+      cmd_result("echo 'physical;*/*/router/RouterManager/diag' | #{cctrl_cmd} -expert", true)
+      output_property("cctrl_status", cmd_result("echo 'ls -l' | #{cctrl_cmd} -expert", true))
+      output_property("replicator_status", cmd_result("#{trepctl_cmd} status", true))
+      output_property("thl_info", cmd_result("#{thl_cmd} info", true))
     rescue CommandError => ce
       exception(ce)
       error(ce.message)

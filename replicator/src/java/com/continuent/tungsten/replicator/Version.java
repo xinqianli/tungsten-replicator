@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyanother (C) 2007-2014 Continuent Inc.
+ * Copyanother (C) 2007-2008 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -53,6 +53,9 @@ public class Version
     private int                minor         = 0;
     private String             suffix        = "";
 
+    // Not used for now. Removing the warning.
+    //private static Logger      logger        = Logger.getLogger(Version.class);
+
     public static Table getVersionTableDefinition(String schema)
     {
         Table t = new Table(schema, TABLE_NAME);
@@ -74,8 +77,8 @@ public class Version
 
     private static String constructSelect(String schema, String module)
     {
-        String select = Version.SELECT + schema + "." + TABLE_NAME + " WHERE "
-                + MODULE_COLUMN + " = '" + module + "'";
+        String select = Version.SELECT + schema + "." + TABLE_NAME
+                + " WHERE " + MODULE_COLUMN + " = '" + module + "'";
         return select;
     }
 
@@ -150,8 +153,10 @@ public class Version
     }
 
     /**
-     * Compares another version to current version.
      * 
+     * TODO: compare definition.
+     * 
+     * @param another
      * @return 1, 0, -1 if this is bigger, equal or lower than another
      */
     public int compare(Version another)

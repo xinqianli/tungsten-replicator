@@ -42,8 +42,7 @@ ${table.getSchema()}.stage_xxx_$table.getName()##
 (
   tungsten_opcode CHAR(1) ,
   tungsten_seqno INT ,
-  tungsten_row_id INT ,
-  tungsten_commit_timestamp TIMESTAMP ##
+  tungsten_row_id INT ##
 #foreach ( $col in $table.getAllColumns() )
 ## Print leading comma.
 ,
@@ -67,7 +66,7 @@ INT##
 #elseif ( $col.getTypeDescription().startsWith("INT") )
 INT##
 #elseif ( $col.getTypeDescription().startsWith("BIGINT") )
-NUMBER##
+INT##
 #elseif ( $col.getTypeDescription().startsWith("DECIMAL(") )
 $col.getTypeDescription()##
 #elseif ( $col.getTypeDescription().startsWith("VARCHAR") )

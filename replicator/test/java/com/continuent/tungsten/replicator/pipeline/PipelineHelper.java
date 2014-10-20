@@ -110,13 +110,11 @@ public class PipelineHelper
     /**
      * Generate a simple runtime with a queue on both ends of a simple task.
      * 
-     * @param queueSize Size of input and output queues
-     * @param blockSize Block commit size
-     * @param blockInterval Block interval in milliseconds
+     * @return
      * @throws Exception
      */
     public TungstenProperties createDoubleQueueRuntime(int queueSize,
-            int blockSize, int blockInterval) throws Exception
+            int blockSize) throws Exception
     {
         // Overall pipeline including one stage with block size.
         PipelineConfigBuilder builder = new PipelineConfigBuilder();
@@ -126,8 +124,6 @@ public class PipelineHelper
         builder.addStage("stage", "q-extract", "q-apply", null);
         builder.addProperty("stage", "stage", "blockCommitRowCount",
                 new Integer(blockSize).toString());
-        builder.addProperty("stage", "stage", "blockCommitInterval",
-                new Integer(blockInterval).toString());
 
         // Stage components.
         builder.addComponent("extractor", "q-extract",

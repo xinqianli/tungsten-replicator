@@ -24,13 +24,11 @@ package com.continuent.tungsten.replicator.thl;
 
 import java.io.EOFException;
 import java.io.IOException;
-
-import javax.net.ssl.SSLHandshakeException;
+import java.nio.channels.SocketChannel;
 
 import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.common.config.TungstenProperties;
-import com.continuent.tungsten.common.sockets.SocketWrapper;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.database.EventId;
 import com.continuent.tungsten.replicator.database.EventIdFactory;
@@ -54,16 +52,13 @@ public class ConnectorHandler implements ReplicatorPlugin, Runnable
     private Server           server          = null;
     private PluginContext    context         = null;
     private Thread           thd             = null;
-    private SocketWrapper    socket;
+    private SocketChannel    channel         = null;
     private THL              thl             = null;
     private int              resetPeriod;
     private int              heartbeatMillis;
     private long             altSeqno        = -1;
     private volatile boolean cancelled       = false;
     private volatile boolean finished        = false;
-
-    private String           rmiHost         = null;
-    private String           rmiPort         = null;
 
     private volatile boolean checkFirstSeqno = true;
 
@@ -93,15 +88,9 @@ public class ConnectorHandler implements ReplicatorPlugin, Runnable
                     + handshakeResponse.getSourceId()
                     + " heartbeatMillis="
                     + heartbeatMillis
-                    + " socketType="
-                    + socket.getSocket().getClass().getSimpleName()
                     + " options="
                     + new TungstenProperties(handshakeResponse.getOptions())
                             .toString());
-
-            setRmiHost(handshakeResponse.getOption(ProtocolParams.RMI_HOST));
-            setRmiPort(handshakeResponse.getOption(ProtocolParams.RMI_PORT));
-
             if (heartbeatMillis <= 0)
                 throw new THLException(
                         "Client heartbeat requests must be greater than zero: "
@@ -308,15 +297,7 @@ public class ConnectorHandler implements ReplicatorPlugin, Runnable
         Protocol protocol;
         try
         {
-            protocol = new Protocol(context, socket, resetPeriod);
-        }
-        catch (SSLHandshakeException e)
-        {
-            // Issue 727 : Add debug info
-            logger.error("Received SSL handshake exception", e);
-            logger.error("SSL handshake failed; ensure client replicator has SSL enabled: host="
-                    + socket.getSocket().getInetAddress().toString());
-            return;
+            protocol = new Protocol(context, channel, resetPeriod);
         }
         catch (IOException e)
         {
@@ -394,14 +375,6 @@ public class ConnectorHandler implements ReplicatorPlugin, Runnable
                     catch (LogTimeoutException e)
                     {
                         sendHeartbeat(protocol);
-                        continue;
-                    }
-
-                    if (event == null)
-                    {
-                        // connection.next can return null if the event was not
-                        // yet fully flushed on disk, for example, by the writer
-                        // thread. Just try to read it again.
                         continue;
                     }
 
@@ -554,7 +527,7 @@ public class ConnectorHandler implements ReplicatorPlugin, Runnable
             // Close TCP/IP.
             try
             {
-                socket.close();
+                channel.close();
             }
             catch (Exception e)
             {
@@ -661,20 +634,22 @@ public class ConnectorHandler implements ReplicatorPlugin, Runnable
 
     /**
      * Sets the server value.
-     */
-    public void setSocket(SocketWrapper socket)
-    {
-        this.socket = socket;
-    }
-
-    /**
-     * Sets the server value.
      * 
      * @param server The server to set.
      */
     public void setServer(Server server)
     {
         this.server = server;
+    }
+
+    /**
+     * Sets the channel value.
+     * 
+     * @param channel The channel to set.
+     */
+    public void setChannel(SocketChannel channel)
+    {
+        this.channel = channel;
     }
 
     /**
@@ -685,37 +660,5 @@ public class ConnectorHandler implements ReplicatorPlugin, Runnable
     public void setThl(THL thl)
     {
         this.thl = thl;
-    }
-
-    /**
-     * Sets client's RMI host.
-     */
-    public void setRmiHost(String rmiHost)
-    {
-        this.rmiHost = rmiHost;
-    }
-
-    /**
-     * Sets client's RMI port.
-     */
-    public void setRmiPort(String rmiPort)
-    {
-        this.rmiPort = rmiPort;
-    }
-
-    /**
-     * Gets client's RMI host.
-     */
-    public String getRmiHost()
-    {
-        return rmiHost;
-    }
-
-    /**
-     * Gets client's RMI port.
-     */
-    public String getRmiPort()
-    {
-        return rmiPort;
     }
 }

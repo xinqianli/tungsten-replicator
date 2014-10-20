@@ -26,7 +26,7 @@ import com.continuent.tungsten.common.patterns.order.Sequence;
 
 @XmlRootElement
 @JsonIgnoreProperties(ignoreUnknown = true)
-@JsonPropertyOrder(alphabetic = true)
+@JsonPropertyOrder(alphabetic=true)
 public class DataSource extends Resource implements Serializable
 {
     private static final long       serialVersionUID               = 8153881753668230575L;
@@ -42,7 +42,6 @@ public class DataSource extends Resource implements Serializable
     public static final String      ALERT_MESSAGE                  = "alertMessage";
     public static final String      ALERT_TIME                     = "alertTime";
     public static final String      APPLIED_LATENCY                = "appliedLatency";
-    public static final String      RELATIVE_LATENCY               = "relativeLatency";
     public static final String      HOST                           = "host";
     public static final String      ROLE                           = "role";
     public static final String      VENDOR                         = "vendor";
@@ -54,10 +53,9 @@ public class DataSource extends Resource implements Serializable
     public static final String      VIPINTERFACE                   = "vipInterface";
     public static final String      VIPADDRESS                     = "vipAddress";
     public static final String      VIPISBOUND                     = "vipIsBound";
-    public static final String      ACTIVE_CONNECTION_COUNT        = "activeConnectionCount";
+    public static final String      ACTIVE_CONNECTION_COUNT        = "activeConnectionsCount";
     public static final String      CONNECTIONS_CREATED_COUNT      = "connectionsCreatedCount";
     public static final String      TYPE                           = "type";
-    public static final String      MASTER_CONNECT_URI             = "masterConnectUri";
 
     // Defaults
     public static final double      DEFAULT_APPLIED_LATENCY        = 0.0;
@@ -77,8 +75,7 @@ public class DataSource extends Resource implements Serializable
     private String                  url                            = "";
     private boolean                 isComposite                    = false;
     private int                     precedence                     = 0;
-    private boolean                 isAvailable                    = false;
-    private String                  masterConnectUri               = "";
+    private boolean                 available                      = false;
 
     private ResourceState           state                          = ResourceState.UNKNOWN;
 
@@ -90,7 +87,6 @@ public class DataSource extends Resource implements Serializable
     private String                  lastShunReason                 = "";
 
     private double                  appliedLatency                 = DEFAULT_APPLIED_LATENCY;
-    private double                  relativeLatency                = DEFAULT_APPLIED_LATENCY;
     private Date                    updateTimestamp                = new Date();
     private Date                    lastUpdate                     = new Date();
 
@@ -194,10 +190,9 @@ public class DataSource extends Resource implements Serializable
     }
 
     @JsonCreator
-    public DataSource(@JsonProperty("name")
-    String key, @JsonProperty("dataServiceName")
-    String clusterName, @JsonProperty("host")
-    String host)
+    public DataSource(@JsonProperty("name") String key,
+            @JsonProperty("dataServiceName") String clusterName,
+            @JsonProperty("host") String host)
     {
         super(ResourceType.DATASOURCE, key);
         this.dataServiceName = clusterName;
@@ -206,17 +201,17 @@ public class DataSource extends Resource implements Serializable
 
     public void addConnection(DatabaseConnection conn)
     {
-        // thread-safe: ActiveConnection is a synchronizedSet
+        // thread-safe: activeConnections is a synchronizedSet
         activeConnections.add(conn);
     }
 
     public void removeConnection(DatabaseConnection conn)
     {
-        // thread-safe: ActiveConnection is a synchronizedSet
+        // thread-safe: activeConnections is a synchronizedSet
         activeConnections.remove(conn);
     }
 
-    public long getActiveConnectionCount()
+    public long getActiveConnectionsCount()
     {
         return activeConnectionsCount.get();
     }
@@ -255,8 +250,6 @@ public class DataSource extends Resource implements Serializable
                 replicatorProps.getString(Replicator.APPLIED_LAST_EVENT_ID)));
         dsProps.setDouble(APPLIED_LATENCY,
                 replicatorProps.getDouble(Replicator.APPLIED_LATENCY));
-        dsProps.setDouble(APPLIED_LATENCY,
-                replicatorProps.getDouble(Replicator.RELATIVE_LATENCY));
         dsProps.setString(VIPINTERFACE, replicatorProps.getString(
                 Replicator.RESOURCE_VIP_INTERFACE, null, true));
         dsProps.setString(VIPADDRESS, replicatorProps.getString(
@@ -304,40 +297,12 @@ public class DataSource extends Resource implements Serializable
                 .getString(Replicator.APPLIED_LAST_EVENT_ID));
         newDs.setAppliedLatency(replicatorProps
                 .getDouble(Replicator.APPLIED_LATENCY));
-        newDs.setRelativeLatency(replicatorProps
-                .getDouble(Replicator.RELATIVE_LATENCY));
 
         newDs.setVipInterface(replicatorProps.getString(
                 Replicator.RESOURCE_VIP_INTERFACE, null, true));
 
         newDs.setVipAddress(replicatorProps.getString(
                 Replicator.RESOURCE_VIP_ADDRESS, null, true));
-
-        newDs.setVipIsBound(false);
-
-        newDs.setComposite(false);
-
-        return newDs.toProperties();
-    }
-
-    static public TungstenProperties createWitnessFromMemberHeartbeat(
-            TungstenProperties memberHeartbeatProps)
-    {
-        DataSource newDs = new DataSource(
-                memberHeartbeatProps.getString("memberName"),
-                memberHeartbeatProps.getString("clusterName"),
-                memberHeartbeatProps.getString("memberName"));
-
-        newDs.setRole(DataSourceRole.witness.toString());
-
-        newDs.setAlertStatus(DataSourceAlertStatus.OK);
-
-        // Standby data sources are not available for reads or writes
-        newDs.setIsAvailable(false);
-        newDs.setState(ResourceState.OFFLINE);
-        newDs.setStandby(true);
-
-        newDs.setPrecedence(99);
 
         newDs.setVipIsBound(false);
 
@@ -392,16 +357,6 @@ public class DataSource extends Resource implements Serializable
         this.role = role;
     }
 
-    public String getMasterConnectUri()
-    {
-        return masterConnectUri;
-    }
-
-    public void setMasterConnectUri(String masterConnectUri)
-    {
-        this.masterConnectUri = masterConnectUri;
-    }
-
     public int getPrecedence()
     {
         return precedence;
@@ -430,7 +385,7 @@ public class DataSource extends Resource implements Serializable
      */
     public boolean isAvailable()
     {
-        return isAvailable;
+        return available;
     }
 
     /**
@@ -438,7 +393,7 @@ public class DataSource extends Resource implements Serializable
      */
     public boolean getIsAvailable()
     {
-        return isAvailable;
+        return available;
     }
 
     public void setCritical(String message)
@@ -449,9 +404,10 @@ public class DataSource extends Resource implements Serializable
     /**
      * @param isAvailable the isDateAvailable to set
      */
+    @JsonIgnore
     public void setIsAvailable(boolean isAvailable)
     {
-        this.isAvailable = isAvailable;
+        this.available = isAvailable;
 
         if (isAvailable)
         {
@@ -505,16 +461,15 @@ public class DataSource extends Resource implements Serializable
             this.setDriver(ds.getDriver());
             this.setUrl(ds.getUrl());
             this.setRole(ds.getRole());
-            this.setMasterConnectUri(ds.getMasterConnectUri());
             this.setPrecedence(ds.getPrecedence());
             this.setIsAvailable(ds.getIsAvailable());
             this.setState(ds.getState());
             this.setLastError(ds.getLastError());
             this.setLastShunReason(ds.getLastShunReason());
             this.setAppliedLatency(ds.getAppliedLatency());
-            this.setRelativeLatency(ds.getRelativeLatency());
             this.setUpdateTimestamp(ds.getUpdateTimestamp());
             this.setLastError(ds.getLastError());
+            this.setHighWater(ds.getHighWater());
             this.setVipAddress(ds.getVipAddress());
             this.setVipInterface(ds.getVipInterface());
             this.setVipIsBound(ds.getVipIsBound());
@@ -534,7 +489,6 @@ public class DataSource extends Resource implements Serializable
         props.setString(DRIVER, getDriver());
         props.setString(URL, getUrl());
         props.setString(ROLE, getRole().toString());
-        props.setString(MASTER_CONNECT_URI, getMasterConnectUri());
         props.setString(ALERT_STATUS, alertStatus.toString());
         props.setString(ALERT_MESSAGE, alertMessage);
         props.setLong(ALERT_TIME, alertTime);
@@ -544,7 +498,6 @@ public class DataSource extends Resource implements Serializable
         props.setString(LASTERROR, getLastError());
         props.setString(LASTSHUNREASON, getLastShunReason());
         props.setDouble(APPLIED_LATENCY, appliedLatency);
-        props.setDouble(RELATIVE_LATENCY, relativeLatency);
         props.setLong(ACTIVE_CONNECTION_COUNT, activeConnectionsCount.get());
         props.setLong(CONNECTIONS_CREATED_COUNT, connectionsCreatedCount.get());
         props.setLong("statementsCreatedCount", statementsCreatedCount.get());
@@ -564,6 +517,7 @@ public class DataSource extends Resource implements Serializable
     }
 
     /**
+     * TODO: toMap definition.
      * 
      * @return properties representing this datasource
      */
@@ -593,6 +547,7 @@ public class DataSource extends Resource implements Serializable
      * 
      * @return Returns the sequence.
      */
+    @JsonIgnore
     public Sequence getSequence()
     {
         return sequence;
@@ -1062,35 +1017,5 @@ public class DataSource extends Resource implements Serializable
                     + (slashIdx != -1 ? slashIdx : remainder.length())
                     + ". Found colonIdx=" + colonIdx + " slashIdx=" + slashIdx);
         }
-    }
-
-    /**
-     * Returns the isWitness value.
-     * 
-     * @return Returns the isWitness.
-     */
-    public boolean isWitness()
-    {
-        return role.equals(DataSourceRole.witness);
-    }
-
-    /**
-     * Returns the relativeLatency value.
-     * 
-     * @return Returns the relativeLatency.
-     */
-    public double getRelativeLatency()
-    {
-        return relativeLatency;
-    }
-
-    /**
-     * Sets the relativeLatency value.
-     * 
-     * @param relativeLatency The relativeLatency to set.
-     */
-    public void setRelativeLatency(double relativeLatency)
-    {
-        this.relativeLatency = relativeLatency;
     }
 }

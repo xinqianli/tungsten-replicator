@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2014 Continuent Inc.
+ * Copyright (C) 2010 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Robert Hodges
- * Contributor(s): Gilles Rayrat, Stephane Giron
+ * Contributor(s): Gilles Rayrat
  */
 
 package com.continuent.tungsten.replicator.extractor.mysql;
@@ -32,14 +32,11 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import org.apache.log4j.Logger;
 
-import com.continuent.tungsten.common.io.WrappedInputStream;
 import com.continuent.tungsten.common.mysql.MySQLConstants;
 import com.continuent.tungsten.common.mysql.MySQLIOs;
 import com.continuent.tungsten.common.mysql.MySQLPacket;
@@ -57,28 +54,24 @@ import com.continuent.tungsten.replicator.extractor.ExtractorException;
  */
 public class RelayLogClient
 {
-    private static Logger             logger                      = Logger.getLogger(RelayLogClient.class);
+    private static Logger             logger       = Logger.getLogger(RelayLogClient.class);
 
     // Magic number for MySQL binlog files.
-    private static byte[]             magic                       = {
-            (byte) 0xfe, 0x62, 0x69, 0x6e                         };
-
-    // Tells the server that we can handle MARIA GTID event
-    private static int                MARIA_SLAVE_CAPABILITY_GTID = 4;
+    private static byte[]             magic        = {(byte) 0xfe, 0x62, 0x69,
+            0x6e                                   };
 
     // Options.
-    private String                    url                         = "jdbc:mysql:thin://localhost:3306/";
-    private String                    login                       = "tungsten";
-    private String                    password                    = "secret";
-    private String                    binlog                      = null;
-    private String                    binlogPrefix                = "mysql-bin";
-    private long                      offset                      = 4;
-    private String                    binlogDir                   = ".";
-    private boolean                   autoClean                   = true;
-    private int                       serverId                    = 1;
-    private long                      readTimeout                 = 60;
-    private boolean                   deterministicIo             = false;
-    private LinkedBlockingQueue<File> logQueue                    = null;
+    private String                    url          = "jdbc:mysql:thin://localhost:3306/";
+    private String                    login        = "tungsten";
+    private String                    password     = "secret";
+    private String                    binlog       = null;
+    private String                    binlogPrefix = "mysql-bin";
+    private long                      offset       = 4;
+    private String                    binlogDir    = ".";
+    private boolean                   autoClean    = true;
+    private int                       serverId     = 1;
+    private long                      readTimeout  = 60;
+    private LinkedBlockingQueue<File> logQueue     = null;
 
     // Relay storage and positioning information.
     private File                      relayLog;
@@ -86,13 +79,12 @@ public class RelayLogClient
     private File                      binlogIndex;
     private OutputStream              relayOutput;
     private long                      relayBytes;
-    private RelayLogPosition          logPosition                 = new RelayLogPosition();
+    private RelayLogPosition          logPosition  = new RelayLogPosition();
 
     // Database connection information.
     private Connection                conn;
-    private InputStream               input                       = null;
-    private OutputStream              output                      = null;
-    private String                    checksum                    = null;
+    private InputStream               input        = null;
+    private OutputStream              output       = null;
 
     /** Create new relay log client instance. */
     public RelayLogClient()
@@ -182,11 +174,6 @@ public class RelayLogClient
     public void setServerId(int serverId)
     {
         this.serverId = serverId;
-    }
-
-    public void setDeterministicIo(boolean deterministicIo)
-    {
-        this.deterministicIo = deterministicIo;
     }
 
     public synchronized LinkedBlockingQueue<File> getLogQueue()
@@ -325,7 +312,7 @@ public class RelayLogClient
         try
         {
             MySQLIOs io = MySQLIOs.getMySQLIOs(conn);
-            input = new WrappedInputStream(io.getInput(), deterministicIo);
+            input = io.getInput();
             output = io.getOutput();
         }
         catch (Exception e)
@@ -380,68 +367,7 @@ public class RelayLogClient
             }
         }
 
-        Statement statement = null;
-        try
-        {
-            // Tell master we are checksum aware
-            statement = conn.createStatement();
-            statement
-                    .executeUpdate("SET @master_binlog_checksum= @@global.binlog_checksum");
-
-            // And check whether master is going to send checksum events
-            ResultSet rs = statement
-                    .executeQuery("SELECT @@binlog_checksum as checksum");
-
-            if (rs.next())
-            {
-                checksum = rs.getString("checksum");
-                logger.info("Master binlog is checksummed with : " + checksum);
-            }
-            rs.close();
-        }
-        catch (SQLException e1)
-        {
-            if (logger.isDebugEnabled())
-                logger.debug("This server does not support checksums", e1);
-            else
-                logger.info("This server does not support checksums");
-        }
-        finally
-        {
-            if (statement != null)
-                try
-                {
-                    statement.close();
-                }
-                catch (SQLException e)
-                {
-                }
-        }
-
-        try
-        {
-            // Tell master we know about MariaDB 10 GTID events
-            statement = conn.createStatement();
-            statement.executeUpdate("SET @mariadb_slave_capability="
-                    + MARIA_SLAVE_CAPABILITY_GTID);
-        }
-        catch (SQLException e1)
-        {
-            logger.info("Failure while setting MariaDB 10 GTIDs support");
-        }
-        finally
-        {
-            if (statement != null)
-                try
-                {
-                    statement.close();
-                }
-                catch (SQLException e)
-                {
-                }
-        }
-
-        // Ask for binlog data.
+        // Ask for binlog data.  
         logger.info("Binlog read timeout set to " + readTimeout + " seconds");
         try
         {
@@ -615,14 +541,7 @@ public class RelayLogClient
         {
             // Store ROTATE_EVENT data so that we open up a new binlog event.
             offset = packet.getLong();
-            if (checksum != null && !checksum.equalsIgnoreCase("NONE"))
-            {
-                binlog = packet.getString(packet.getRemainingBytes() - 4);
-            }
-            else
-            {
-                binlog = packet.getString();
-            }
+            binlog = packet.getString();
 
             if (logger.isDebugEnabled())
             {
@@ -751,14 +670,12 @@ public class RelayLogClient
         {
             fos = new FileOutputStream(binlogIndex, true);
             OutputStreamWriter writer = new OutputStreamWriter(fos);
-            @SuppressWarnings("resource")
             PrintWriter printer = new PrintWriter(writer);
             printer.println(relayLog);
             printer.flush();
         }
         finally
         {
-            // Close FileOutputStream as this would be the real resource leak.
             if (fos != null)
             {
                 try

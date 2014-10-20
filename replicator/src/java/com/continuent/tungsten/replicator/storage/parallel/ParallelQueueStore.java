@@ -252,7 +252,7 @@ public class ParallelQueueStore implements ParallelStore
      */
     public long getMaxStoredSeqno()
     {
-        return -1;
+        return 0;
     }
 
     /**
@@ -262,7 +262,7 @@ public class ParallelQueueStore implements ParallelStore
      */
     public long getMinStoredSeqno()
     {
-        return -1;
+        return 0;
     }
 
     /**

@@ -18,8 +18,27 @@ class ClusterHosts < GroupConfigurePrompt
     
     super()
   end
+  
+  def get_new_alias_prompt
+    TemporaryPrompt.new("What host would you like to configure?  Enter nothing to stop entering #{@plural}.")
+  end
+  
+  def validate_new_alias(new_alias)
+    super(to_identifier(new_alias))
+  end
+  
+  def add_alias(new_alias)
+    fixed_alias = to_identifier(new_alias)
+    
+    super(fixed_alias)
+    
+    @config.setProperty([get_name(), fixed_alias, HOST], new_alias)
+  end
 end
 
+# Prompts that include this module will be collected for each host 
+# across interactive mode, the configure script and the
+# tungsten-installer script
 module ClusterHostPrompt
   include GroupConfigurePromptMember
   include HashPromptDefaultsModule
@@ -58,12 +77,7 @@ module ClusterHostPrompt
   end
   
   def get_hash_prompt_key
-    ds_alias = @config.getNestedProperty([DEPLOYMENT_DATASERVICE])
-    if ds_alias.to_s() == ""
-      ds_alias = @config.getProperty(get_member_key(DEPLOYMENT_DATASERVICE))
-    end
-    
-    return [DATASERVICE_HOST_OPTIONS, ds_alias, @name]
+    return [DATASERVICE_HOST_OPTIONS, @config.getProperty(get_member_key(DEPLOYMENT_DATASERVICE)), @name]
   end
 end
 
@@ -87,42 +101,6 @@ class DeploymentCommandPrompt < ConfigurePrompt
   
   def initialize
     super(DEPLOYMENT_COMMAND, "Current command being run", PV_ANY)
-  end
-end
-
-class DeploymentExternalConfigurationTypePrompt < ConfigurePrompt
-  include ConstantValueModule
-  include NoTemplateValuePrompt
-  include NoReplicatorRestart
-  include NoManagerRestart
-  include NoConnectorRestart
-  
-  def initialize
-    super(DEPLOYMENT_EXTERNAL_CONFIGURATION_TYPE, "", PV_ANY)
-  end
-end
-
-class DeploymentExternalConfigurationSourcePrompt < ConfigurePrompt
-  include ConstantValueModule
-  include NoTemplateValuePrompt
-  include NoReplicatorRestart
-  include NoManagerRestart
-  include NoConnectorRestart
-  
-  def initialize
-    super(DEPLOYMENT_EXTERNAL_CONFIGURATION_SOURCE, "", PV_ANY)
-  end
-end
-
-class DeploymentConfigurationKeyPrompt < ConfigurePrompt
-  include ConstantValueModule
-  include NoTemplateValuePrompt
-  include NoReplicatorRestart
-  include NoManagerRestart
-  include NoConnectorRestart
-  
-  def initialize
-    super(DEPLOYMENT_CONFIGURATION_KEY, "", PV_ANY)
   end
 end
 
@@ -184,6 +162,82 @@ class RemotePackagePath < ConfigurePrompt
   end
 end
 
+class DeployCurrentPackagePrompt < ConfigurePrompt
+  include AdvancedPromptModule
+  include NoTemplateValuePrompt
+  include NoStoredServerConfigValue
+  
+  def initialize
+    super(DEPLOY_CURRENT_PACKAGE, "Deploy the current Tungsten package", PV_BOOLEAN, "true")
+    self.extend(NotTungstenUpdatePrompt)
+  end
+end
+
+class DeployPackageURIPrompt < ConfigurePrompt
+  include AdvancedPromptModule
+  include NoTemplateValuePrompt
+  include NoStoredServerConfigValue
+
+  def initialize
+    super(DEPLOY_PACKAGE_URI, "URL for the Tungsten package to deploy", PV_URI)
+    self.extend(NotTungstenUpdatePrompt)
+  end
+
+  def enabled?
+    @config.getProperty(DEPLOY_CURRENT_PACKAGE) != "true"
+  end
+  
+  def load_default_value
+    if enabled?
+      @default = "https://s3.amazonaws.com/releases.continuent.com/#{Configurator.instance.get_release_name()}.tar.gz"
+    else
+      @default = nil
+    end
+  end
+  
+  def accept?(raw_value)
+    value = super(raw_value)
+    if value.to_s == ""
+      return value
+    end
+    
+    uri = URI::parse(value)
+    if uri.scheme == "http" || uri.scheme == "https"
+      unless value =~ /.tar.gz/
+        raise "Only files ending in .tar.gz may be fetched using #{uri.scheme.upcase}"
+      end
+      
+      return value
+    elsif uri.scheme == "file"
+      if (uri.host == "localhost")
+        package_basename = File.basename(uri.path)
+        if package_basename =~ /.tar.gz$/
+          return value
+        elsif package_basename =~ /.tar$/
+          return value
+        elsif File.extname(uri.path) == ""
+          return value
+        else
+          raise "#{package_basename} is not a directory or recognized archive file"
+        end
+      elsif (uri.host == "remote")
+        package_basename = File.basename(uri.path)
+        if package_basename =~ /.tar.gz$/
+          return value
+        elsif package_basename =~ /.tar$/
+          return value
+        elsif File.extname(uri.path) == ""
+          return value
+        else
+          raise "#{package_basename} is not a directory or recognized archive file"
+        end
+      end
+    else
+      raise "#{uri.scheme.upcase()} is an unrecognized scheme for the deployment package"
+    end
+  end
+end
+
 class ConfigTargetBasenamePrompt < ConfigurePrompt
   include ConstantValueModule
   include NoTemplateValuePrompt
@@ -194,13 +248,15 @@ class ConfigTargetBasenamePrompt < ConfigurePrompt
   end
   
   def load_default_value
-    if "#{@config.getProperty(HOME_DIRECTORY)}/#{RELEASES_DIRECTORY_NAME}/#{Configurator.instance.get_basename()}" == Configurator.instance.get_base_path()
-      @default = Configurator.instance.get_basename()
-    elsif Configurator.instance.is_locked?()
+    if Configurator.instance.is_locked?()
       @default = Configurator.instance.get_basename()
     else
       @default = Configurator.instance.get_unique_basename()
     end
+  end
+  
+  def save_value?(v)
+    true
   end
 end
 
@@ -219,18 +275,6 @@ class HostPrompt < ConfigurePrompt
   def allow_group_default
     false
   end
-  
-  def enabled_for_command_line?
-    true
-  end
-  
-  def build_command_line_argument?(member, v)
-    if to_identifier(v) == member
-      false
-    else
-      true
-    end
-  end
 end
 
 class UserIDPrompt < ConfigurePrompt
@@ -238,7 +282,7 @@ class UserIDPrompt < ConfigurePrompt
   
   def initialize
     super(USERID, "System User", 
-      PV_ANY, Configurator.instance.whoami())
+      PV_IDENTIFIER, Configurator.instance.whoami())
     self.extend(NotTungstenUpdatePrompt)
   end
   
@@ -267,6 +311,10 @@ class HomeDirectoryPrompt < ConfigurePrompt
     if value == Configurator.instance.get_base_path()
       error("You must specify a separate location to deploy Continuent Tungsten")
     end
+  end
+  
+  def save_value?(v)
+    true
   end
 end
 
@@ -317,20 +365,6 @@ class LogsDirectoryPrompt < ConfigurePrompt
   end
 end
 
-class MetadataDirectoryPrompt < ConfigurePrompt
-  include ClusterHostPrompt
-  include ConstantValueModule
-  
-  def initialize
-    super(METADATA_DIRECTORY, "Directory for storing metadata", PV_FILENAME)
-    self.extend(NotTungstenUpdatePrompt)
-  end
-  
-  def load_default_value
-    @default = "#{@config.getProperty(get_member_key(HOME_DIRECTORY))}/#{METADATA_DIRECTORY_NAME}"
-  end
-end
-
 class ConfigDirectoryPrompt < ConfigurePrompt
   include ClusterHostPrompt
   include ConstantValueModule
@@ -341,6 +375,19 @@ class ConfigDirectoryPrompt < ConfigurePrompt
   
   def load_default_value
     @default = "#{@config.getProperty(get_member_key(HOME_DIRECTORY))}/#{CONFIG_DIRECTORY_NAME}"
+  end
+end
+
+class ConfigFilenamePrompt < ConfigurePrompt
+  include ClusterHostPrompt
+  include ConstantValueModule
+  
+  def initialize
+    super(CONFIG_FILENAME, "Filename for storing the current host config", PV_FILENAME)
+  end
+  
+  def load_default_value
+    @default = "#{@config.getProperty(get_member_key(CONFIG_DIRECTORY))}/#{Configurator::HOST_CONFIG}"
   end
 end
 
@@ -422,7 +469,25 @@ class TargetBasenamePrompt < ConfigurePrompt
       return
     end
     
-    @default = File.basename(Configurator.instance.get_base_path())
+    if @config.getProperty(get_member_key(HOME_DIRECTORY)) == Configurator.instance.get_base_path()
+      @default = File.basename(Configurator.instance.get_base_path())
+    elsif "#{@config.getProperty(get_member_key(HOME_DIRECTORY))}/#{RELEASES_DIRECTORY_NAME}/#{Configurator.instance.get_basename()}" == Configurator.instance.get_base_path()
+      @default = File.basename(Configurator.instance.get_base_path())
+    else
+      if @config.getProperty(DEPLOY_CURRENT_PACKAGE) == "true"
+        @default = File.basename(Configurator.instance.get_package_path())
+      else
+        uri = URI::parse(@config.getProperty(get_member_key(DEPLOY_PACKAGE_URI)))
+        package_basename = File.basename(uri.path)          
+        if package_basename =~ /.tar.gz$/
+          package_basename = File.basename(package_basename, ".tar.gz")
+        elsif package_basename =~ /.tar$/
+          package_basename = File.basename(package_basename, ".tar")
+        end
+        
+        @default = package_basename
+      end
+    end
   end
 end
 
@@ -439,162 +504,11 @@ class PrepareDirectoryPrompt < ConfigurePrompt
   
   def get_default_value
     target_directory = @config.getProperty(get_member_key(TARGET_DIRECTORY))
-    if target_directory != nil && File.exist?(target_directory)
+    if File.exist?(target_directory)
       return target_directory
     else
       return "#{@config.getProperty(get_member_key(HOME_DIRECTORY))}/#{RELEASES_DIRECTORY_NAME}/#{PREPARE_RELEASE_DIRECTORY}/#{@config.getProperty(get_member_key(TARGET_BASENAME))}"
     end
-  end
-end
-
-class JavaMemorySize < ConfigurePrompt
-  include ClusterHostPrompt
-  include AdvancedPromptModule
-  include MigrateFromReplicationServices
-  
-  def initialize
-    super(REPL_JAVA_MEM_SIZE, "Replicator Java heap memory size in Mb (min 128)",
-      PV_INTEGER, 1024)
-  end
-end
-
-class JavaFileEncoding < ConfigurePrompt
-  include ClusterHostPrompt
-  include AdvancedPromptModule
-  include MigrateFromReplicationServices
-  
-  def initialize
-    super(REPL_JAVA_FILE_ENCODING, "Java platform charset (esp. for heterogeneous replication)",
-      PV_ANY, "")
-  end
-  
-  def required?
-    false
-  end
-  
-  def get_default_value
-    has_heterogenous_service = false
-    @config.getPropertyOr([REPL_SERVICES], {}).keys().each{
-      |rs_alias|
-      if rs_alias == DEFAULTS
-        next
-      end
-      
-      if @config.getProperty([REPL_SERVICES, rs_alias, ENABLE_HETEROGENOUS_MASTER]) == "true"
-        has_heterogenous_service = true
-      end
-      
-      if @config.getProperty([REPL_SERVICES, rs_alias, ENABLE_HETEROGENOUS_SLAVE]) == "true"
-        has_heterogenous_service = true
-      end
-    }
-    
-    if has_heterogenous_service == true
-      @default = "UTF8"
-    else
-      super()
-    end
-  end
-end
-
-class JavaUserTimezone < ConfigurePrompt
-  include ClusterHostPrompt
-  include AdvancedPromptModule
-  include MigrateFromReplicationServices
-  
-  def initialize
-    super(REPL_JAVA_USER_TIMEZONE, "Java VM Timezone (esp. for cross-site replication)",
-      PV_ANY, "")
-  end
-  
-  def required?
-    false
-  end
-end
-
-class ReplicationAPI < ConfigurePrompt
-  include ClusterHostPrompt
-  include AdvancedPromptModule
-
-  def initialize
-    super(REPL_API, "Enable the replication API", PV_BOOLEAN, "false")
-  end
-  
-  def get_template_value
-    if get_value() == "true"
-      ""
-    else
-      "#"
-    end
-  end
-end
-
-class ReplicationAPIHost < ConfigurePrompt
-  include ClusterHostPrompt
-  include AdvancedPromptModule
-
-  def initialize
-    super(REPL_API_HOST, "Hostname that the replication API should listen on", PV_HOSTNAME, "localhost")
-  end
-  
-  def enabled?
-    super() && @config.getProperty(get_member_key(REPL_API)) == "true"
-  end
-
-  def enabled_for_config?
-    super() && @config.getProperty(get_member_key(REPL_API)) == "true"
-  end
-end
-
-class ReplicationAPIPort < ConfigurePrompt
-  include ClusterHostPrompt
-  include AdvancedPromptModule
-
-  def initialize
-    super(REPL_API_PORT, "Port that the replication API should bind to", PV_INTEGER, "19999")
-  end
-
-  def enabled?
-    super() && @config.getProperty(get_member_key(REPL_API)) == "true"
-  end
-
-  def enabled_for_config?
-    super() && @config.getProperty(get_member_key(REPL_API)) == "true"
-  end
-end
-
-class ReplicationAPIUser < ConfigurePrompt
-  include ClusterHostPrompt
-  include AdvancedPromptModule
-
-  def initialize
-    super(REPL_API_USER, "HTTP basic auth username for the replication API", PV_ANY, "tungsten")
-  end
-  
-  def enabled?
-    super() && @config.getProperty(get_member_key(REPL_API)) == "true"
-  end
-
-  def enabled_for_config?
-    super() && @config.getProperty(get_member_key(REPL_API)) == "true"
-  end
-end
-
-class ReplicationAPIPassword < ConfigurePrompt
-  include ClusterHostPrompt
-  include AdvancedPromptModule
-  include PrivateArgumentModule
-
-  def initialize
-    super(REPL_API_PASSWORD, "HTTP basic auth password for the replication API", PV_ANY, "secret")
-  end
-  
-  def enabled?
-    super() && @config.getProperty(get_member_key(REPL_API)) == "true"
-  end
-
-  def enabled_for_config?
-    super() && @config.getProperty(get_member_key(REPL_API)) == "true"
   end
 end
 
@@ -627,15 +541,19 @@ class HostEnableManager < ConfigurePrompt
     if get_member() == DEFAULTS
       @default = false.to_s
     else
-      @config.getPropertyOr([MANAGERS], {}).each_key{
+      @config.getPropertyOr([REPL_SERVICES], {}).each_key{
         |rs_alias|
         
         if rs_alias == DEFAULTS
           next
         end
         
-        if @config.getProperty([MANAGERS, rs_alias, DEPLOYMENT_HOST]) == get_member()
-          @default = true.to_s
+        if @config.getProperty([REPL_SERVICES, rs_alias, DEPLOYMENT_HOST]) == get_member()
+          topology = Topology.build(@config.getProperty([REPL_SERVICES, rs_alias, DEPLOYMENT_DATASERVICE]), @config)
+          
+          if topology.use_management?()
+            @default = true.to_s
+          end
         end
       }
     end
@@ -735,21 +653,6 @@ class HostDefaultDataserviceName < ConfigurePrompt
       end
     }
     
-    @config.getNestedPropertyOr([MANAGERS], {}).each_key{
-      |m_alias|
-      if m_alias == DEFAULTS
-        next
-      end
-      
-      if @config.getNestedProperty([MANAGERS, m_alias, DEPLOYMENT_HOST]) == get_member()
-        ds_alias = @config.getNestedProperty([MANAGERS, m_alias, DEPLOYMENT_DATASERVICE])
-        if ds_alias != ""
-          @default = ds_alias
-          return
-        end
-      end
-    }
-    
     @config.getNestedPropertyOr([CONNECTORS], {}).each_key{
       |h_alias|
       if h_alias == DEFAULTS
@@ -772,68 +675,6 @@ class HostDefaultDataserviceName < ConfigurePrompt
       @default = non_cluster_ds_alias
       return
     end
-  end
-end
-
-class HostDataserviceAliases < ConfigurePrompt
-  include ClusterHostPrompt
-  include HiddenValueModule
-  include NoSystemDefault
-  
-  def initialize
-    super(DEPLOYMENT_DATASERVICE_ALIASES, "Aliases for all dataservices on this host", PV_ANY)
-  end
-  
-  def allow_group_default
-    false
-  end
-  
-  def load_default_value
-    @default = {}
-    
-    @config.getNestedPropertyOr([REPL_SERVICES], {}).each_key{
-      |rs_alias|
-      if rs_alias == DEFAULTS
-        next
-      end
-      
-      if @config.getNestedProperty([REPL_SERVICES, rs_alias, DEPLOYMENT_HOST]) == get_member()
-        ds_alias = @config.getNestedProperty([REPL_SERVICES, rs_alias, DEPLOYMENT_DATASERVICE])
-        service_name = @config.getProperty([DATASERVICES, ds_alias, DATASERVICENAME])
-        @default[service_name] = ds_alias
-      end
-    }
-    
-    @config.getNestedPropertyOr([MANAGERS], {}).each_key{
-      |m_alias|
-      if m_alias == DEFAULTS
-        next
-      end
-      
-      if @config.getNestedProperty([MANAGERS, m_alias, DEPLOYMENT_HOST]) == get_member()
-        ds_alias = @config.getNestedProperty([MANAGERS, m_alias, DEPLOYMENT_DATASERVICE])
-        service_name = @config.getProperty([DATASERVICES, ds_alias, DATASERVICENAME])
-        @default[service_name] = ds_alias
-      end
-    }
-    
-    @config.getNestedPropertyOr([CONNECTORS], {}).each_key{
-      |h_alias|
-      if h_alias == DEFAULTS
-        next
-      end
-      
-      if @config.getNestedProperty([CONNECTORS, h_alias, DEPLOYMENT_HOST]) == get_member()
-        ds_aliases = @config.getNestedProperty([CONNECTORS, h_alias, DEPLOYMENT_DATASERVICE])
-        if ! ds_aliases.kind_of?(Array)
-           ds_aliases=Array(ds_aliases);
-        end
-        ds_aliases.each{|ds_alias|
-          service_name = @config.getProperty([DATASERVICES, ds_alias, DATASERVICENAME])
-          @default[service_name] = ds_alias
-        }
-      end
-    }
   end
 end
 
@@ -888,9 +729,9 @@ class RootCommandPrefixPrompt < ConfigurePrompt
     end
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     if get_value() == "true"
-      "sudo -n"
+      "sudo"
     else
       ""
     end
@@ -902,76 +743,6 @@ class RootCommandPrefixPrompt < ConfigurePrompt
   
   def get_command_line_aliases
     [@name.gsub("_", "-")]
-  end
-end
-
-class JavaGarbageCollection < ConfigurePrompt
-  include ClusterHostPrompt
-  include AdvancedPromptModule
-  include MigrateFromReplicationServices
-  
-  def initialize
-    super(REPL_JAVA_ENABLE_CONCURRENT_GC, "Replicator Java uses concurrent garbage collection",
-      PV_BOOLEAN, "false")
-  end
-  
-  def get_template_value
-    if get_value() == "true"
-      ""
-    else
-      "#"
-    end
-  end
-end
-
-class JavaExternalLibDir < ConfigurePrompt
-  include ClusterHostPrompt
-  include AdvancedPromptModule
-  include MigrateFromReplicationServices
-
-  def initialize
-    super(REPL_JAVA_EXTERNAL_LIB_DIR, 
-      "Directory for 3rd party Jar files required by replicator",
-      PV_FILENAME, "")
-  end
-end
-
-class ReplicationRMIPort < ConfigurePrompt
-  include ClusterHostPrompt
-  include MigrateFromReplicationServices
-  
-  def initialize
-    super(REPL_RMI_PORT, "Replication RMI listen port", 
-      PV_INTEGER, 10000)
-  end
-  
-  PortForManagers.register(HOSTS, REPL_RMI_PORT, REPL_RMI_RETURN_PORT)
-end
-
-class ReplicationReturnRMIPort < ConfigurePrompt
-  include ClusterHostPrompt
-  include HiddenValueModule
-  
-  def initialize
-    super(REPL_RMI_RETURN_PORT, "Replication RMI return port", 
-      PV_INTEGER)
-  end
-  
-  def load_default_value
-    @default = (@config.getProperty(get_member_key(REPL_RMI_PORT)).to_i() + 1).to_s
-  end
-end
-
-class ReplicationServiceMetadataDirectory < ConfigurePrompt
-  include ClusterHostPrompt
-  
-  def initialize
-    super(REPL_METADATA_DIRECTORY, "Replicator metadata directory", PV_FILENAME)
-    self.extend(NotTungstenUpdatePrompt)
-  end
-  
-  def load_default_value
-    @default = @config.getProperty(get_member_key(METADATA_DIRECTORY)) + "/applier"
   end
 end
 
@@ -1091,6 +862,10 @@ class StartServicesPrompt < ConfigurePrompt
   def load_default_value
     @default = @config.getProperty(get_member_key(SVC_REPORT))
   end
+  
+  def get_command_line_argument_value
+    "true"
+  end
 end
 
 class ReportServicesPrompt < ConfigurePrompt
@@ -1100,6 +875,10 @@ class ReportServicesPrompt < ConfigurePrompt
     super(SVC_REPORT, "Start the services and report out the status after configuration", 
       PV_BOOLEAN, "false")
     self.extend(NotTungstenUpdatePrompt)
+  end
+  
+  def get_command_line_argument_value
+    "true"
   end
 end
 
@@ -1111,21 +890,6 @@ class ProfileScriptPrompt < ConfigurePrompt
   
   def initialize
     super(PROFILE_SCRIPT, "Append commands to include env.sh in this profile script", PV_ANY, "")
-  end
-  
-  def required?
-    false
-  end
-end
-
-class ExecutablePrefixPrompt < ConfigurePrompt
-  include ClusterHostPrompt
-  include NoConnectorRestart
-  include NoReplicatorRestart
-  include NoManagerRestart
-  
-  def initialize
-    super(EXECUTABLE_PREFIX, "Declare aliases for all scripts with this prefix to support multiple installations per host", PV_ANY, "")
   end
   
   def required?
@@ -1223,7 +987,7 @@ class HostGlobalProperties < ConfigurePrompt
     false
   end
   
-  def build_command_line_argument(member, values, public_argument = false)
+  def build_command_line_argument(values)
     args = []
     
     if values.is_a?(Array)
@@ -1294,7 +1058,7 @@ class HostSkippedChecks < ConfigurePrompt
     false
   end
   
-  def build_command_line_argument(member, values, public_argument = false)
+  def build_command_line_argument(values)
     args = []
     
     if values.is_a?(Array)
@@ -1365,7 +1129,7 @@ class HostSkippedWarnings < ConfigurePrompt
     false
   end
   
-  def build_command_line_argument(member, values, public_argument = false)
+  def build_command_line_argument(values)
     args = []
     
     if values.is_a?(Array)
@@ -1391,19 +1155,6 @@ class HostPreferredPath < ConfigurePrompt
   
   def initialize
     super(PREFERRED_PATH, "Additional command path", PV_ANY, "")
-  end
-end
-
-class TemplateSearchPath < ConfigurePrompt
-  include ClusterHostPrompt
-  include AdvancedPromptModule
-  
-  def initialize
-    super(TEMPLATE_SEARCH_PATH, "Additional path to find configuration templates", PV_ANY)
-  end
-  
-  def load_default_value
-    @default = "#{@config.getProperty(get_member_key(HOME_DIRECTORY))}/share/templates"
   end
 end
 
@@ -1437,292 +1188,13 @@ class HostDataServiceName < ConfigurePrompt
         next
       end
       
-      if @config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_MEMBERS]).include_alias?(get_member())
+      ds_members = @config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_MEMBERS], "").split(',')
+      if ds_members.include?(@config.getProperty(get_member_key(HOST)))
         if Topology.build(ds_alias, @config).use_management?()
           @default = @config.getProperty([DATASERVICES, ds_alias, DATASERVICENAME])
         end
       end
     }
-  end
-end
-
-class HostSecurityDirectory < ConfigurePrompt
-  include ClusterHostPrompt
-  
-  def initialize
-    super(SECURITY_DIRECTORY, "Storage directory for the Java security/encryption files", PV_FILENAME)
-  end
-  
-  def load_default_value
-    @default = "#{@config.getProperty(get_member_key(HOME_DIRECTORY))}/share"
-  end
-end
-
-class HostEnableRMIAuthentication < ConfigurePrompt
-  include ClusterHostPrompt
-  
-  def initialize
-    super(ENABLE_RMI_AUTHENTICATION, "Enable RMI authentication for the services running on this host", PV_BOOLEAN, "false")
-    add_command_line_alias("rmi-authentication")
-  end
-end
-
-class HostEnableRMISSL < ConfigurePrompt
-  include ClusterHostPrompt
-  
-  def initialize
-    super(ENABLE_RMI_SSL, "Enable SSL encryption of RMI communication on this host", PV_BOOLEAN, "false")
-    add_command_line_alias("rmi-ssl")
-  end
-end
-
-class HostRMIUser < ConfigurePrompt
-  include ClusterHostPrompt
-  
-  def initialize
-    super(RMI_USER, "The username for RMI authentication", PV_ANY, "tungsten")
-  end
-end
-
-class HostJavaKeystorePassword < ConfigurePrompt
-  include ClusterHostPrompt
-  include PrivateArgumentModule
-  
-  def initialize
-    super(JAVA_KEYSTORE_PASSWORD, "The password for unlocking the tungsten_keystore.jks file in the security directory", PV_ANY, "tungsten")
-  end
-end
-
-class HostJavaTruststorePassword < ConfigurePrompt
-  include ClusterHostPrompt
-  include PrivateArgumentModule
-  
-  def initialize
-    super(JAVA_TRUSTSTORE_PASSWORD, "The password for unlocking the tungsten_truststore.jks file in the security directory", PV_ANY, "tungsten")
-  end
-end
-
-class HostJavaKeystorePath < ConfigurePrompt
-  include ClusterHostPrompt
-  include NoStoredServerConfigValue
-  
-  def initialize
-    super(JAVA_KEYSTORE_PATH, "Local path to the Java Keystore file.", PV_FILENAME)
-  end
-  
-  def get_template_value
-    @config.getProperty(get_member_key(SECURITY_DIRECTORY)) + "/tungsten_keystore.jks"
-  end
-  
-  def required?
-    false
-  end
-  
-  def validate_value(value)
-    super(value)
-    if is_valid?() && value != ""
-      unless File.exists?(value)
-        error("The file #{value} does not exist")
-      end
-    end
-    
-    is_valid?()
-  end
-  
-  DeploymentFiles.register(JAVA_KEYSTORE_PATH, GLOBAL_JAVA_KEYSTORE_PATH)
-end
-
-class GlobalHostJavaKeystorePath < ConfigurePrompt
-  include ClusterHostPrompt
-  include ConstantValueModule
-  include NoStoredServerConfigValue
-  
-  def initialize
-    super(GLOBAL_JAVA_KEYSTORE_PATH, "Staging path to the Java Keystore file", 
-      PV_FILENAME)
-  end
-end
-
-class HostJavaTruststorePath < ConfigurePrompt
-  include ClusterHostPrompt
-  include NoStoredServerConfigValue
-  
-  def initialize
-    super(JAVA_TRUSTSTORE_PATH, "Local path to the Java Truststore file.", PV_FILENAME)
-  end
-  
-  def get_template_value
-    @config.getProperty(get_member_key(SECURITY_DIRECTORY)) + "/tungsten_truststore.ts"
-  end
-  
-  def required?
-    false
-  end
-  
-  def validate_value(value)
-    super(value)
-    if is_valid?() && value != ""
-      unless File.exists?(value)
-        error("The file #{value} does not exist")
-      end
-    end
-    
-    is_valid?()
-  end
-  
-  DeploymentFiles.register(JAVA_TRUSTSTORE_PATH, GLOBAL_JAVA_TRUSTSTORE_PATH)
-end
-
-class GlobalHostJavaTruststorePath < ConfigurePrompt
-  include ClusterHostPrompt
-  include ConstantValueModule
-  include NoStoredServerConfigValue
-  
-  def initialize
-    super(GLOBAL_JAVA_TRUSTSTORE_PATH, "Staging path to the Java Truststore file", 
-      PV_FILENAME)
-  end
-end
-
-class HostJavaJMXRemoteAccessPath < ConfigurePrompt
-  include ClusterHostPrompt
-  include NoStoredServerConfigValue
-  
-  def initialize
-    super(JAVA_JMXREMOTE_ACCESS_PATH, "Local path to the Java JMX Remote Access file.", PV_FILENAME)
-  end
-  
-  def get_template_value
-    @config.getProperty(get_member_key(SECURITY_DIRECTORY)) + "/jmxremote.access"
-  end
-  
-  def required?
-    false
-  end
-  
-  def validate_value(value)
-    super(value)
-    if is_valid?() && value != ""
-      unless File.exists?(value)
-        error("The file #{value} does not exist")
-      end
-    end
-    
-    is_valid?()
-  end
-  
-  DeploymentFiles.register(JAVA_JMXREMOTE_ACCESS_PATH, GLOBAL_JAVA_JMXREMOTE_ACCESS_PATH)
-end
-
-class GlobalHostJavaJMXRemoteAccessPath < ConfigurePrompt
-  include ClusterHostPrompt
-  include ConstantValueModule
-  include NoStoredServerConfigValue
-  
-  def initialize
-    super(GLOBAL_JAVA_JMXREMOTE_ACCESS_PATH, "Staging path to the Java JMX Remote Access file", 
-      PV_FILENAME)
-  end
-end
-
-class HostJavaPasswordStorePath < ConfigurePrompt
-  include ClusterHostPrompt
-  include NoStoredServerConfigValue
-  
-  def initialize
-    super(JAVA_PASSWORDSTORE_PATH, "Local path to the Java Password Store file.", PV_FILENAME)
-  end
-  
-  def get_template_value
-    @config.getProperty(get_member_key(SECURITY_DIRECTORY)) + "/passwords.store"
-  end
-  
-  def required?
-    false
-  end
-  
-  def validate_value(value)
-    super(value)
-    if is_valid?() && value != ""
-      unless File.exists?(value)
-        error("The file #{value} does not exist")
-      end
-    end
-    
-    is_valid?()
-  end
-  
-  DeploymentFiles.register(JAVA_PASSWORDSTORE_PATH, GLOBAL_JAVA_PASSWORDSTORE_PATH)
-end
-
-class GlobalHostJavaPasswordStorePath < ConfigurePrompt
-  include ClusterHostPrompt
-  include ConstantValueModule
-  include NoStoredServerConfigValue
-  
-  def initialize
-    super(GLOBAL_JAVA_PASSWORDSTORE_PATH, "Staging path to the Java Password Store file", 
-      PV_FILENAME)
-  end
-end
-
-class HostBuildSecurityFiles < ConfigurePrompt
-  include ClusterHostPrompt
-  include NoStoredServerConfigValue
-  include HiddenValueModule
-  
-  def initialize
-    super(BUILD_SECURITY_FILES, "Build the necessary Java security files", PV_BOOLEAN, "false")
-  end
-end
-
-class HostSSLCA < ConfigurePrompt
-  include ClusterHostPrompt
-  include NoStoredServerConfigValue
-  include HiddenValueModule
-  
-  def initialize
-    super(SSL_CA, "Local path to the SSL certificate authority", PV_FILENAME)
-  end
-  
-  def required?
-    false
-  end
-end
-
-class HostSSLCert < ConfigurePrompt
-  include ClusterHostPrompt
-  include NoStoredServerConfigValue
-  include HiddenValueModule
-  
-  def initialize
-    super(SSL_CERT, "Local path to the SSL certificate", PV_FILENAME)
-  end
-  
-  def required?
-    false
-  end
-end
-
-class HostSSLKey < ConfigurePrompt
-  include ClusterHostPrompt
-  include NoStoredServerConfigValue
-  include HiddenValueModule
-  
-  def initialize
-    super(SSL_KEY, "Local path to the SSL certificate key", PV_FILENAME)
-  end
-  
-  def required?
-    false
-  end
-end
-
-class HostProtectConfigurationFiles < ConfigurePrompt
-  include ClusterHostPrompt
-  
-  def initialize
-    super(PROTECT_CONFIGURATION_FILES, "Make configuration files readable by only the system user", PV_BOOLEAN, "true")
   end
 end
 

@@ -19,7 +19,6 @@ v_cdc_type varchar(30) := '&2';
 v_tungsten_user varchar2(30) := '&3';
 v_pub_user varchar2(100):= '&4';
 v_change_set_name varchar2(30) := UPPER('&5');
-i_pub_tablespace number := '&6';
 
 b_sync boolean := (v_cdc_type = 'SYNC_SOURCE');
 
@@ -31,8 +30,8 @@ v_column_type varchar(50);
 column_type_len integer; 
 column_prec integer;
 column_scale integer;
-v_column_list varchar(32737);
-v_column_names varchar2(32737);
+v_column_list varchar(10000);
+v_column_names varchar2(4000);
 
 
 err_found boolean := false;
@@ -289,21 +288,6 @@ IF err_found or warn_found THEN
       DBMS_OUTPUT.PUT_LINE('* WARNING : SOME CHANGE TABLES WERE NOT CREATED. PLEASE CHECK OUTPUT FOR ERRORS. *');
    END IF; 
    DBMS_OUTPUT.PUT_LINE('**********************************************************************************');
-END IF;
-
-IF tableCount > 0 THEN
-   DECLARE
-      CURSOR C1 IS SELECT tableName FROM SYS.tungsten_load WHERE tableName NOT IN (SELECT table_name FROM ALL_TABLES WHERE owner=v_user and table_name not like 'AQ$%' and table_name not like 'CDC$%');
-   BEGIN
-      OPEN C1;
-      LOOP
-         FETCH C1 INTO v_table_name;
-         EXIT WHEN C1%NOTFOUND;
-
-         DBMS_OUTPUT.PUT_LINE ('ERROR: TABLE NOT FOUND: ' || v_table_name);
-      END LOOP;
-      CLOSE C1;
-   END;
 END IF;
 
 END;

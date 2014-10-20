@@ -1,6 +1,9 @@
+
+package com.continuent.tungsten.replicator.extractor.oracle;
+
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2011-2014 Continuent Inc.
+ * Copyright (C) 2011 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -19,8 +22,6 @@
  * Initial developer(s): Stephane Giron
  * Contributor(s):
  */
-
-package com.continuent.tungsten.replicator.extractor.oracle;
 
 import java.io.Serializable;
 import java.sql.ResultSet;
@@ -563,7 +564,14 @@ public class OracleCDCExtractor implements RawExtractor
     }
 
     /**
-     * Parse a row event.
+     * parseRowEvent definition.
+     * 
+     * @param oneRowChange
+     * @param isKeySpec
+     * @param cols TODO
+     * @param data
+     * @param rowData
+     * @throws SQLException
      */
     private void parseRowEvent(OneRowChange oneRowChange, boolean isKeySpec,
             int cols) throws SQLException
@@ -604,6 +612,9 @@ public class OracleCDCExtractor implements RawExtractor
 
     /**
      * executeStoredProcedure definition.
+     * 
+     * @param ignoreError TODO
+     * @throws ReplicatorException
      */
     private void executeQuery(String query, boolean ignoreError)
             throws ReplicatorException

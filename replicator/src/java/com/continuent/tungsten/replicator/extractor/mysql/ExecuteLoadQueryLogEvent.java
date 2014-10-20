@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2014 Continuent Inc.
+ * Copyright (C) 2010 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -32,38 +32,33 @@ import com.continuent.tungsten.replicator.extractor.mysql.conversion.LittleEndia
  * @version 1.0
  */
 public class ExecuteLoadQueryLogEvent extends QueryLogEvent
-        implements
-            LoadDataInfileEvent
 {
 
     /**
      * <ul>
-     * <li>4 bytes. The ID of the file to load.</li>
-     * <li>4 bytes. The start position within the statement for filename
-     * substitution.</li>
-     * <li>4 bytes. The end position within the statement for filename
-     * substitution.</li>
-     * <li>1 byte. How to handle duplicates: LOAD_DUP_ERROR = 0, LOAD_DUP_IGNORE
-     * = 1, LOAD_DUP_REPLACE = 2</li>
+     * <li>4 bytes. The ID of the file to load. </li>
+     * <li> 4 bytes. The start position within the statement for filename
+     * substitution. </li>
+     * <li> 4 bytes. The end position within the statement for filename
+     * substitution. </li>
+     * <li> 1 byte. How to handle duplicates: LOAD_DUP_ERROR = 0,
+     * LOAD_DUP_IGNORE = 1, LOAD_DUP_REPLACE = 2 </li>
      * </ul>
      */
 
-    private int     fileID;
-    private int     filenameStartPos;
-    private int     filenameEndPos;
-    private boolean nextEventCanBeAppended = false;
+    private int fileID;
+    private int filenameStartPos;
+    private int filenameEndPos;
+
+    /*
+     * TODO: Unused for now private int duplicateBehavior;
+     */
 
     public ExecuteLoadQueryLogEvent(byte[] buffer, int eventLength,
-            FormatDescriptionLogEvent descriptionEvent,
-            boolean parseStatements, String currentPosition)
+            FormatDescriptionLogEvent descriptionEvent, boolean parseStatements)
             throws ReplicatorException
     {
         super(buffer, descriptionEvent, MysqlBinlog.EXECUTE_LOAD_QUERY_EVENT);
-
-        this.startPosition = currentPosition;
-        if (logger.isDebugEnabled())
-            logger.debug("Extracting event at position  : " + startPosition
-                    + " -> " + getNextEventPosition());
 
         this.parseStatements = parseStatements;
 
@@ -87,12 +82,6 @@ public class ExecuteLoadQueryLogEvent extends QueryLogEvent
             throw new MySQLExtractException("too short query event");
         }
 
-        if (descriptionEvent.useChecksum())
-        {
-            // Removing the checksum from the size of the event
-            eventLength -= 4;
-        }
-
         dataLength = eventLength - (commonHeaderLength + postHeaderLength);
 
         int index = commonHeaderLength;
@@ -112,8 +101,8 @@ public class ExecuteLoadQueryLogEvent extends QueryLogEvent
                     buffer, index);
 
             index++; // commonHeaderLength + MysqlBinlog.Q_ERR_CODE_OFFSET
-            errorCode = LittleEndianConversion
-                    .convert2BytesToInt(buffer, index);
+            errorCode = LittleEndianConversion.convert2BytesToInt(buffer,
+                    index);
 
             // TODO: add a check of all *_len vars
             index += 2; // commonHeaderLength +
@@ -144,10 +133,15 @@ public class ExecuteLoadQueryLogEvent extends QueryLogEvent
             filenameEndPos = LittleEndianConversion.convert4BytesToInt(buffer,
                     index);
             index += 4;
+
+            /*
+             * TODO: Unused for now duplicateBehavior =
+             * LittleEndianConversion.convert1ByteToInt( buffer, index);
+             */
         }
         catch (IOException e)
         {
-            // TODO: Should throw exception here?
+            // TODO
         }
 
         start = commonHeaderLength + postHeaderLength;
@@ -181,7 +175,6 @@ public class ExecuteLoadQueryLogEvent extends QueryLogEvent
             }
         }
 
-        doChecksum(buffer, eventLength, descriptionEvent);
     }
 
     public int getEndPos()
@@ -197,17 +190,5 @@ public class ExecuteLoadQueryLogEvent extends QueryLogEvent
     public int getFileID()
     {
         return fileID;
-    }
-
-    @Override
-    public void setNextEventCanBeAppended(boolean b)
-    {
-        this.nextEventCanBeAppended = b;
-    }
-
-    @Override
-    public boolean canNextEventBeAppended()
-    {
-        return nextEventCanBeAppended;
     }
 }

@@ -4,7 +4,6 @@ class UpdateCommand
   if Configurator.instance.is_locked?() == false
     include RemoteCommand
     include ResetBasenamePackageModule
-    include ProvisionNewSlavesPackageModule
   end
   
   include ClusterCommandModule
@@ -16,17 +15,19 @@ class UpdateCommand
   def validate_commit
     super()
    
-    if @restart_replicators == false
-      override_promotion_setting(RESTART_REPLICATORS, false)
-    end
-    if @restart_managers == false
-      override_promotion_setting(RESTART_MANAGERS, false)
-    end
-    if @restart_connectors == false
-      override_promotion_setting(RESTART_CONNECTORS, false)
-    end
-    
-    is_valid?()
+    # Load option values.
+    @promotion_settings.props.each_key{
+      |h_alias|
+      if @restart_replicators == false
+        @promotion_settings.setProperty([h_alias, RESTART_REPLICATORS], false)
+      end
+      if @restart_managers == false
+        @promotion_settings.setProperty([h_alias, RESTART_MANAGERS], false)
+      end
+      if @restart_connectors == false
+        @promotion_settings.setProperty([h_alias, RESTART_CONNECTORS], false)
+      end
+    }
   end
 
   def parsed_options?(arguments)
@@ -115,10 +116,6 @@ class UpdateCommand
     'update'
   end
   
-  def self.get_command_aliases
-    ['upgrade']
-  end
-  
   def self.get_command_description
     "Updates an existing installation of Tungsten.  If not arguments are specified, the local configuration is used to install.  If you specify --user, --hosts and --directory; this command will get the current configuration from each host and continue."
   end
@@ -130,7 +127,7 @@ module NotTungstenUpdatePrompt
       return false
     end
     
-    if [UpdateCommand.name, ValidateUpdateCommand.name].include?(@config.getNestedProperty([DEPLOYMENT_COMMAND]))
+    if [UpdateCommand.name, ValidateUpdateCommand.name, PrepareCommand.name, PromoteCommand.name].include?(@config.getProperty(DEPLOYMENT_COMMAND))
       return false
     else
       return (super() && true)
@@ -140,11 +137,7 @@ end
 
 module NotTungstenUpdateCheck
   def enabled?
-    if [UpdateCommand.name, ValidateUpdateCommand.name].include?(@config.getNestedProperty([DEPLOYMENT_COMMAND]))
-      return false
-    end
-    
-    if Configurator.instance.is_locked?
+    if [UpdateCommand.name, ValidateUpdateCommand.name, PrepareCommand.name, PromoteCommand.name].include?(@config.getProperty(DEPLOYMENT_COMMAND))
       return false
     end
     
@@ -154,7 +147,7 @@ end
 
 module TungstenUpdateCheck
   def enabled?
-    if [UpdateCommand.name, ValidateUpdateCommand.name].include?(@config.getProperty(DEPLOYMENT_COMMAND))
+    if [UpdateCommand.name, ValidateUpdateCommand.name, PrepareCommand.name, PromoteCommand.name].include?(@config.getProperty(DEPLOYMENT_COMMAND))
       return (super() && true)
     end
     

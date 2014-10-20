@@ -17,12 +17,11 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Teemu Ollakka
- * Contributor(s): Robert Hodges, Edward Archibald, Gilles Rayrat, Ludovic Launer
+ * Contributor(s): Robert Hodges, Edward Archibald, Gilles Rayrat
  */
 
 package com.continuent.tungsten.common.config.cluster;
 
-import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -51,7 +50,6 @@ public class RouterConfiguration extends ClusterConfiguration
     /**
      *
      */
-    @SuppressWarnings("unused")
     private static final long serialVersionUID                               = 1L;
 
     /**
@@ -105,11 +103,11 @@ public class RouterConfiguration extends ClusterConfiguration
      * The cluster member where the router is running.
      */
     private String            clusterMemberName;
-//    /**
-//     * If the property is non-null, this is a class that will be loaded tonull;
-//     * listen for router notifications
-//     */
-//    private String            routerListenerClass                            = "com.continuent.tungsten.common.patterns.notification.adaptor.ResourceNotificationListenerStub";
+    /**
+     * If the property is non-null, this is a class that will be loaded tonull;
+     * listen for router notifications
+     */
+    private String            routerListenerClass                            = "com.continuent.tungsten.common.patterns.notification.adaptor.ResourceNotificationListenerStub";
 
     private int               notifyPort                                     = 10121;
     private String            notifierMonitorClass                           = "com.continuent.tungsten.common.patterns.notification.adaptor.ResourceNotifierStub";
@@ -117,6 +115,8 @@ public class RouterConfiguration extends ClusterConfiguration
 
     private boolean           rrIncludeMaster                                = false;
 
+    /** Router Gateway flag */
+    private boolean           useNewProtocol                                 = false;
     /** Router Gateway manager list */
     private List<String>      managerList                                    = Arrays.asList("localhost");
     /** Router gateway listen port */
@@ -151,12 +151,6 @@ public class RouterConfiguration extends ClusterConfiguration
 
     private int               gatewayLocalBindStartingPort                   = 45847;
 
-    /**
-     * When reading manager commands in maintenance mode, the router will retry
-     * a few times upon failure. This controls when to give up
-     */
-    private long              readCommandRetryTimeoutMs                      = ConfigurationConstants.READ_COMMAND_RETRY_TIMEOUT_MS_DEFAULT;
-
     public RouterConfiguration(String clusterName)
             throws ConfigurationException
     {
@@ -177,15 +171,6 @@ public class RouterConfiguration extends ClusterConfiguration
     public RouterConfiguration load() throws ConfigurationException
     {
         load(ConfigurationConstants.TR_PROPERTIES);
-        
-        // TUC-1750 : managerList router properties is no longer in router.properties
-        // Get the value from dataservices.properties
-        DataServicesConfiguration d = DataServicesConfiguration.getInstance();
-        String managerList = d.getProps().get(props.get(ConfigurationConstants.CLUSTER_CLUSTERNAME));
-        props.put(ConfigurationConstants.CLUSTER_MANAGER_LIST, managerList);
-        if (managerList==null)
-            logger.warn((MessageFormat.format("Could not retrieve a value for {0} by reading {1}", ConfigurationConstants.CLUSTER_MANAGER_LIST, ConfigurationConstants.TR_PROPERTIES)));
-        
         props.applyProperties(this, true);
         loadClusterDataSourceMap();
         return this;
@@ -433,25 +418,25 @@ public class RouterConfiguration extends ClusterConfiguration
         this.props.setInt("waitIfUnavailableTimeout", waitIfUnavailableTimeout);
     }
 
-//    /**
-//     * Returns the routerListenerClass value.
-//     * 
-//     * @return Returns the routerListenerClass.
-//     */
-//    public String getRouterListenerClass()
-//    {
-//        return routerListenerClass;
-//    }
+    /**
+     * Returns the routerListenerClass value.
+     * 
+     * @return Returns the routerListenerClass.
+     */
+    public String getRouterListenerClass()
+    {
+        return routerListenerClass;
+    }
 
-//    /**
-//     * Sets the routerListenerClass value.
-//     * 
-//     * @param routerListenerClass The routerListenerClass to set.
-//     */
-//    public void setRouterListenerClass(String routerListenerClass)
-//    {
-//        this.routerListenerClass = routerListenerClass;
-//    }
+    /**
+     * Sets the routerListenerClass value.
+     * 
+     * @param routerListenerClass The routerListenerClass to set.
+     */
+    public void setRouterListenerClass(String routerListenerClass)
+    {
+        this.routerListenerClass = routerListenerClass;
+    }
 
     public boolean isWaitIfDisabled()
     {
@@ -560,6 +545,16 @@ public class RouterConfiguration extends ClusterConfiguration
     public void setRrIncludeMaster(boolean rrIncludeMaster)
     {
         this.rrIncludeMaster = rrIncludeMaster;
+    }
+
+    public void setUseNewProtocol(boolean useIt)
+    {
+        useNewProtocol = useIt;
+    }
+
+    public boolean getUseNewProtocol()
+    {
+        return useNewProtocol;
     }
 
     public void setManagerList(List<String> list)
@@ -729,15 +724,5 @@ public class RouterConfiguration extends ClusterConfiguration
                             + "ms.");
         }
 
-    }
-
-    public void setReadCommandRetryTimeoutMs(long timeout)
-    {
-        readCommandRetryTimeoutMs = timeout;
-    }
-
-    public long getReadCommandRetryTimeoutMs()
-    {
-        return readCommandRetryTimeoutMs;
     }
 }

@@ -6,15 +6,9 @@ REPL_MYSQL_CONNECTOR_PATH = "mysql_connectorj_path"
 REPL_MYSQL_DATADIR = "repl_datasource_mysql_data_directory"
 REPL_MYSQL_IBDATADIR = "repl_datasource_mysql_ibdata_directory"
 REPL_MYSQL_IBLOGDIR = "repl_datasource_mysql_iblog_directory"
-REPL_MYSQL_SSL_CA = "repl_datasource_mysql_ssl_ca"
-REPL_MYSQL_SSL_CERTIFICATE = "repl_datasource_mysql_ssl_cert"
-REPL_MYSQL_SSL_KEY = "repl_datasource_mysql_ssl_key"
 REPL_MYSQL_RO_SLAVE = "repl_mysql_ro_slave"
 REPL_MYSQL_SERVER_ID = "repl_mysql_server_id"
 REPL_MYSQL_ENABLE_ENUMTOSTRING = "repl_mysql_enable_enumtostring"
-REPL_MYSQL_ENABLE_SETTOSTRING = "repl_mysql_enable_settostring"
-REPL_MYSQL_ENABLE_ANSIQUOTES = "repl_mysql_enable_ansiquotes"
-REPL_MYSQL_ENABLE_NOONLYKEYWORDS = "repl_mysql_enable_noonlykeywords"
 REPL_MYSQL_XTRABACKUP_DIR = "repl_mysql_xtrabackup_dir"
 REPL_MYSQL_XTRABACKUP_FILE = "repl_mysql_xtrabackup_file"
 REPL_MYSQL_XTRABACKUP_TMP_DIR = "repl_mysql_xtrabackup_tmp_dir"
@@ -24,46 +18,24 @@ REPL_MYSQL_USE_BYTES_FOR_STRING = "repl_mysql_use_bytes_for_string"
 REPL_MYSQL_CONF = "repl_datasource_mysql_conf"
 REPL_MYSQL_COMMAND = "repl_datasource_mysql_command"
 REPL_MYSQL_SERVICE_CONF = "repl_datasource_mysql_service_conf"
-EXTRACTOR_REPL_MYSQL_SERVICE_CONF = "repl_direct_datasource_mysql_service_conf"
 
 class MySQLDatabasePlatform < ConfigureDatabasePlatform
-  attr_reader :sslca, :sslcert, :sslkey
-  
-  def initialize(prefix, config, extractor = false)
-    super(prefix, config, extractor)
-    
-    if prefix == nil || config == nil
-      return
-    end
-    
-    @sslca = @config.getProperty(@prefix + [REPL_MYSQL_SSL_CA]).to_s()
-    @sslcert = @config.getProperty(@prefix + [REPL_MYSQL_SSL_CERTIFICATE]).to_s()
-    @sslkey = @config.getProperty(@prefix + [REPL_MYSQL_SSL_KEY]).to_s()
-  end
-  
   def get_uri_scheme
     DBMS_MYSQL
   end
   
-  def get_innobackupex_path
-    path = cmd_result("which innobackupex-1.5.1 2>/dev/null", true)
-    if path.empty?
-      path = cmd_result("which innobackupex 2>/dev/null", true)
-    end
-    return path
-  end
-  
   def get_default_backup_method
-    innobackupex_path = get_innobackupex_path()
-    if innobackupex_path.to_s() != "" && @config.getProperty(ROOT_PREFIX) != "false"
-      "xtrabackup-full"
-    else
-      "mysqldump"
-    end
+    path_to_xtrabackup = cmd_result("which innobackupex-1.5.1", true)
+	  
+	  if path_to_xtrabackup.to_s() != "" && @config.getProperty(ROOT_PREFIX) != "false"
+	    "xtrabackup-full"
+	  else
+	    "mysqldump"
+	  end
   end
   
   def get_valid_backup_methods
-    "none|mysqldump|xtrabackup|xtrabackup-incremental|script|file-copy-snapshot|ebs-snapshot"
+    "none|mysqldump|xtrabackup|xtrabackup-incremental|script"
   end
   
   # Execute mysql command and return result to client. 
@@ -88,19 +60,6 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
       tmp << "user=#{@username}\n"
       tmp << "password=#{@password}\n"
       tmp << "port=#{@port}\n"
-      
-      if @sslca != ""
-        tmp << "ssl-ca=#{@sslca}\n"
-      end
-      
-      if @sslcert != ""
-        tmp << "ssl-cert=#{@sslcert}\n"
-      end
-      
-      if @sslkey != ""
-        tmp << "ssl-key=#{@sslkey}\n"
-      end
-      
       tmp.flush
       
       Timeout.timeout(5) {
@@ -132,19 +91,6 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
       tmp << "user=#{@username}\n"
       tmp << "password=#{@password}\n"
       tmp << "port=#{@port}\n"
-      
-      if @sslca != ""
-        tmp << "ssl-ca=#{@sslca}\n"
-      end
-      
-      if @sslcert != ""
-        tmp << "ssl-cert=#{@sslcert}\n"
-      end
-      
-      if @sslkey != ""
-        tmp << "ssl-key=#{@sslkey}\n"
-      end
-      
       tmp.flush
       
       Timeout.timeout(5) {
@@ -199,18 +145,13 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
   end
   
   def get_thl_uri
-	  "jdbc:mysql:thin://${replicator.global.db.host}:${replicator.global.db.port}/"
+	  "jdbc:mysql:thin://${replicator.global.db.host}:${replicator.global.db.port}/${replicator.schema}?createDB=true"
 	end
   
   def check_thl_schema(thl_schema)
     schemas = run("SHOW SCHEMAS LIKE '#{thl_schema}'")
     if schemas != ""
-      # See if there are any tables in the scheam. Note that the single
-      # quotes are turned into escaped backticks now
-      tables = run("SHOW TABLES IN \\`#{thl_schema}\\`")
-      if tables != ""
-        raise "THL schema #{thl_schema} already has tables created at #{get_connection_summary()}"
-      end
+      raise "THL schema #{thl_schema} already exists at #{get_connection_summary()}"
     end
   end
   
@@ -218,7 +159,7 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
     h_alias = to_identifier(@host)
     if @config.getProperty([HOSTS, h_alias]) != nil
       begin
-        logbin = ssh_result("my_print_defaults --config-file=#{@config.getProperty(@prefix + [REPL_MYSQL_CONF])} mysqld | grep '^--log[_-]bin='", @host, @config.getProperty([HOSTS, h_alias, USERID])).split("=")[-1].strip()
+        logbin = ssh_result("my_print_defaults --config-file=#{@config.getProperty(@prefix + [REPL_MYSQL_CONF])} mysqld | grep '^--log[_-]bin'", @host, @config.getProperty([HOSTS, h_alias, USERID])).split("=")[-1].strip()
 
         if logbin.to_s() != ""
           logdir = File.dirname(logbin)
@@ -293,59 +234,13 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
   end
   
   def getJdbcUrl()
-    baseUrl = "jdbc:#{getJdbcScheme()}://${replicator.global.db.host}:${replicator.global.db.port}/${DBNAME}?jdbcCompliantTruncation=false&zeroDateTimeBehavior=convertToNull&tinyInt1isBit=false&allowMultiQueries=true&yearIsDateType=false"
-    sslOptions = getJdbcUrlSSLOptions()
-    if sslOptions == ""
-      baseUrl
-    else
-      baseUrl + "&" + sslOptions
-    end
-  end
-  
-  def getJdbcQueryUrl()
-    baseUrl = "jdbc:mysql:thin://#{@host}:#{@port}/"
-    sslOptions = getJdbcUrlSSLOptions()
-    if sslOptions == ""
-      baseUrl
-    else
-      baseUrl + "?" + sslOptions
-    end
+    "jdbc:mysql://${replicator.global.db.host}:${replicator.global.db.port}/${DBNAME}?jdbcCompliantTruncation=false&zeroDateTimeBehavior=convertToNull&tinyInt1isBit=false&allowMultiQueries=true&yearIsDateType=false"
   end
   
   def getJdbcDriver()
-    if @config.getProperty(MYSQL_DRIVER) == "drizzle"
-      "org.drizzle.jdbc.DrizzleDriver"
-    elsif @config.getProperty(MYSQL_DRIVER) == "mariadb"
-      "org.mariadb.jdbc.Driver"
-    else
-      "com.mysql.jdbc.Driver"
-    end
+    "com.mysql.jdbc.Driver"
   end
   
-  def getJdbcScheme
-    if @config.getProperty(MYSQL_DRIVER) == "drizzle"
-      "mysql:thin"
-    elsif @config.getProperty(MYSQL_DRIVER) == "mariadb"
-      "mariadb"
-    else
-      "mysql"
-    end
-  end
-
-  def getJdbcUrlSSLOptions()
-    if @config.getProperty(MYSQL_DRIVER) == "drizzle"
-      if @config.getProperty(REPL_ENABLE_DBSSL) == "true"
-        "useSSL=true"
-      else
-        ""
-      end
-    elsif @config.getProperty(MYSQL_DRIVER) == "mariadb"
-      ""
-    else
-      ""
-    end
-  end
-
   def getVendor()
     "mysql"
   end
@@ -359,30 +254,20 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
   end
 	
 	def get_thl_filters()
-    filters = [] 
 	  if @config.getProperty(REPL_MYSQL_ENABLE_ENUMTOSTRING) == "true"
-	    filters += ["enumtostring"]
+	    ["enumtostring"]
+	  else
+	    []
 	  end
-	  if @config.getProperty(REPL_MYSQL_ENABLE_SETTOSTRING) == "true"
-      filters += ["settostring"]
-    end
-    filters + super()
 	end
 
 	def get_applier_filters()
-   filters =  []
-   if @config.getProperty(REPL_MYSQL_ENABLE_ANSIQUOTES) == "true"
-      filters += ["ansiquotes"]
-   end
-   if @config.getProperty(REPL_MYSQL_ENABLE_NOONLYKEYWORDS) == "true"
-      filters += ["noonlykeywords"]
-   end
-	 filters + ["mysqlsessions"] + super()
+	  ["mysqlsessions"] + super()
 	end
 	
 	def get_backup_agents()
 	  agent = @config.getProperty(REPL_BACKUP_METHOD)
-	  path_to_xtrabackup = get_innobackupex_path()
+	  path_to_xtrabackup = cmd_result("which innobackupex-1.5.1", true)
 	  
 	  if agent == "script"
 	    agents = ["script"]
@@ -405,15 +290,11 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
 	    end
 	  end
 	  
-	  unless agents.include?(agent)
-	    agents << agent
-	  end
-	  
 	  return agents
 	end
 	
 	def get_default_backup_agent()
-    path_to_xtrabackup = get_innobackupex_path()
+    path_to_xtrabackup = cmd_result("which innobackupex-1.5.1", true)
 	  
 	  if path_to_xtrabackup.to_s() != ""
 	    "xtrabackup-full"
@@ -438,15 +319,7 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
   end
   
   def drop_tungsten_schema(schema_name)
-    self.run("SET SQL_LOG_BIN=0; DROP SCHEMA IF EXISTS #{schema_name};")
-  end
-  
-  def applier_supports_parallel_apply?()
-    true
-  end
-  
-  def applier_supports_reset?
-    true
+    self.run("drop schema if exists #{schema_name}")
   end
 end
 
@@ -454,44 +327,11 @@ end
 # Prompts
 #
 
-class MySQLDriver < ConfigurePrompt
-  include ClusterHostPrompt
-  
-  def initialize
-    pv = PropertyValidator.new("^drizzle|mysql|mariadb$", 
-      "Value must be mysql, drizzle or mariadb")
-      
-    super(MYSQL_DRIVER, "MySQL Driver Vendor", pv)
-  end
-  
-  def load_default_value
-    if Configurator.instance.is_enterprise?() == true
-      @default = "mysql"
-    else
-      @default = "drizzle"
-    end
-  end
-  
-  def get_template_value
-    if get_value() == "drizzle"
-      "mysql:thin"
-    elsif get_value() == "mariadb"
-      "mariadb"
-    else
-      "mysql"
-    end
-  end
-end
-
 class MySQLConfigurePrompt < ConfigurePrompt
   def load_default_value
-    if get_datasource().is_a?(MySQLDatabasePlatform)
-      begin
-        @default = get_mysql_default_value()
-      rescue => e
-        super()
-      end
-    else
+    begin
+      @default = get_mysql_default_value()
+    rescue => e
       super()
     end
   end
@@ -606,111 +446,6 @@ class MySQLInnoDBLogDirectory < MySQLConfigurePrompt
   end
 end
 
-class MySQLSSLCAFile < MySQLConfigurePrompt
-  include DatasourcePrompt
-  include AdvancedPromptModule
-  
-  def initialize
-    super(REPL_MYSQL_SSL_CA, "MySQL SSL CA file", 
-      PV_FILENAME_OR_EMPTY)
-  end
-  
-  def get_mysql_default_value
-    begin
-      v = ssh_result("my_print_defaults --config-file=#{@config.getProperty(get_member_key(REPL_MYSQL_CONF))} mysqld | grep '^--ssl-ca='", @config.getProperty(get_host_key(HOST)), @config.getProperty(get_host_key(USERID))).split("=")[-1].strip()
-
-      if v.to_s() != ""
-        return v
-      end
-    rescue CommandError
-    end
-    
-    return ""
-  end
-  
-  def enabled?
-    super() && (get_datasource().is_a?(MySQLDatabasePlatform) && @config.getProperty(get_member_key(REPL_ENABLE_DBSSL)) == "true")
-  end
-  
-  def enabled_for_config?
-    super() && (get_datasource().is_a?(MySQLDatabasePlatform) && @config.getProperty(get_member_key(REPL_ENABLE_DBSSL)) == "true")
-  end
-  
-  def required?
-    (get_datasource().is_a?(MySQLDatabasePlatform) && @config.getProperty(get_member_key(REPL_ENABLE_DBSSL)) == "true")
-  end
-end
-
-class MySQLSSLCertificateFile < MySQLConfigurePrompt
-  include DatasourcePrompt
-  include AdvancedPromptModule
-  
-  def initialize
-    super(REPL_MYSQL_SSL_CERTIFICATE, "MySQL SSL certificate file", 
-      PV_FILENAME_OR_EMPTY)
-  end
-  
-  def get_mysql_default_value
-    begin
-      v = ssh_result("my_print_defaults --config-file=#{@config.getProperty(get_member_key(REPL_MYSQL_CONF))} mysqld | grep '^--ssl-cert='", @config.getProperty(get_host_key(HOST)), @config.getProperty(get_host_key(USERID))).split("=")[-1].strip()
-
-      if v.to_s() != ""
-        return v
-      end
-    rescue CommandError
-    end
-    
-    return ""
-  end
-  
-  def enabled?
-    super() && (get_datasource().is_a?(MySQLDatabasePlatform) && @config.getProperty(get_member_key(REPL_ENABLE_DBSSL)) == "true")
-  end
-  
-  def enabled_for_config?
-    super() && (get_datasource().is_a?(MySQLDatabasePlatform) && @config.getProperty(get_member_key(REPL_ENABLE_DBSSL)) == "true")
-  end
-  
-  def required?
-    (get_datasource().is_a?(MySQLDatabasePlatform) && @config.getProperty(get_member_key(REPL_ENABLE_DBSSL)) == "true")
-  end
-end
-
-class MySQLSSLKeyFile < MySQLConfigurePrompt
-  include DatasourcePrompt
-  include AdvancedPromptModule
-  
-  def initialize
-    super(REPL_MYSQL_SSL_KEY, "MySQL SSL key file", 
-      PV_FILENAME_OR_EMPTY)
-  end
-  
-  def get_mysql_default_value
-    begin
-      v = ssh_result("my_print_defaults --config-file=#{@config.getProperty(get_member_key(REPL_MYSQL_CONF))} mysqld | grep '^--ssl-key='", @config.getProperty(get_host_key(HOST)), @config.getProperty(get_host_key(USERID))).split("=")[-1].strip()
-
-      if v.to_s() != ""
-        return v
-      end
-    rescue CommandError
-    end
-    
-    return ""
-  end
-  
-  def enabled?
-    super() && (get_datasource().is_a?(MySQLDatabasePlatform) && @config.getProperty(get_member_key(REPL_ENABLE_DBSSL)) == "true")
-  end
-  
-  def enabled_for_config?
-    super() && (get_datasource().is_a?(MySQLDatabasePlatform) && @config.getProperty(get_member_key(REPL_ENABLE_DBSSL)) == "true")
-  end
-  
-  def required?
-    (get_datasource().is_a?(MySQLDatabasePlatform) && @config.getProperty(get_member_key(REPL_ENABLE_DBSSL)) == "true")
-  end
-end
-
 class MySQLCommand < ConfigurePrompt
   include DatasourcePrompt
   include HiddenValueModule
@@ -782,30 +517,18 @@ class MySQLServiceConfigFile < ConfigurePrompt
   end
 end
 
-class DirectMySQLServiceConfigFile < ConfigurePrompt
-  include ReplicationServicePrompt
-  include ConstantValueModule
-  
-  def initialize
-    super(EXTRACTOR_REPL_MYSQL_SERVICE_CONF, "Path to my.cnf file customized for this service", PV_FILENAME)
-  end
-  
-  def load_default_value
-    @default = @config.getProperty(get_host_key(HOME_DIRECTORY)) + "/share/.my.#{@config.getProperty(get_member_key(DEPLOYMENT_SERVICE))}.direct.cnf"
-  end
-end
-
 class MySQLServerID < ConfigurePrompt
   include ReplicationServicePrompt
   
   def initialize
     super(REPL_MYSQL_SERVER_ID, "MySQL server ID", 
       PV_INTEGER)
+    self.extend(NotTungstenInstallerPrompt)
   end
   
   def load_default_value
     begin
-      server_id = get_applier_datasource().get_value("BEGIN;SHOW VARIABLES LIKE 'server_id'", "Value")
+      server_id = get_applier_datasource().get_value("SHOW VARIABLES LIKE 'server_id'", "Value")
       if server_id == nil
         raise "Unable to determine server_id"
       end
@@ -850,48 +573,9 @@ class MySQLEnableEnumToString < ConfigurePrompt
   def load_default_value
     if get_extractor_datasource().class != get_applier_datasource().class
       @default = "true"
-    elsif @config.getProperty(get_member_key(ENABLE_HETEROGENOUS_MASTER)) == "true"
-      @default = "true"
-    else
-      super()
     end
-  end
-end
-
-class MySQLEnableSetToString < ConfigurePrompt
-  include ReplicationServicePrompt
-  
-  def initialize
-    super(REPL_MYSQL_ENABLE_SETTOSTRING, "Decode SET values into their text values?", 
-      PV_BOOLEAN, "false")
-  end
-  
-  def load_default_value
-    if get_extractor_datasource().class != get_applier_datasource().class
-      @default = "true"
-    elsif @config.getProperty(get_member_key(ENABLE_HETEROGENOUS_MASTER)) == "true"
-      @default = "true"
-    else
-      super()
-    end
-  end
-end
-
-class MySQLEnableAnsiQuotes < ConfigurePrompt
-  include ReplicationServicePrompt
-  
-  def initialize
-    super(REPL_MYSQL_ENABLE_ANSIQUOTES, "Enables ANSI_QUOTES mode for incoming events?", 
-      PV_BOOLEAN, "false")
-  end
-end
-
-class MySQLEnableNoOnlyKeywords < ConfigurePrompt
-  include ReplicationServicePrompt
-  
-  def initialize
-    super(REPL_MYSQL_ENABLE_NOONLYKEYWORDS, "Translates DELETE FROM ONLY -> DELETE FROM and UPDATE ONLY -> UPDATE.", 
-      PV_BOOLEAN, "false")
+    
+    super()
   end
 end
 
@@ -907,11 +591,9 @@ class MySQLUseBytesForStrings < ConfigurePrompt
   def load_default_value
     if get_extractor_datasource().class != get_applier_datasource().class
       @default = "false"
-    elsif @config.getProperty(get_member_key(ENABLE_HETEROGENOUS_MASTER)) == "true"
-      @default = "false"
-    else
-      super()
     end
+    
+    super()
   end
 end
 
@@ -1187,31 +869,14 @@ class MySQLPermissionsCheck < ConfigureValidationCheck
       info("All privileges configured correctly")
     end
     
-    if get_topology().is_a?(ClusterTopology)
-      show_help = false
-      
-      #Check the system user can connect remotely to all the other instances
-      #The managers need to do this TUC-1146
-      @config.getPropertyOr(DATASERVICE_REPLICATION_MEMBERS, '').split(",").each do |remoteHost|
-        login_output = get_applier_datasource.run_remote("select 'ALIVE' as 'Return Value'",remoteHost)
-        if login_output =~ /ALIVE/
-          info("Able to logon remotely to #{remoteHost} MySQL Instance")
-        else
-          if remoteHost == @config.getProperty(HOST)
-            error("Unable to connect to the MySQL server on #{remoteHost}")
-            show_help = true
-          else
-            if Configurator.instance.check_addresses_is_pingable(remoteHost)
-              error("Unable to connect to the MySQL server on #{remoteHost}")
-            else
-              warning("Unable to connect to the MySQL server on #{remoteHost}")
-            end
-            show_help = true
-          end
-        end
-      end
-    
-      unless is_valid?()
+    #Check the system user can connect remotely to all the other instances
+    #The managers need to do this TUC-1146
+    @config.getProperty('dataservice_hosts').split(",").each do |remoteHost|
+      login_output = get_applier_datasource.run_remote("select 'ALIVE' as 'Return Value'",remoteHost)
+      if login_output =~ /ALIVE/
+        info("Able to logon remotely to #{remoteHost} MySQL Instance")
+      else
+        error("Unable to connect to the MySQL server on #{remoteHost}")
         help("The management process needs to be able to connect to remote database servers to verify status")
       end
     end
@@ -1283,7 +948,7 @@ class MySQLConfigFileCheck < ConfigureValidationCheck
         end
       end
     else
-      debug("Unable to check the MySQL config file '#{conf_file}'")
+      warning("Unable to check the MySQL config file '#{conf_file}'")
     end
   end
 end
@@ -1304,7 +969,7 @@ class MySQLApplierServerIDCheck < ConfigureValidationCheck
       error("The server-id '#{server_id}' for #{get_applier_datasource.get_connection_summary()} is too large")
     end
     
-    retrieved_server_id = get_applier_datasource.get_value("BEGIN;SHOW VARIABLES LIKE 'server_id'", "Value")
+    retrieved_server_id = get_applier_datasource.get_value("SHOW VARIABLES LIKE 'server_id'", "Value")
     if server_id.to_i != retrieved_server_id.to_i
       error("The server-id '#{server_id}' does not match the the server-id from #{get_applier_datasource.get_connection_summary()} '#{retrieved_server_id}'")
     end
@@ -1330,7 +995,7 @@ class MySQLApplierServerIDCheck < ConfigureValidationCheck
         error("The MySQL config file '#{conf_file}' is not readable")
       end
     else
-      debug("Unable to check for a configured server-id in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
+      warning("Unable to check for a configured server-id in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
     end
   end
 end
@@ -1346,12 +1011,12 @@ class MySQLApplierPortCheck < ConfigureValidationCheck
   def validate
     port = @config.getProperty(get_applier_key(REPL_DBPORT))
     
-    conf_file = @config.getProperty(get_applier_key(REPL_MYSQL_CONF))
     unless Configurator.instance.is_localhost?(@config.getProperty(get_applier_key(REPL_DBHOST)))
-      debug("Unable to check for a configured port in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
+      warning("Unable to check for a configured port in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
       return
     end
     
+    conf_file = @config.getProperty(get_applier_key(REPL_MYSQL_CONF))
     unless File.exists?(conf_file) && File.readable?(conf_file)
       error("The MySQL config file '#{conf_file}' is not readable")
       help("Specify the --datasource-mysql-conf argument with the path to your my.cnf")
@@ -1424,12 +1089,12 @@ class MySQLApplierLogsCheck < ConfigureValidationCheck
   def validate
     dir = @config.getProperty(get_applier_key(REPL_MASTER_LOGDIR))
     
-    conf_file = @config.getProperty(get_applier_key(REPL_MYSQL_CONF))
     unless Configurator.instance.is_localhost?(@config.getProperty(get_applier_key(REPL_DBHOST)))
-      debug("Unable to check the configured log directory in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
+      warning("Unable to check the configured log directory in '#{conf_file}' on #{get_applier_datasource.get_connection_summary}")
       return
     end
     
+    conf_file = @config.getProperty(get_applier_key(REPL_MYSQL_CONF))
     unless File.exists?(conf_file) && File.readable?(conf_file)
       error("The MySQL config file '#{conf_file}' is not readable")
       return
@@ -1442,7 +1107,7 @@ class MySQLApplierLogsCheck < ConfigureValidationCheck
     end
     
     begin
-      conf_file_results = cmd_result("#{my_print_defaults} --config-file=#{conf_file} mysqld | grep '^--log[_-]bin='").split("=")[-1].strip()
+      conf_file_results = cmd_result("#{my_print_defaults} --config-file=#{conf_file} mysqld | grep '^--log[_-]bin'").split("=")[-1].strip()
     rescue CommandError
     end
     
@@ -1496,12 +1161,6 @@ class MySQLSettingsCheck < ConfigureValidationCheck
     max_allowed_packet = get_applier_datasource.get_value("show variables like 'max_allowed_packet'", "Value")
     if max_allowed_packet == nil || max_allowed_packet.to_i() < (48*1024*1024)
       warning("We suggest adding \"max_allowed_packet=52m\" or greater to the MySQL configuration file for #{get_applier_datasource.get_connection_summary()}")
-    end
-
-    info("Checking innodb_log_file_size")
-    innodb_log_file_size = get_applier_datasource.get_value("show variables like 'innodb_log_file_size'", "Value")
-    if innodb_log_file_size.to_i == 5242880
-      warning("innodb_log_file_size is set to the default value (5mb), this setting may need reviewing and setting to an appropriate value for #{get_applier_datasource.get_connection_summary()}")
     end
     
     info("Checking open_files_limit")
@@ -1563,47 +1222,14 @@ class MySQLDefaultTableTypeCheck < ConfigureValidationCheck
   def validate
     info("Checking that MySQL uses InnoDB exists")
     
-    # First, we try with the deprecated keyword 'table_type'
     table_type = get_applier_datasource.get_value("SHOW VARIABLES LIKE 'table_type'", "Value")
-     
-    # If that fails, we try with 'storage_engine'
     if table_type == nil
       table_type = get_applier_datasource.get_value("SHOW VARIABLES LIKE 'storage_engine'", "Value")
-    end
-    
-    # Since also 'storage engine' is deprecated in MySQL 5.6+, we also try with the latest accepted keyword
-    if table_type == nil
-      table_type = get_applier_datasource.get_value("SHOW VARIABLES LIKE 'default_storage_engine'", "Value")
-    end
-
-    # no known variable name returned a value: we fail.
-    if table_type == nil
-      error("Could not get a storage engine type for datasource #{get_applier_datasource.get_connection_summary()} uses #{table_type}")
     end
     
     if table_type.downcase() == "myisam"
       error("The datasource #{get_applier_datasource.get_connection_summary()} uses #{table_type} as the default storage engine")
     end
-  end
-end
-
-class MySQLBinlogDoDbCheck < ConfigureValidationCheck
-  include ReplicationServiceValidationCheck
-
-  def set_vars
-    @title = "MySQL binlog-do-db Check"
-  end
-
-  def validate
-    do_db = get_applier_datasource.get_value("SHOW MASTER STATUS", "Binlog_Do_DB")
-    unless do_db.to_s() == ""
-      error("MySQL configuration variable 'Binlog_Do_DB' is set. This setting prevents proper operation of Tungsten Replicator.")
-    end
-  end
-
-  def enabled?
-    super() \
-      && get_extractor_datasource().class == MySQLDatabasePlatform
   end
 end
 
@@ -1667,20 +1293,12 @@ class XtrabackupAvailableCheck < ConfigureValidationCheck
     @title = "Xtrabackup availability check"
   end
   
-  def get_innobackupex_path
-    path = cmd_result("which innobackupex-1.5.1 2>/dev/null", true)
-    if path.empty?
-      path = cmd_result("which innobackupex 2>/dev/null", true)
-    end
-    return path
-  end
-  
   def validate
-    innobackupex_path = get_innobackupex_path()
-    if innobackupex_path.empty?
-      error("Unable to find the innobackupex script for backup")
-    else
-      info("xtrabackup found at #{innobackupex_path}")
+    begin
+      path = cmd_result("which innobackupex-1.5.1")
+      info("xtrabackup found at #{path}")
+    rescue
+      error("Unable to find the innobackupex-1.5.1 script for backup")
     end
   end
   
@@ -1703,18 +1321,17 @@ class XtrabackupSettingsCheck < ConfigureValidationCheck
       return
     end
     
-    my_print_defaults = which('my_print_defaults')
-    unless my_print_defaults
-      error "Unable to find my_print_defaults in the current path to check configuration"
-      return
+    if @config.getProperty(get_host_key(ROOT_PREFIX)) != "true"
+      error("You must enable sudo  to use xtrabackup")
+      help("Add --root-command-prefix=true to your command")
     end
     
-    conf_file = @config.getProperty(get_applier_key(REPL_MYSQL_CONF))
-    
     info("Check for datadir")
+    
+    conf_file = @config.getProperty(get_applier_key(REPL_MYSQL_CONF))
     if File.exists?(conf_file) && File.readable?(conf_file)
       begin
-        conf_file_results = cmd_result("#{my_print_defaults} --config-file=#{conf_file} mysqld | grep '^--datadir'").split("=")[-1].strip()
+        conf_file_results = cmd_result("grep ^datadir #{conf_file}").split("=")
       rescue
         error("The MySQL config file '#{conf_file}' does not include a value for datadir")
         help("Check the file to ensure a value is given and that it is not commented out")
@@ -1734,50 +1351,16 @@ class XtrabackupSettingsCheck < ConfigureValidationCheck
       help("Fix the datadir value in my.cnf or use '--datasource-mysql-data-directory=#{datadir}'")
     end
     
-    info("Check that innodb_log_file_size is set")
-    if File.exists?(conf_file) && File.readable?(conf_file)
-      begin
-        conf_file_results = cmd_result("#{my_print_defaults} --config-file=#{conf_file} mysqld | grep 'innodb_log_file_size='").split("=")[-1].strip()
-      rescue
-        warning("The MySQL config file '#{conf_file}' does not include a value for innodb_log_file_size. This can cause problems with xtrabackup")
-        help("Check the file to ensure a value is given and that it is not commented out")
-      end
-    else
-      error("The MySQL config file '#{conf_file}' is not readable")
-    end
-    
     info("Check for binary logs")
     binary_count = cmd_result("#{@config.getTemplateValue(get_member_key(ROOT_PREFIX))} ls #{@config.getProperty(get_applier_key(REPL_MASTER_LOGDIR))}/#{@config.getProperty(get_applier_key(REPL_MASTER_LOGPATTERN))}.* 2>/dev/null | wc -l")
     unless binary_count.to_i > 0
       error("#{@config.getProperty(get_applier_key(REPL_MASTER_LOGDIR))} does not contain any files starting with #{@config.getProperty(get_applier_key(REPL_MASTER_LOGPATTERN))}")
       help("Try providing a value for --datasource-log-directory or --datasource-log-pattern")
     end
-    
-    begin
-      mysqluser = cmd_result("#{my_print_defaults} --config-file=#{conf_file} mysqld | grep '^--user'").split("=")[-1].strip()
-      if mysqluser != @config.getProperty(get_host_key(USERID))
-        if @config.getProperty(get_host_key(ROOT_PREFIX)) != "true"
-          error("You must enable sudo  to use xtrabackup")
-          help("Add --root-command-prefix=true to your command")
-        end
-      end
-    rescue CommandError
-    end
-    
-    begin
-      innodb_version = get_applier_datasource.get_value("show variables like 'innodb_version'", "Value")
-      if innodb_version.to_s() == ""
-        wc = cmd_result("xtrabackup -v 2>&1 | egrep \"^xtrabackup version 2.1.[0-9]+\" | wc -l")
-        if wc.to_i() > 0
-          error("Percona Xtrabackup 2.1 will not work without the InnoDB plugin. You should downgrade to Percona Xtrabackup 2.0.x or upgrade your MySQL installation.")
-        end
-      end
-    rescue CommandError
-    end
   end
   
   def enabled?
-    super() && ["xtrabackup", "xtrabackup-incremental", "xtrabackup-full"].include?(@config.getProperty(get_member_key(REPL_BACKUP_METHOD)))
+    super() && ["xtrabackup", "xtrabackup-incremental"].include?(@config.getProperty(get_member_key(REPL_BACKUP_METHOD)))
   end
 end
 
@@ -1833,10 +1416,6 @@ class MysqlConnectorCheck < ConfigureValidationCheck
       end
     end
   end
-  
-  def enabled?
-    super() && @config.getProperty(MYSQL_DRIVER) == "mysql"
-  end
 end
 
 module ConfigureDeploymentStepMySQL
@@ -1866,64 +1445,31 @@ module ConfigureDeploymentStepMySQL
         file.puts("[client]")
         file.puts("user=#{ads.username}")
         file.puts("password=#{ads.password}")
-        
-        if ads.sslca != ""
-          file.puts("ssl-ca=#{ads.sslca}")
-        end
-
-        if ads.sslcert != ""
-          file.puts("ssl-cert=#{ads.sslcert}")
-        end
-
-        if ads.sslkey != ""
-          file.puts("ssl-key=#{ads.sslkey}")
-        end
-        
-        if @config.getProperty(get_service_key(REPL_MYSQL_DATADIR)).to_s() != ""
-          file.puts("[mysqld]")
-          file.puts("datadir=#{@config.getProperty(get_service_key(REPL_MYSQL_DATADIR))}")
-        end
       }
-      WatchFiles.watch_file(@config.getProperty(get_service_key(REPL_MYSQL_SERVICE_CONF)), @config)
+      watch_file(@config.getProperty(get_service_key(REPL_MYSQL_SERVICE_CONF)))
     end
     
-    if @config.getProperty(get_service_key(REPL_ROLE)) == REPL_ROLE_DI
-      eds = get_extractor_datasource()
-      if eds.is_a?(MySQLDatabasePlatform)
-        File.open(@config.getProperty(get_service_key(EXTRACTOR_REPL_MYSQL_SERVICE_CONF)), "w") {
-          |file|
-          file.puts("[client]")
-          file.puts("user=#{eds.username}")
-          file.puts("password=#{eds.password}")
-          
-          if eds.sslca != ""
-            file.puts("ssl-ca=#{eds.sslca}")
-          end
-
-          if eds.sslcert != ""
-            file.puts("ssl-cert=#{eds.sslcert}")
-          end
-
-          if eds.sslkey != ""
-            file.puts("ssl-key=#{eds.sslkey}")
-          end
-        }
-        WatchFiles.watch_file(@config.getProperty(get_service_key(EXTRACTOR_REPL_MYSQL_SERVICE_CONF)), @config)
-      end
-	  end
-    
     if is_manager?() && (get_applier_datasource().is_a?(MySQLDatabasePlatform) || get_extractor_datasource().is_a?(MySQLDatabasePlatform))
+      transformer = Transformer.new(
+  		  "#{get_deployment_basedir()}/tungsten-manager/samples/conf/checker.mysqlserver.properties.tpl",
+  			"#{get_deployment_basedir()}/tungsten-manager/conf/checker.mysqlserver.properties", "#")
+  	  transformer.transform_values(method(:transform_replication_dataservice_values))
+      transformer.output
+      watch_file(transformer.get_filename())
+      
       write_svc_properties("mysql", @config.getProperty(REPL_BOOT_SCRIPT))
       
       if @config.getProperty(REPL_MYSQL_RO_SLAVE) == "true"
         FileUtils.cp("#{get_deployment_basedir()}/tungsten-manager/rules-ext/mysql_readonly.service.properties", 
           "#{get_deployment_basedir()}/cluster-home/conf/cluster/#{@config.getProperty(DATASERVICENAME)}/service/mysql_readonly.properties")
     
-        service_transformer("cluster-home/bin/mysql_readonly") {
-          |t|
-          t.mode(0750)
-          t.set_template("tungsten-manager/samples/conf/mysql_readonly.tpl")
-        }
+        transformer = Transformer.new(
+    		  "#{get_deployment_basedir()}/tungsten-manager/samples/conf/mysql_readonly.tpl",
+    			"#{get_deployment_basedir()}/cluster-home/bin/mysql_readonly", "#")
+    	  transformer.transform_values(method(:transform_replication_dataservice_values))
+        transformer.output
+        watch_file(transformer.get_filename())
+        File.chmod(0755, "#{get_deployment_basedir()}/cluster-home/bin/mysql_readonly")
       else
         FileUtils.rm_f("#{get_deployment_basedir()}/cluster-home/conf/cluster/#{@config.getProperty(DATASERVICENAME)}/service/mysql_readonly.properties")
         FileUtils.rm_f("#{get_deployment_basedir()}/cluster-home/bin/mysql_readonly")
@@ -1934,10 +1480,6 @@ module ConfigureDeploymentStepMySQL
   end
   
   def deploy_mysql_connectorj_package
-    if Configurator.instance.is_enterprise?() != true
-      return
-    end
-    
     connector_path = "#{@config.getProperty(HOME_DIRECTORY)}/share/mysql-connector-java.jar"
     connector = @config.getProperty(REPL_MYSQL_CONNECTOR_PATH)
     
@@ -1969,48 +1511,39 @@ class MySQLConnectorPermissionsCheck < ConfigureValidationCheck
     @title = "Connector Mysql user permissions check"
   end
   
-  def validate   
-    connuser = @config.getProperty(CONN_CLIENTLOGIN)
-    connpassword = @config.getProperty(CONN_CLIENTPASSWORD)
+  def validate
+   
+    connuser = @config.getProperty('connector_user')
+    connpassword = @config.getProperty('connector_password')
 
+    
     if get_applier_datasource.get_value("select user from mysql.user where user='#{connuser}'") == nil
       error("The user specified in --application-user (#{connuser}) does not exist")
       help("Ensure the user '#{connuser}' exists on all of the instances in the cluster being installed")
-    else
-      hosts=get_applier_datasource.get_value_a("select host from mysql.user where user='#{connuser}'",'host')
+    else 
     
-      hosts.each do |host|
-        if get_applier_datasource.get_value("select super_priv from mysql.user where user='#{connuser}' and host='#{host}'") == 'Y'
-          error("The user specified in --application-user (#{connuser}@#{host}) has super privileges and can not be safely used as a application-user")
-          help("The user #{connuser} has the SUPER privilege. This is not safe as it allows the application to write to READ_ONLY slave.Revoke this privilege using REVOKE SUPER on *.* from '#{connuser}'@'#{host}' ")
-        end
-
-        # Check MySQL password() returns 
-        if get_applier_datasource.get_value("select password('#{connpassword}')")  == nil
-          error("Password specified for #{connuser}@#{host} is not acceptable to MySQL password function on #{get_applier_datasource.get_connection_summary()}. This may indicate that the password contravenes settings for the MySQL Password Validation Plugin.")
-        else
-          if get_applier_datasource.get_value("select 'OK' from mysql.user where user='#{connuser}' and host='#{host}' and  password=password('#{connpassword}')")  != 'OK'
-            error("Password specified for #{connuser}@#{host} does not match the running instance on #{get_applier_datasource.get_connection_summary()}. This may indicate that the user has a password using the old format.")
-          end
-        end        
+        hosts=get_applier_datasource.get_value_a("select host from mysql.user where user='#{connuser}'",'host')
         
-        if @config.getProperty('connector_smartscale') == 'true'
-          if get_applier_datasource.get_value("select Repl_client_priv from mysql.user where user='#{connuser}' and host='#{host}'") == 'N'
-            error("The user specified in --application-user (#{connuser}@#{host}) does not have REPLICATION CLIENT privileges and SMARTSCALE in enabled")
-            help("When SmartScale is enabled, all application users require the REPLICATION CLIENT  privilege. Grant it to the user via GRANT REPLICATION CLIENT on *.* to '#{connuser}'@#{host}")
-          end
-          if get_applier_datasource.get_value(" select count(*) from mysql.user where User not in ('root','tungsten') and  Repl_client_priv = 'N'").to_i != 0
-            warning("Users exist in the database that do not have REPLICATION CLIENT privileges and SMARTSCALE in enabled")
-            help("When SmartScale is enabled, all application users require the REPLICATION CLIENT  privilege to connect . Grant it to the user via GRANT REPLICATION CLIENT on *.* to '<username>'@'<host>'")
-          end
+        hosts.each do |host|
+        
+            if get_applier_datasource.get_value("select super_priv from mysql.user where user='#{connuser}' and host='#{host}'") == 'Y'
+                error("The user specified in --application-user (#{connuser}@#{host}) has super privileges and can not be safely used as a application-user")
+                help("The user #{connuser} has the SUPER privilege. This is not safe as it allows the application to write to READ_ONLY slave.Revoke this privilege using REVOKE SUPER on *.* from '#{connuser}'@'#{host}' ")
+            end
+            
+            if get_applier_datasource.get_value("select 'OK' from mysql.user where user='#{connuser}' and host='#{host}' and  password=password('#{connpassword}')")  != 'OK'
+                error("Password specifed for #{connuser}@#{host} does not match the running instance on #{get_applier_datasource.get_connection_summary()}")
+            end
+            
+            if @config.getProperty('connector_smartscale') == 'true'
+                if get_applier_datasource.get_value("select Repl_client_priv from mysql.user where user='#{connuser}' and host='#{host}'") == 'N'
+                    error("The user specified in --application-user (#{connuser}@#{host}) does not have REPLICATION CLIENT privileges and SMARTSCALE in enabled")
+                    help("When SmartScale is enabled, all application users require the REPLICATION CLIENT  privilege. Grant it to the user via GRANT REPLICATION CLIENT on *.* to '#{connuser}'@#{host}")
+                end
+            end
         end
-      end
     end
-  end
-
-  def enabled?
-    super() && @config.getProperty(ENABLE_CONNECTOR_BRIDGE_MODE) != "true"
-  end
+   end
 end
 
 class MySQLPasswordSettingCheck < ConfigureValidationCheck
@@ -2022,23 +1555,11 @@ class MySQLPasswordSettingCheck < ConfigureValidationCheck
   end
   
   def validate
-    info("Checking old_passwords")
-    
-    repluser = @config.getProperty(get_member_key(REPL_DBLOGIN))    
-    if get_applier_datasource.get_value("select min(length(password)) from mysql.user where length(password)>0 AND user='#{repluser}'") == '16'
-      error("old_passwords exist in mysql.user for #{repluser} - Currently this is not supported")
-    end
-    
-    if get_topology().use_connector?()
-      connuser = @config.getProperty(CONN_CLIENTLOGIN)   
-      if get_applier_datasource.get_value("select min(length(password)) from mysql.user where length(password)>0 AND user='#{connuser}'") == '16'
-        error("old_passwords exist in mysql.user for #{connuser} - Currently this is not supported")
-      end
-    end
-    
-    unless is_valid?()
-      help("Review https://docs.continuent.com/wiki/display/TEDOC/Changing+MySQL+old+passwords for more information on this problem")
-    end
+       info("Checking old_passwords")
+       if get_applier_datasource.get_value("select min(length(password)) from mysql.user where length(password)>0") == '16'
+         error("old_passwords exist in mysql.user - Currently this is not supported")
+         help("Review https://docs.continuent.com/wiki/display/TEDOC/Changing+MySQL+old+passwords for more information on this problem")
+       end
   end
 end
 
@@ -2056,12 +1577,6 @@ class MySQLTriggerCheck < ConfigureValidationCheck
       warning("Triggers exist within this instance this can cause problems with replication")
     end
   end
-  
-  def enabled?
-    has_is = get_applier_datasource.get_value("show schemas like 'information_schema'");
-    
-    super() && (has_is == "information_schema")
-  end
 end
 
 class MySQLMyISAMCheck < ConfigureValidationCheck
@@ -2074,15 +1589,26 @@ class MySQLMyISAMCheck < ConfigureValidationCheck
 
   def validate
     info("Checking for MySQL MyISAM tables")
-    if get_applier_datasource.get_value("select count(*) from information_schema.TABLES where table_schema not in ('mysql','information_schema','performance_schema') and lcase(engine) in ('myisam','maria', 'aria')").to_i > 0
+    if get_applier_datasource.get_value("select count(*) from information_schema.TABLES where table_schema not in ('mysql','information_schema') and engine='MyISAM'").to_i > 0
       warning("MyISAM tables exist within this instance - These tables are not crash safe and may lead to data loss in a failover")
     end
   end
+end
+
+class MySQLCheckSumCheck < ConfigureValidationCheck
+  include ReplicationServiceValidationCheck
+  include MySQLApplierCheck
   
-  def enabled?
-    has_is = get_applier_datasource.get_value("show schemas like 'information_schema'");
-    
-    super() && (has_is == "information_schema")
+  def set_vars
+    @title = "MySQL 5.6 binlog Checksum Check"
+  end
+  
+  def validate
+    info("Checking that MySQL Binlog Checksum is not enabled")
+    checkSum = get_applier_datasource.get_value("show variables like 'binlog_checksum'", "Value")
+    if (checkSum == 'CRC32') 
+      error("This instance is running with BinLog checksum enabled which is not yet supported")
+    end
   end
 end
 
@@ -2102,11 +1628,10 @@ class MySQLDumpCheck < ConfigureValidationCheck
      
     if "#{runningVersion[0]}.#{runningVersion[1]}" !=  "#{dumpVersion[0]}.#{dumpVersion[1]}"
       error("The version of Mysqldump in the path does not match the running version of MySQL")
-      help("The instance is running #{runningVersion[0]}.#{runningVersion[1]} but the version of mysqldump in the path is #{dumpVersion[0]}.#{dumpVersion[1]}. Add the --preferred-path option to use the proper mysqldump command.")
+      help("The instance is running #{runningVersion[0]}.#{runningVersion[1]} but the version of mysqldump in the path is #{dumpVersion[0]}.#{dumpVersion[1]} ")
     end
   end
   def enabled?
-    super() && ["mysqldump"].include?(@config.getProperty(get_member_key(REPL_BACKUP_METHOD))) &&
-      Configurator.instance.is_localhost?(@config.getProperty(get_applier_key(REPL_DBHOST)))
+    super() && ["mysqldump"].include?(@config.getProperty(get_member_key(REPL_BACKUP_METHOD)))
   end
 end

@@ -24,10 +24,14 @@ class StartCommand
   def validate_commit
     super()
    
-    include_promotion_setting(FROM_EVENT, @from_event)
-    include_promotion_setting(FROM_MASTER_BACKUP_EVENT, @from_master_backup_event)
-    
-    is_valid?()
+    # Load option values.
+    @promotion_settings.props.each_key{
+      |h_alias|
+      @promotion_settings.include([h_alias], {
+        FROM_EVENT => @from_event, 
+        FROM_MASTER_BACKUP_EVENT => @from_master_backup_event
+      })
+    }
   end
 
   def parsed_options?(arguments)
@@ -84,10 +88,6 @@ class StartCommand
       StartClusterDeploymentStep
     ]
   end
-  
-  def self.display_command
-    false
-  end
 
   def self.get_command_name
     'start'
@@ -96,14 +96,16 @@ class StartCommand
   def self.get_command_description
     "Start Tungsten services on the machines specified or this installation."
   end
+
+
 end
 
 module StartClusterDeploymentStep
   def get_methods
     [
-      ConfigureCommitmentMethod.new("start_services_from_event", 1, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT),
+      ConfigureCommitmentMethod.new("start_services_from_event", 1, ConfigureDeployment::FINAL_STEP_WEIGHT),
       ConfigureCommitmentMethod.new("wait_for_manager", 2, -1),
-      ConfigureCommitmentMethod.new("report_services", ConfigureDeploymentStepMethod::FINAL_GROUP_ID, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT, false)
+      ConfigureCommitmentMethod.new("report_services", ConfigureDeployment::FINAL_GROUP_ID, ConfigureDeployment::FINAL_STEP_WEIGHT, false)
     ]
   end
   module_function :get_methods
@@ -173,7 +175,7 @@ module StartClusterDeploymentStep
 
       # Grep for the last position noted in the log.  
       if @config.getProperty(ROOT_PREFIX) == "true"
-        sudo = "sudo -n"
+        sudo = "sudo"
       else
         sudo = ""
       end

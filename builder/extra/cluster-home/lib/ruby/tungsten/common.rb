@@ -1,4 +1,4 @@
-DEFAULTS = "__defaults__"
+DEFAULTS = "defaults"
 REPL_RMI_PORT = "repl_rmi_port"
 MGR_RMI_PORT = "mgr_rmi_port"
 HOST_ENABLE_REPLICATOR = "host_enable_replicator"
@@ -11,9 +11,7 @@ DEPLOYMENT_HOST = "deployment_host"
 DEPLOYMENT_DATASERVICE = "deployment_dataservice"
 DEPLOYMENT_SERVICE = "service_name"
 HOSTS = "hosts"
-DATASERVICES = "dataservices"
 DATASOURCES = "datasources"
-MANAGERS = "managers"
 REPL_SERVICES = "repl_services"
 CONNECTORS = "connectors"
 CURRENT_RELEASE_DIRECTORY = "tungsten"
@@ -22,7 +20,7 @@ class MessageError < StandardError
 end
 
 class CommandError < StandardError
-  attr_reader :command, :rc, :result, :errors
+  attr_reader :command, :rc, :result
   
   def initialize(command, rc, result, errors="")
     @command = command
@@ -35,9 +33,9 @@ class CommandError < StandardError
   
   def build_message
     if @errors == ""
-      errors = "No STDERR"
+      errors = "No Errors"
     else
-      errors = "Errors: #{@errors}"
+      errors = "Errors: #{errors}"
     end
     
     "Failed: #{command}, RC: #{rc}, Result: #{result}, #{errors}"
@@ -55,16 +53,13 @@ class RemoteCommandError < CommandError
   
   def build_message
     if @errors == ""
-      errors = "No STDERR"
+      errors = "No Errors"
     else
       errors = "Errors: #{errors}"
     end
     
     "Failed: #{command}, RC: #{rc}, Result: #{result}, #{errors}"
   end
-end
-
-class IgnoreError < StandardError
 end
 
 # Disable guessing by the OptionParser
@@ -117,7 +112,7 @@ module JSON
             depth = state.depth += 1
             first = true
             indent = !state.object_nl.empty?
-            keys().sort{ |a, b| a.to_s() <=> b.to_s() }.each{|key|
+            keys().sort().each{|key|
               value = self[key]
               json = value.to_json(state)
               if json == ""
@@ -177,7 +172,7 @@ module JSON
             result << state.indent * depth if indent
             result << ']'
     
-            if valid_keys == 0 && depth != 0
+            if valid_keys == 0
               return ""
             end
     

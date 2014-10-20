@@ -319,7 +319,7 @@ public class BinlogReader implements FilenameFilter, Cloneable
      * 
      * @throws IOException Thrown if call fails
      */
-    public long available() throws IOException, InterruptedException
+    public long available() throws IOException
     {
         return bfdi.available();
     }

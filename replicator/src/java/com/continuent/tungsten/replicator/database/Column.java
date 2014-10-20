@@ -1,6 +1,6 @@
 /**
  * Tungsten: An Application Server for uni/cluster.
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2010 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Scott Martin
- * Contributor(s): Robert Hodges, Stephane Giron, Linas Virbalas
+ * Contributor(s): Robert Hodges, Stephane Giron
  */
 
 package com.continuent.tungsten.replicator.database;
@@ -37,12 +37,12 @@ public class Column implements Serializable
 {
     private static final long serialVersionUID = 1L;
     String                    name;
-    int                       type;                   // Type assignment from
-                                                       // java.sql.Types
-    Boolean                   signed           = null;
+    int                       type;                  // Type assignment from
+                                                      // java.sql.Types
+    boolean                   signed;
     long                      length;
-    boolean                   notNull;                // Is the column a NOT
-                                                       // NULL column
+    boolean                   notNull;               // Is the column a NOT
+                                                      // NULL column
     Serializable              value;
     int                       valueInputStreamLength;
     private int               position;
@@ -93,9 +93,7 @@ public class Column implements Serializable
         this.length = colLength;
         this.notNull = isNotNull;
         this.value = value;
-        // Do not set a default value for the signed flag - we need to know
-        // whether it was actually set or not.
-        // this.signed = true;
+        this.signed = true;
         this.blob = false;
     }
 
@@ -222,33 +220,9 @@ public class Column implements Serializable
         return position;
     }
 
-    /**
-     * Returns value of the signed flag. If flag was not set, returns true by default.
-     */
     public boolean isSigned()
     {
-        // Treat columns as signed, if not set explicitly.
-        if (signed == null)
-            return true;
-        else
-            return signed;
-    }
-    
-    /**
-     * Returns true only if the signed flag has been set explicitly and is not
-     * in the default state.
-     */
-    public boolean isSignedSet()
-    {
-        if (signed == null)
-            return false;
-        else
-            return true;
-    }
-
-    public void setSigned(boolean signed)
-    {
-        this.signed = signed; 
+        return signed;
     }
 
     public boolean isBlob()

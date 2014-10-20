@@ -1,19 +1,13 @@
 class TungstenUtil
   include Singleton
-  attr_accessor :remaining_arguments, :extra_arguments
+  attr_accessor :remaining_arguments
   
   def initialize()
-    super()
-    
     @logger_threshold = Logger::NOTICE
     @previous_option_arguments = {}
     @ssh_options = {}
     @display_help = false
-    @error_mutex = Mutex.new
     @num_errors = 0
-    @force = false
-    @json_interface = false
-    @json_message_cache = []
     
     # Create a temporary file to hold log contents
     @log = Tempfile.new("tlog")
@@ -23,38 +17,24 @@ class TungstenUtil
     arguments = ARGV.dup
                   
     if arguments.size() > 0
-      @extra_arguments = []
-      
       # This fixes an error that was coming up reading certain characters wrong
       # The root cause is unknown but this allowed Ruby to parse the 
       # arguments properly
-      send_to_extra_arguments = false
       arguments = arguments.map{|arg|
         newarg = ''
         arg.split("").each{|b| 
-          unless b.getbyte(0)<32 || b.getbyte(0)>127 then 
+          unless b.getbyte(0)<33 || b.getbyte(0)>127 then 
             newarg.concat(b) 
           end
         }
-        
-        if newarg == "--"
-          send_to_extra_arguments = true
-          nil
-        elsif send_to_extra_arguments == true
-          @extra_arguments << newarg
-          nil
-        else
-          newarg
-        end
+        newarg
       }
 
       opts=OptionParser.new
-      opts.on("-f", "--force")    {@force = true}
       opts.on("-i", "--info")     {@logger_threshold = Logger::INFO}
       opts.on("-n", "--notice")               {@logger_threshold = Logger::NOTICE}
       opts.on("-q", "--quiet")          {@logger_threshold = Logger::WARN}
       opts.on("-v", "--verbose")        {@logger_threshold = Logger::DEBUG}
-      opts.on("--json")                 { @json_interface = true }
       opts.on("-h", "--help")           { @display_help = true }
       opts.on("--net-ssh-option String")  {|val|
                                           val_parts = val.split("=")
@@ -73,19 +53,7 @@ class TungstenUtil
       @remaining_arguments = run_option_parser(opts, arguments)
     else
       @remaining_arguments = []
-      @extra_arguments = []
     end
-  end
-  
-  def exit(code = 0)
-    if @json_interface == true
-      puts JSON.pretty_generate({
-        "rc" => code,
-        "messages" => @json_message_cache
-      })
-    end
-    
-    Kernel.exit(code)
   end
     
   def display_help?
@@ -100,21 +68,7 @@ class TungstenUtil
     output_usage_line("--notice, -n")
     output_usage_line("--verbose, -v")
     output_usage_line("--help, -h", "Display this message")
-    output_usage_line("--json", "Provide return code and logging messages as a JSON object after the script finishes")
     output_usage_line("--net-ssh-option=key=value", "Set the Net::SSH option for remote system calls", nil, nil, "Valid options can be found at http://net-ssh.github.com/ssh/v2/api/classes/Net/SSH.html#M000002")
-  end
-  
-  def get_autocomplete_arguments
-    [
-      '--directory',
-      '--quiet', '-q',
-      '--info', '-i',
-      '--notice', '-n',
-      '--verbose', '-v',
-      '--help', '-h',
-      '--json',
-      '--net-ssh-option='
-    ]
   end
   
   def get_base_path
@@ -131,7 +85,6 @@ class TungstenUtil
   
   def force_output(content)
     log(content)
-    
     puts(content)
     $stdout.flush()
   end
@@ -145,25 +98,12 @@ class TungstenUtil
     end
   end
   
-  def set_log_path(path)
-    TU.mkdir_if_absent(File.dirname(path))
-    old_log = @log
-    old_log.rewind()
-    
-    @log = File.open(path, "w")
-    @log.puts(old_log.read())
-  end
-  
   def reset_errors
     @num_errors = 0
   end
   
-  def force?
-    @force
-  end
-  
   def is_valid?
-    (@num_errors == 0 || @force == true)
+    (@num_errors == 0)
   end
   
   def write(content="", level=Logger::INFO, hostname = nil, add_prefix = true)
@@ -175,23 +115,6 @@ class TungstenUtil
       return
     end
     
-    # Attempt to determine the level for this message based on it's content
-    # If it is forwarded from another Tungsten script it will have a prefix
-    # so we know to use stdout or stderr
-    if level == nil
-      level = parse_log_level(content)
-    end
-    
-    if level == Logger::ERROR
-      @error_mutex.synchronize do
-        @num_errors = @num_errors + 1
-      end
-      
-      if force?()
-        level = Logger::WARN
-      end
-    end
-    
     unless content == "" || level == nil || add_prefix == false
       content = "#{get_log_level_prefix(level, hostname)}#{content}"
     end
@@ -199,18 +122,9 @@ class TungstenUtil
     log(content)
     
     if enable_log_level?(level)
-      if @json_interface == true
-        @json_message_cache << content
-      else
-        if enable_output?()
-          if level != nil && level > Logger::NOTICE
-            $stdout.puts(content)
-            $stdout.flush()
-          else
-            $stdout.puts(content)
-            $stdout.flush()
-          end
-        end
+      if enable_output?()
+        puts content
+        $stdout.flush()
       end
     end
   end
@@ -235,6 +149,7 @@ class TungstenUtil
   end
   
   def error(message, hostname = nil)
+    @num_errors = @num_errors + 1
     write(message, Logger::ERROR, hostname)
   end
   
@@ -255,7 +170,7 @@ class TungstenUtil
     when Logger::ERROR then prefix = "ERROR"
     when Logger::WARN then prefix = "WARN "
     when Logger::DEBUG then prefix = "DEBUG"
-    when Logger::NOTICE then prefix = "NOTE "
+    when Logger::NOTICE then prefix = "NOTE"
     else
       prefix = "INFO "
     end
@@ -267,32 +182,6 @@ class TungstenUtil
     end
   end
   
-  def parse_log_level(line)
-    prefix = line[0,5]
-    
-    case prefix.strip
-    when "ERROR" then Logger::ERROR
-    when "WARN" then Logger::WARN
-    when "DEBUG" then Logger::DEBUG
-    when "NOTE" then Logger::NOTICE
-    when "INFO" then Logger::INFO
-    else
-      nil
-    end
-  end
-  
-  # Split a log line into the log level and actual message
-  # This is used when forwarding log messages from a remote commmand
-  def split_log_content(content)
-    level = parse_log_level(content)
-    if level != nil
-      prefix = get_log_level_prefix(level)
-      content = content[prefix.length, content.length]
-    end
-    
-    return [level, content]
-  end
-  
   def enable_log_level?(level=Logger::INFO)
     if level == nil
       true
@@ -301,10 +190,6 @@ class TungstenUtil
     else
       true
     end
-  end
-  
-  def get_log_level
-    @logger_threshold
   end
   
   def set_log_level(level=Logger::INFO)
@@ -522,108 +407,5 @@ class TungstenUtil
       debug("Creating missing directory: #{dirname}")
       cmd_result("mkdir -p #{dirname}")
     end
-  end
-  
-  def pluralize(array, singular, plural = nil)
-    if plural == nil
-      singular
-    elsif array.size() > 1
-      plural
-    else
-      singular
-    end
-  end
-  
-  # Read an INI file and return a hash of the arguments for each section
-  def parse_ini_file(file, convert_to_hash = true)
-    unless defined?(IniParse)
-      require 'tungsten/iniparse'
-    end
-    
-    unless File.exists?(file)
-      return
-    end
-    
-    # Read each section and turn the lines into an array of arguments as
-    # they would appear in the INI file
-    options = {}
-    ini = IniParse.open(file)
-    ini.each{
-      |section|
-      key = section.key
-      
-      # Initialize the array only if it doesn't exist
-      # Doing otherwise would overwrite old sections
-      unless options.has_key?(key)
-        options[key] = []
-      end
-      
-      section.each{
-        |line|
-        unless line.is_a?(Array)
-          values = [line]
-        else
-          values = line
-        end
-      
-        values.each{
-          |value|
-          if value.value == nil
-            options[key] << "#{value.key}"
-          else
-            options[key] << "#{value.key}=#{value.value.to_s()}"
-          end
-        }
-      }
-    }
-    
-    # Most users will want a Hash, but this will allow the main
-    # TungstenScript class to see the parameters in order
-    if convert_to_hash == true
-      return convert_ini_array_to_hash(options)
-    else
-      return options
-    end
-  end
-  
-  # Convert the information returned by parse_ini_file into a
-  # nested hash of values
-  def convert_ini_array_to_hash(options)
-    hash = {}
-    
-    options.each{
-      |section,lines|
-      unless hash.has_key?(section)
-        hash[section] = {}
-      end
-      
-      lines.each{
-        |line|
-        parts = line.split("=")
-        
-        # The first part is the argument name
-        argument = parts.shift()
-        # Any remaining values will be returned as a single string
-        # A nil value means there was no value after the '='
-        if parts.size() == 0
-          v = nil
-        else
-          v = parts.join("=")
-        end
-        
-        # Return repeat arguments as an array of values
-        if hash[section].has_key?(argument)
-          unless hash[section][argument].is_a?(Array)
-            hash[section][argument] = [hash[section][argument]]
-          end
-          
-          hash[section][argument] << v
-        else
-          hash[section][argument] = v
-        end
-      }
-    }
-    
-    return hash
   end
 end

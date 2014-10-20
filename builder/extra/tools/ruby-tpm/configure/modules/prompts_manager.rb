@@ -37,23 +37,15 @@ MGR_GROUP_COMMUNICATION_INITIAL_HOSTS = "mgr_group_communication_initial_hosts"
 MGR_GROUP_COMMUNICATION_CONFIG = "mgr_group_communication_config"
 MGR_RMI_PORT = "mgr_rmi_port"
 MGR_RMI_REMOTE_PORT = "mgr_rmi_remote_port"
+MGR_FILE_SERVER_PORT = "mgr_file_server_port"
 MGR_MONITOR_INTERVAL = "mgr_monitor_interval"
 MGR_WAIT_FOR_MEMBERS = "mgr_wait_for_members"
 MANAGER_ENABLE_INSTRUMENTATION = "manager_enable_instrumentation"
 MGR_JAVA_MEM_SIZE = "mgr_java_mem_size"
 MGR_JAVA_ENABLE_CONCURRENT_GC = "mgr_java_enable_concurrent_gc"
-MGR_HEAP_THRESHOLD = "mgr_heap_threshold"
 MGR_API = "mgr_api"
 MGR_API_PORT = "mgr_api_port"
 MGR_API_ADDRESS = "mgr_api_address"
-MGR_VALIDATE_WITNESS = "mgr_validate_witness"
-MGR_IS_WITNESS = "mgr_is_witness"
-MGR_REPL_DBLOGIN = "mgr_repl_user"
-MGR_REPL_DBPASSWORD = "mgr_repl_password"
-MGR_REPL_DBPORT = "mgr_repl_port"
-MGR_REPL_SCHEMA = "mgr_repl_schema"
-MGR_REPL_RMI_PORT = "mgr_repl_rmi_port"
-MGR_REPL_JDBC_DRIVER = "mgr_repl_jdbc_driver"
 
 class Managers < GroupConfigurePrompt
   def initialize
@@ -85,10 +77,6 @@ module ManagerPrompt
   
   def allow_group_default
     true
-  end
-  
-  def get_host_alias
-    @config.getProperty(get_member_key(DEPLOYMENT_HOST))
   end
   
   def get_host_key(key)
@@ -125,6 +113,7 @@ class ManagerDeploymentHost < ConfigurePrompt
     super(DEPLOYMENT_HOST, 
       "On what host would you like to deploy this manager?", 
       PV_IDENTIFIER)
+    @weight = -1
   end
   
   def load_default_value
@@ -605,6 +594,15 @@ class ManagerRMIRemotePort < ConfigurePrompt
   end
 end
 
+class ManagerFileServerPort < ConfigurePrompt
+  include ManagerPrompt
+  include AdvancedPromptModule
+  
+  def initialize
+    super(MGR_FILE_SERVER_PORT, "Port to use for the manager file server", PV_INTEGER, "9998")
+  end
+end
+
 class ManagerGroupCommunicationInitialHosts < ConfigurePrompt
   include ManagerPrompt
   include ConstantValueModule
@@ -613,7 +611,7 @@ class ManagerGroupCommunicationInitialHosts < ConfigurePrompt
     super(MGR_GROUP_COMMUNICATION_INITIAL_HOSTS, "Initial hosts for seeding group communication", PV_ANY)
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     fill_ports_near_hosts(@config.getProperty(get_dataservice_key(DATASERVICE_MEMBERS)), @config.getProperty(get_member_key(MGR_GROUP_COMMUNICATION_PORT)))
   end
 end
@@ -639,8 +637,8 @@ class ManagerJavaMemorySize < ConfigurePrompt
   include AdvancedPromptModule
   
   def initialize
-    super(MGR_JAVA_MEM_SIZE, "Manager Java heap memory size in MB",
-      PV_INTEGER, 80)
+    super(MGR_JAVA_MEM_SIZE, "Manager Java heap memory size in Mb (min 128)",
+      PV_JAVA_MEM_SIZE, 256)
   end
 end
 
@@ -653,30 +651,12 @@ class ManagerJavaGarbageCollection < ConfigurePrompt
       PV_BOOLEAN, "false")
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     if get_value() == "true"
       ""
     else
       "#"
     end
-  end
-end
-
-class ManagerHeapThreshold < ConfigurePrompt
-  include ManagerPrompt
-  include AdvancedPromptModule
-  
-  def initialize
-    super(MGR_HEAP_THRESHOLD, "Java memory usage (MB) that will force a Manager restart",
-      PV_INTEGER, 60)
-  end
-  
-  def load_default_value
-    @default = (@config.getProperty(get_member_key(MGR_JAVA_MEM_SIZE)).to_i() * 0.75).to_i()
-  end
-  
-  def required?
-    false
   end
 end
 
@@ -703,6 +683,10 @@ class ManagerEnableInstrumentation < ConfigurePrompt
   def load_default_value
     @default = @config.getProperty(get_dataservice_key(DATASERVICE_ENABLE_INSTRUMENTATION))
   end
+  
+  def get_command_line_argument_value
+    "true"
+  end
 end
 
 class ManagerAPI < ConfigurePrompt
@@ -711,6 +695,10 @@ class ManagerAPI < ConfigurePrompt
   
   def initialize
     super(MGR_API, "Enable the Manager API", PV_BOOLEAN, "true")
+  end
+  
+  def get_command_line_argument_value
+    "true"
   end
 end
 
@@ -731,126 +719,5 @@ class ManagerAPIAddress < ConfigurePrompt
   
   def initialize
     super(MGR_API_ADDRESS, "Address for the Manager API", PV_ANY, "127.0.0.1")
-  end
-end
-
-class ManagerValidateWitness < ConfigurePrompt
-  include ManagerPrompt
-  include HiddenValueModule
-  
-  def initialize
-    super(MGR_VALIDATE_WITNESS, "Validate the subnet for dataservice witnesses", PV_BOOLEAN, "true")
-  end
-end
-
-
-class ManagerIsWitness < ConfigurePrompt
-  include ManagerPrompt
-  include HiddenValueModule
-  
-  def initialize
-    super(MGR_IS_WITNESS, "Manager is an active witness", PV_BOOLEAN, "false")
-  end
-  
-  def get_default_value
-    if @config.getProperty(get_dataservice_key(ENABLE_ACTIVE_WITNESSES)) == "true"
-      if @config.getPropertyOr(get_dataservice_key(DATASERVICE_WITNESSES)).include_alias?(get_host_alias())
-        @default = "true"
-      else
-        @default = "false"
-      end
-    else
-      @default = "false"
-    end
-  end
-end
-
-class ManagerReplicationDBUser < ConfigurePrompt
-  include ManagerPrompt
-  include HiddenValueModule
-  
-  def initialize
-    super(MGR_REPL_DBLOGIN, "Database login for the manager to check replication hosts", PV_IDENTIFIER)
-  end
-  
-  def load_default_value
-    master = @config.getProperty(get_dataservice_key(DATASERVICE_MASTER_MEMBER)).split(",")[0]
-    rs_alias = to_identifier("#{get_dataservice()}_#{master}")
-    @default = @config.getProperty([REPL_SERVICES, rs_alias, REPL_DBLOGIN])
-  end
-end
-
-class ManagerReplicationDBPassword < ConfigurePrompt
-  include ManagerPrompt
-  include HiddenValueModule
-  
-  def initialize
-    super(MGR_REPL_DBPASSWORD, "Database password for the manager to check replication hosts", PV_ANY)
-  end
-  
-  def load_default_value
-    master = @config.getProperty(get_dataservice_key(DATASERVICE_MASTER_MEMBER)).split(",")[0]
-    rs_alias = to_identifier("#{get_dataservice()}_#{master}")
-    @default = @config.getProperty([REPL_SERVICES, rs_alias, REPL_DBPASSWORD])
-  end
-end
-
-class ManagerReplicationDBPort < ConfigurePrompt
-  include ManagerPrompt
-  include HiddenValueModule
-  
-  def initialize
-    super(MGR_REPL_DBPORT, "Database port for the manager to check replication hosts", PV_INTEGER)
-  end
-  
-  def load_default_value
-    master = @config.getProperty(get_dataservice_key(DATASERVICE_MASTER_MEMBER)).split(",")[0]
-    rs_alias = to_identifier("#{get_dataservice()}_#{master}")
-    @default = @config.getProperty([REPL_SERVICES, rs_alias, REPL_DBPORT])
-  end
-end
-
-class ManagerReplicationDBSchema < ConfigurePrompt
-  include ManagerPrompt
-  include HiddenValueModule
-  
-  def initialize
-    super(MGR_REPL_SCHEMA, "Database schema for the manager to check replication hosts", PV_IDENTIFIER)
-  end
-  
-  def load_default_value
-    master = @config.getProperty(get_dataservice_key(DATASERVICE_MASTER_MEMBER)).split(",")[0]
-    rs_alias = to_identifier("#{get_dataservice()}_#{master}")
-    @default = @config.getProperty([REPL_SERVICES, rs_alias, REPL_SVC_SCHEMA])
-  end
-end
-
-class ManagerReplicationRMIPort < ConfigurePrompt
-  include ManagerPrompt
-  include HiddenValueModule
-  
-  def initialize
-    super(MGR_REPL_RMI_PORT, "Replication RMI port for the manager to check replication hosts", PV_INTEGER)
-  end
-  
-  def load_default_value
-    master = @config.getProperty(get_dataservice_key(DATASERVICE_MASTER_MEMBER)).split(",")[0]
-    h_alias = to_identifier(master)
-    @default = @config.getProperty([HOSTS, h_alias, REPL_RMI_PORT])
-  end
-end
-
-class ManagerReplicationJDBCDriver < ConfigurePrompt
-  include ManagerPrompt
-  include HiddenValueModule
-  
-  def initialize
-    super(MGR_REPL_JDBC_DRIVER, "Replication JDBC driver for the manager to check replication hosts", PV_ANY)
-  end
-  
-  def load_default_value
-    master = @config.getProperty(get_dataservice_key(DATASERVICE_MASTER_MEMBER)).split(",")[0]
-    rs_alias = to_identifier("#{get_dataservice()}_#{master}")
-    @default = @config.getTemplateValue([REPL_SERVICES, rs_alias, REPL_DBJDBCDRIVER])
   end
 end

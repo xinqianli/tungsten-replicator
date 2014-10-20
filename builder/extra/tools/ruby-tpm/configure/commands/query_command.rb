@@ -8,15 +8,13 @@ class QueryCommand
   QUERY_TOPOLOGY = "topology"
   QUERY_DATASERVICES = "dataservices"
   QUERY_STAGING = "staging"
-  QUERY_EXTERNAL_CONFIGURATION = "external-configuration"
   QUERY_DEFAULT = "default"
   QUERY_VALUES = "values"
   QUERY_MODIFIED_FILES = "modified-files"
   QUERY_USERMAP = "usermap"
-  QUERY_DEPLOYMENTS = "deployments"
   
   def allowed_subcommands
-    [QUERY_VERSION, QUERY_MANIFEST, QUERY_CONFIG, QUERY_TOPOLOGY, QUERY_DATASERVICES, QUERY_STAGING, QUERY_DEFAULT, QUERY_VALUES, QUERY_MODIFIED_FILES, QUERY_USERMAP, QUERY_DEPLOYMENTS, QUERY_EXTERNAL_CONFIGURATION]
+    [QUERY_VERSION, QUERY_MANIFEST, QUERY_CONFIG, QUERY_TOPOLOGY, QUERY_DATASERVICES, QUERY_STAGING, QUERY_DEFAULT, QUERY_VALUES, QUERY_MODIFIED_FILES, QUERY_USERMAP]
   end
   
   def allow_multiple_tpm_commands?
@@ -39,8 +37,6 @@ class QueryCommand
       output_dataservices()
     when QUERY_STAGING
       output_staging()
-    when QUERY_EXTERNAL_CONFIGURATION
-      output_external_configuration()
     when QUERY_DEFAULT
       output_defaults()
     when QUERY_VALUES
@@ -49,8 +45,6 @@ class QueryCommand
       output_modified_files()
     when QUERY_USERMAP
       output_usermap_summary()
-    when QUERY_DEPLOYMENTS
-      output_deployments()
     else
       output_usage()
     end
@@ -84,14 +78,9 @@ class QueryCommand
   
   def get_topology
     c = Configurator.instance
-    unless c.is_enterprise?()
-      raise "This command is not supported in the Tungsten Replicator package"
-    end
     unless c.svc_is_running?(c.get_svc_path("manager", c.get_base_path()))
       raise "Tungsten Manager is not running on this machine"
     end
-    
-    build_topologies(@config)
 
     begin
       cctrl_output = Timeout.timeout(120) {
@@ -131,7 +120,6 @@ class QueryCommand
   end
   
   def output_defaults
-    build_topologies(@config)
     @default_arguments.map!{
       |a|
       
@@ -182,8 +170,6 @@ class QueryCommand
   end
   
   def output_values
-    @config.setProperty([SYSTEM], nil)
-    build_topologies(@config)
     values_matches = {}
     @values_arguments.each{
       |a|
@@ -199,7 +185,7 @@ class QueryCommand
   
   def output_staging
     unless Configurator.instance.is_locked?()
-      error("Unable to show staging information because this is not the installed directory. If this is the staging directory, try running tpm from an installed Tungsten directory.")
+      error("Unable to show staging information because this directory is not configured")
       return
     end
     
@@ -212,24 +198,18 @@ class QueryCommand
     end
   end
   
-  def output_external_configuration
-    external_type = @config.getNestedProperty([DEPLOYMENT_EXTERNAL_CONFIGURATION_TYPE])
-    external_source = @config.getNestedProperty([DEPLOYMENT_EXTERNAL_CONFIGURATION_SOURCE])
-    if external_type == "ini"
-      force_output(external_source)
-    end
-  end
-  
   def output_modified_files
+    unless Configurator.instance.is_locked?()
+      error("Unable to show modified files because this directory is not configured")
+      return
+    end
+    
     WatchFiles.show_differences(Configurator.instance.get_base_path())
   end
   
   def output_usermap_summary
-    unless Configurator.instance.is_enterprise?()
-      raise "This command is not supported in the Tungsten Replicator package"
-    end
     unless Configurator.instance.is_locked?()
-      error("Unable to show usermap summary because this is not the installed directory. If this is the staging directory, try running tpm from an installed Tungsten directory.")
+      error("Unable to show usermap summary because this directory is not configured")
       return
     end
     
@@ -263,17 +243,6 @@ class QueryCommand
       error("No file available at tungsten-connector/conf/user.map")
       return
     end
-  end
-  
-  def output_deployments
-    get_deployment_configurations().each{
-      |cfg|
-      cfg.setProperty(SYSTEM, nil)
-      cfg.setProperty(REMOTE, nil)
-      
-      build_topologies(cfg)
-      Configurator.instance.output(cfg.to_s())
-    }
   end
   
   def allow_command_hosts?

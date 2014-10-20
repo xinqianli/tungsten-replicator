@@ -79,6 +79,8 @@ public class DynamicMBeanOperation implements Serializable
     }
 
     /**
+     * TODO: setParamsAndSignature definition.
+     * 
      * @param method
      * @param info
      */
@@ -267,7 +269,6 @@ public class DynamicMBeanOperation implements Serializable
         int i = 0;
 
         boolean inString = false;
-        @SuppressWarnings("unused")
         String aggregateString = "";
 
         for (Object param : paramMap.values())

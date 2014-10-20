@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2014 Continuent Inc.
+ * Copyright (C) 2010 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -42,6 +42,7 @@ public class MockOpenReplicatorContext implements OpenReplicatorContext
 
     public void registerMBean(Object mbean, Class<?> mbeanClass, String name)
     {
+        // TODO: Handle names correctly.
         JmxManager.registerMBean(mbean, mbeanClass);
     }
 }

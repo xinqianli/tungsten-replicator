@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2011-2014 Continuent Inc.
+ * Copyright (C) 2011 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -118,10 +118,12 @@ public class JdbcPrefetcher implements RawApplier
 
     // Statistics.
     protected long                    eventCount           = 0;
+    private long                      transformed;
 
     /**
      * Maximum length of SQL string to log in case of an error. This is needed
-     * because some statements may be very large. 
+     * because some statements may be very large. TODO: make this configurable
+     * via replicator.properties
      */
     protected int                     maxSQLLogLength      = 1000;
 
@@ -453,6 +455,7 @@ public class JdbcPrefetcher implements RawApplier
                     if (logger.isDebugEnabled())
                         logger.debug("Transformed INSERT to prefetch query: "
                                 + sqlQuery);
+                    transformed++;
                     hasTransform = true;
                 }
                 // else do nothing
@@ -472,6 +475,7 @@ public class JdbcPrefetcher implements RawApplier
                     if (logger.isDebugEnabled())
                         logger.debug("Transformed DELETE to prefetch query: "
                                 + sqlQuery);
+                    transformed++;
                     hasTransform = true;
                 }
                 else
@@ -490,6 +494,7 @@ public class JdbcPrefetcher implements RawApplier
                     if (logger.isDebugEnabled())
                         logger.debug("Transformed UPDATE to prefetch query: "
                                 + sqlQuery);
+                    transformed++;
                     hasTransform = true;
                 }
                 else
@@ -894,6 +899,7 @@ public class JdbcPrefetcher implements RawApplier
                 {
                     logger.debug("Prefetched event " + " : " + stmt.toString());
                 }
+                transformed++;
             }
             catch (SQLException e)
             {
@@ -929,6 +935,9 @@ public class JdbcPrefetcher implements RawApplier
     private String logFailedRowChangeSQL(StringBuffer stmt,
             OneRowChange oneRowChange)
     {
+        // TODO: use THLManagerCtrl for logging exact failing SQL after
+        // branch thl_meta is merged into HEAD. Now this duplicates
+        // functionality.
         try
         {
             ArrayList<OneRowChange.ColumnSpec> keys = oneRowChange.getKeySpec();
@@ -955,7 +964,7 @@ public class JdbcPrefetcher implements RawApplier
                         OneRowChange.ColumnVal value = values.get(c);
                         log += "\n"
                                 + THLManagerCtrl.formatColumn(colSpec, value,
-                                        "COL", null, false, true);
+                                        "COL", null, false);
                     }
                 }
                 // Print key values.
@@ -969,7 +978,7 @@ public class JdbcPrefetcher implements RawApplier
                         OneRowChange.ColumnVal value = values.get(k);
                         log += "\n"
                                 + THLManagerCtrl.formatColumn(colSpec, value,
-                                        "KEY", null, false, true);
+                                        "KEY", null, false);
                     }
                 }
             }
@@ -1181,11 +1190,13 @@ public class JdbcPrefetcher implements RawApplier
 
             // Create the database.
             conn = DatabaseFactory.createDatabase(url, user, password);
-            conn.connect();
+            conn.connect(true);
             statement = conn.createStatement();
 
             // Create table metadata cache.
             tableMetadataCache = new TableMetadataCache(5000);
+
+            transformed = 0;
             eventCount = 0;
         }
         catch (SQLException e)

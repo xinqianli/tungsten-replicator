@@ -45,7 +45,6 @@ public class MySQLSessionSupportFilter implements Filter
 
     private String              lastSessionId         = "";
     private static final String SET_PTHREAD_STATEMENT = "set @@session.pseudo_thread_id=";
-    private static final String BLANK_THREAD          = "0";
     private boolean             privileged;
 
     /**
@@ -67,9 +66,6 @@ public class MySQLSessionSupportFilter implements Filter
         if (sessionId == null && logger.isDebugEnabled())
             logger.debug(String.format("Found null sessionId for eventId=%s",
                     eventId));
-
-        if (sessionId != null && sessionId.equals("-1"))
-            sessionId = BLANK_THREAD;
 
         if (sessionId != null && !sessionId.equals(lastSessionId))
         {
@@ -95,7 +91,7 @@ public class MySQLSessionSupportFilter implements Filter
      */
     public void configure(PluginContext context) throws ReplicatorException
     {
-        privileged = context.isPrivilegedSlave();
+        privileged = context.isPrivilegedSlaveUpdate();
         if (!privileged)
         {
             logger.warn("Database update is not privileged; MySQL temp table support using pseudo-threads is disabled");

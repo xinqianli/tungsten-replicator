@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2014 Continuent Inc.
+ * Copyright (C) 2010-2012 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -480,7 +480,7 @@ public class Pipeline implements ReplicatorPlugin
         {
             // First term in predicate ensures that we assign a value.
             long minStoredSeqno = store.getMinStoredSeqno();
-            if (seqno == -1 || (seqno > minStoredSeqno && minStoredSeqno != -1))
+            if (seqno == -1 || seqno > minStoredSeqno)
                 seqno = minStoredSeqno;
         }
         return seqno;
@@ -769,8 +769,8 @@ class DeferredShutdownTask implements Callable<Pipeline>
 
         logger.info("Pipeline has shut down, dispatching offline event: "
                 + pipeline.getName());
-        // This probably should not be here--pipelines should not know
-        // about the state machine. However it works.
+        // TODO: This probably should not be here--pipelines should not know
+        // about the state machine.
         pipeline.getContext().getEventDispatcher().put(new GoOfflineEvent());
         return pipeline;
     }

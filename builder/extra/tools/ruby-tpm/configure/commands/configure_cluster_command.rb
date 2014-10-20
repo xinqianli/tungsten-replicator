@@ -2,7 +2,6 @@ class ConfigureDataServiceCommand
   include ConfigureCommand
   include ResetConfigPackageModule
   include ClusterCommandModule
-  include DisabledForExternalConfiguration
   
   CONFIGURE_DEFAULTS = "defaults"
   
@@ -49,7 +48,7 @@ class ConfigureDataServiceCommand
     is_valid?()
   end
   
-  def skip_validation?(v = nil)
+  def skip_validation?
     true
   end
   

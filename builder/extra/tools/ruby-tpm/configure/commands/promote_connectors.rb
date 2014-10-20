@@ -34,14 +34,6 @@ class PromoteConnectorsCommand
   def self.get_command_description
     "Stop the currently running connector and start the connector in the active installation.  This command should follow 'tpm promote --no-connectors' or 'tpm upgrade --no-connectors'"
   end
-  
-  def self.display_command
-    if Configurator.instance.is_enterprise?()
-      true
-    else
-      false
-    end
-  end
 end
 
 class CurrentConnectorCheck < ConfigureValidationCheck
@@ -77,10 +69,6 @@ module PromoteConnectorDeploymentStep
   module_function :get_methods
   
   def promote_connector
-    unless is_connector? == true
-      info("Host is not configured as a Connector - skipping.")
-      return
-    end
     current_connector_dir = get_additional_property(PromoteConnectorsCommand::CURRENT_CONNECTOR_DIR)
     unless current_connector_dir.to_s() == ""
       info("Stopping #{current_connector_dir}/tungsten-connector/bin/connector")

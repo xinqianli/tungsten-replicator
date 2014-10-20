@@ -88,7 +88,7 @@ public class HeartbeatTable
     private void initialize(String schema)
     {
         hbTable = new Table(schema, TABLE_NAME);
-        hbId = new Column("id", Types.BIGINT, true); // true => isNotNull
+        hbId = new Column("id", Types.BIGINT);
         hbSeqno = new Column("seqno", Types.BIGINT);
         hbEventId = new Column("eventid", Types.VARCHAR, 128);
         hbSourceTstamp = new Column("source_tstamp", Types.TIMESTAMP);
@@ -130,12 +130,9 @@ public class HeartbeatTable
         if (logger.isDebugEnabled())
             logger.debug("Initializing heartbeat table");
 
-        // Create the table if it does not exist.
-        if (database.findTable(hbTable.getSchema(), hbTable.getName()) == null)
-        {
-            database.createTable(this.hbTable, false, this.hbTable.getSchema(),
-                    tableType, serviceName);
-        }
+        // Replace the table.
+        database.createTable(this.hbTable, false, this.hbTable.getSchema(),
+                tableType, serviceName);
 
         // Add an initial heartbeat value if needed
         ResultSet res = null;
@@ -217,15 +214,13 @@ public class HeartbeatTable
      * Wrapper for startHeartbeat() call.
      */
     public void startHeartbeat(String url, String user, String password,
-            String name, String initScript) throws SQLException
+            String name) throws SQLException
     {
         Database db = null;
         try
         {
             db = DatabaseFactory.createDatabase(url, user, password);
-            if (initScript != null)
-                db.setInitScript(initScript);
-            db.connect();
+            db.connect(true);
             startHeartbeat(db, name);
         }
         finally

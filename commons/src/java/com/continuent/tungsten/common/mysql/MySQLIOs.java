@@ -45,9 +45,7 @@ import org.apache.log4j.Logger;
 import com.continuent.tungsten.common.cluster.resource.ResourceState;
 import com.continuent.tungsten.common.config.TungstenProperties;
 import com.continuent.tungsten.common.config.cluster.ConfigurationException;
-import com.continuent.tungsten.common.config.cluster.DataServerConditionMapping;
-import com.continuent.tungsten.common.config.cluster.DataServerConditionMappingConfiguration;
-import com.continuent.tungsten.common.utils.CLUtils;
+import com.continuent.tungsten.common.config.cluster.QueryStatusToResourceStateConfiguration;
 
 /**
  * Utility class to retrieve the input and output streams of a JDBC Connection
@@ -94,20 +92,11 @@ public class MySQLIOs
     public static final String                             SOCKET_PHASE_READ                 = "reading from";
     public static final String                             SOCKET_PHASE_WRITE                = "writing to";
 
-    public static boolean                                  testConditionEnabled              = false;
-    public static ExecuteQueryStatus                       testCondition                     = ExecuteQueryStatus.UNDEFINED;
-
-    private static DataServerConditionMappingConfiguration stateMapConfig                    = null;
+    private static QueryStatusToResourceStateConfiguration stateMapConfig                    = null;
 
     public enum ExecuteQueryStatus
     {
-        UNDEFINED, OK, TOO_MANY_CONNECTIONS, OPEN_FILE_LIMIT_ERROR, SOCKET_NO_IO, SOCKET_CONNECT_TIMEOUT, SEND_QUERY_TIMEOUT, QUERY_RESULTS_TIMEOUT, QUERY_EXEC_TIMEOUT, LOGIN_RESPONSE_TIMEOUT, QUERY_TOO_LARGE, QUERY_RESULT_FAILED, QUERY_EXECUTION_FAILED, SOCKET_IO_ERROR, MYSQL_ERROR, UNEXPECTED_EXCEPTION, MYSQL_PREMATURE_EOF, HOST_IS_DOWN, NO_ROUTE_TO_HOST, UNKNOWN_HOST, UNTRAPPED_CONDITION
-    }
-
-    public MySQLIOs()
-    {
-        this.input = null;
-        this.output = null;
+        OK, TOO_MANY_CONNECTIONS, OPEN_FILE_LIMIT_ERROR, SOCKET_NO_IO, SOCKET_CONNECT_TIMEOUT, SEND_QUERY_TIMEOUT, QUERY_RESULTS_TIMEOUT, QUERY_EXEC_TIMEOUT, LOGIN_RESPONSE_TIMEOUT, QUERY_TOO_LARGE, QUERY_RESULT_FAILED, QUERY_EXECUTION_FAILED, SOCKET_IO_ERROR, MYSQL_ERROR, UNEXPECTED_EXCEPTION, MYSQL_PREMATURE_EOF, HOST_IS_DOWN, NO_ROUTE_TO_HOST, UNKNOWN_HOST, UNTRAPPED_CONDITION
     }
 
     /**
@@ -170,7 +159,10 @@ public class MySQLIOs
             // variable
             else if (className.equals(DRIZZLE_CONNECTION_CLASSNAME))
             {
-                Object protocolObj = getDrizzleConnectionProtocolObject(realConnection);
+                Class<?> implClazz = realConnection.getClass();
+                Field protocolField = implClazz.getDeclaredField("protocol");
+                protocolField.setAccessible(true);
+                Object protocolObj = protocolField.get(realConnection);
                 return new MySQLIOs(
                         getDrizzleConnectionInputStream(protocolObj),
                         (BufferedOutputStream) getDrizzleConnectionOutputStream(protocolObj));
@@ -190,16 +182,6 @@ public class MySQLIOs
             logger.error("Couldn't get connection IOs", e);
             throw new IOException(e.getLocalizedMessage());
         }
-    }
-
-    private static Object getDrizzleConnectionProtocolObject(
-            Object realConnection) throws NoSuchFieldException,
-            IllegalAccessException
-    {
-        Class<?> implClazz = realConnection.getClass();
-        Field protocolField = implClazz.getDeclaredField("protocol");
-        protocolField.setAccessible(true);
-        return protocolField.get(realConnection);
     }
 
     private static Object getMySQLConnectionIOField(Object realConnection)
@@ -442,7 +424,9 @@ public class MySQLIOs
 
     /**
      * Every connection to a MySQL server has a server side ID, called
-     * connection ID or server thread ID. This function aims to get this ID
+     * connection ID or server thread ID. This function allows getting this ID,
+     * currently only on a MySQL driver connection<br>
+     * TODO: implement Drizzle version
      * 
      * @param connection the (connected) connection to get ID from
      * @return the server thread ID of the given connection as a long
@@ -473,14 +457,6 @@ public class MySQLIOs
                     return 0;
                 }
                 return (Long) getFieldFromMysqlIO(ioObj, "threadId");
-            }
-            else if (className.startsWith(DRIZZLE_CONNECTION_CLASSNAME))
-            {
-                Object protocolObj = getDrizzleConnectionProtocolObject(realConnection);
-                Field writerField = protocolObj.getClass().getDeclaredField(
-                        "serverThreadId");
-                writerField.setAccessible(true);
-                return (Long) writerField.get(protocolObj);
             }
         }
         catch (Exception e)
@@ -547,7 +523,7 @@ public class MySQLIOs
      *            timeout
      * @return true if the server is up and running, false otherwise
      */
-    public boolean isAlive(String hostname, int port, String user,
+    public static boolean isAlive(String hostname, int port, String user,
             String password, String db, String query, int timeoutMsecs)
     {
         try
@@ -577,40 +553,15 @@ public class MySQLIOs
                 return false;
             }
 
-            DataServerConditionMapping mapping = DataServerConditionMappingConfiguration
-                    .getConditionMapping((ExecuteQueryStatus) statusObj);
-
-            if (mapping != null)
-            {
-                return mapping.getState() == ResourceState.ONLINE;
-            }
-            else
-            {
-                logger.error("No condition mapping present. Returning 'false'");
-            }
+            return (MySQLIOs
+                    .getStateFromQueryStatus((ExecuteQueryStatus) statusObj) != ResourceState.STOPPED);
 
         }
         catch (Exception err)
         {
-            logger.error("Got unexpected exception. Returning false: " + err);
+            logger.error("Got unexpected exception. Returning true: " + err);
         }
-        return false;
-    }
-
-    public static void checkStateMapping()
-    {
-        try
-        {
-            MySQLIOs.loadStateMappingConfiguration();
-            logger.info("MONITOR WILL USE DYNAMIC STATE MAPPING:");
-        }
-        catch (ConfigurationException c)
-        {
-            logger.warn(String.format(
-                    "Unable to load state mapping from file: %s",
-                    c.getLocalizedMessage()));
-            logger.info("MONITOR WILL USE DEFAULT STATE MAPPING:");
-        }
+        return true;
     }
 
     /**
@@ -631,17 +582,10 @@ public class MySQLIOs
      * @return null if the server is not alive/accessible, or the query result
      *         wrapped inside tungsten properties
      */
-    public TungstenProperties executeQueryWithTimeouts(String hostname,
+    public static TungstenProperties executeQueryWithTimeouts(String hostname,
             int port, String user, String password, String db, String query,
             int timeoutMsecs)
     {
-
-        if (testConditionEnabled
-                && testCondition != ExecuteQueryStatus.UNDEFINED)
-        {
-            return testConditionWithResults();
-        }
-
         String statusMessage = null;
         int mysqlErrno = -1;
 
@@ -664,11 +608,6 @@ public class MySQLIOs
 
         String socketPhase = SOCKET_PHASE_CONNECT;
         ExecuteQueryStatus timeoutPhase = ExecuteQueryStatus.SOCKET_CONNECT_TIMEOUT;
-
-        InputStream socketInput = null;
-        OutputStream socketOutput = null;
-
-        MySQLPacket queryResult = null;
 
         try
         {
@@ -704,9 +643,8 @@ public class MySQLIOs
             }
 
             statusAndResult.setLong(TIME_TO_CONNECT_MS, timeToConnectMs);
-
-            socketInput = socket.getInputStream();
-            socketOutput = socket.getOutputStream();
+            InputStream socketInput = socket.getInputStream();
+            OutputStream socketOutput = socket.getOutputStream();
 
             if (socketInput == null || socketOutput == null)
             {
@@ -838,7 +776,8 @@ public class MySQLIOs
                 socketOutput.flush();
 
                 socketPhase = SOCKET_PHASE_READ;
-                queryResult = MySQLPacket.mysqlReadPacket(socketInput, true);
+                MySQLPacket queryResult = MySQLPacket.mysqlReadPacket(
+                        socketInput, true);
                 long timeToExecQueryMs = System.currentTimeMillis()
                         - beforeQuery;
 
@@ -925,50 +864,42 @@ public class MySQLIOs
                 }
                 queryResult = MySQLPacket.mysqlReadPacket(socketInput, true);// EOF
                 queryResult = MySQLPacket.mysqlReadPacket(socketInput, true);
-                while (!queryResult.isEOF() && !queryResult.isError())
+                for (int i = 0; i < numberOfColumns; i++)
                 {
-                    for (int i = 0; i < numberOfColumns; i++)
+                    String row = queryResult.getLenEncodedString(false);
+                    if (logger.isDebugEnabled())
                     {
-                        String row = queryResult.getLenEncodedString(false);
-                        if (logger.isDebugEnabled())
+                        logger.debug("Got Row: " + row);
+                    }
+                    byte type = columnTypes.get(i);
+                    // Time and dates must be converted to long (# of ms since
+                    // epoch)
+                    if (type == MySQLConstants.MYSQL_TYPE_DATE
+                            || type == MySQLConstants.MYSQL_TYPE_DATETIME
+                            || type == MySQLConstants.MYSQL_TYPE_NEWDATE
+                            || type == MySQLConstants.MYSQL_TYPE_TIMESTAMP)
+                    {
+                        SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd");
+                        // timestamps that contain hour info
+                        if (row.length() > 11)
                         {
-                            logger.debug("Got Row: " + row);
+                            f = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
                         }
-                        byte type = columnTypes.get(i);
-                        // Time and dates must be converted to long (# of ms
-                        // since epoch)
-                        if (type == MySQLConstants.MYSQL_TYPE_DATE
-                                || type == MySQLConstants.MYSQL_TYPE_DATETIME
-                                || type == MySQLConstants.MYSQL_TYPE_NEWDATE
-                                || type == MySQLConstants.MYSQL_TYPE_TIMESTAMP)
+                        try
                         {
-                            SimpleDateFormat f = new SimpleDateFormat(
-                                    "yyyy-MM-dd");
-                            // timestamps that contain hour info
-                            if (row.length() > 11)
-                            {
-                                f = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-                            }
-                            try
-                            {
-                                java.util.Date d = f.parse(row);
-                                resultSet.setLong(columnNames.get(i),
-                                        d.getTime());
-                            }
-                            catch (ParseException pe)
-                            {
-                                // Don't throw an error but keep it safe:
-                                resultSet.setLong(columnNames.get(i), 0L);
-                            }
+                            java.util.Date d = f.parse(row);
+                            resultSet.setLong(columnNames.get(i), d.getTime());
                         }
-                        else
+                        catch (ParseException pe)
                         {
-                            resultSet.setString(columnNames.get(i), row);
+                            // Don't throw an error but keep it safe:
+                            resultSet.setLong(columnNames.get(i), 0L);
                         }
                     }
-                    queryResult = MySQLPacket
-                            .mysqlReadPacket(socketInput, true);
-
+                    else
+                    {
+                        resultSet.setString(columnNames.get(i), row);
+                    }
                 }
 
                 statusMessage = String.format("Query to %s:%d succeeded.",
@@ -1116,64 +1047,15 @@ public class MySQLIOs
         }
         finally
         {
-            if (socketOutput != null)
+            try
             {
-                try
-                {
-                    // Try to properly close the connection
-                    MySQLPacket p = new MySQLPacket(1, (byte) 0);
-                    p.putByte((byte) MySQLConstants.COM_QUIT);
-                    p.write(socketOutput);
-                }
-                catch (Exception ignored)
-                {
-                }
+                // Try to properly close the connection
+                MySQLPacket p = new MySQLPacket(1, (byte) 0);
+                p.putByte((byte) MySQLConstants.COM_QUIT);
+                p.write(socket.getOutputStream());
             }
-
-            if (socketOutput != null)
+            catch (Exception ignored)
             {
-                try
-                {
-                    socketOutput.close();
-                }
-                catch (Exception ignored)
-                {
-                }
-                finally
-                {
-                    socketOutput = null;
-                }
-            }
-
-            if (queryResult != null)
-            {
-                try
-                {
-                    queryResult.close();
-                }
-                catch (Exception ignored)
-                {
-
-                }
-                finally
-                {
-                    queryResult = null;
-                }
-            }
-
-            if (socketInput != null)
-            {
-                try
-                {
-                    socketInput.close();
-                }
-                catch (Exception ignored)
-                {
-                }
-                finally
-                {
-                    socketInput = null;
-                }
             }
 
             if (socket != null)
@@ -1185,10 +1067,6 @@ public class MySQLIOs
                 catch (IOException i)
                 {
                     logger.warn("Exception while closing socket", i);
-                }
-                finally
-                {
-                    socket = null;
                 }
             }
         }
@@ -1206,22 +1084,6 @@ public class MySQLIOs
         }
 
         return logAndReturnProperties(statusAndResult);
-    }
-
-    /**
-     * Utility method that will allow us to simulate a wide variety of
-     * conditions being passed up from monitoring into rules etc.
-     * 
-     * @return
-     */
-    private TungstenProperties testConditionWithResults()
-    {
-        TungstenProperties retProps = new TungstenProperties();
-        retProps.setObject(STATUS_KEY, testCondition);
-        retProps.setString(STATUS_MESSAGE_KEY, String.format(
-                "Test vector enabled. Returning condition=%s", testCondition));
-        CLUtils.println(retProps.toNameValuePairs());
-        return retProps;
     }
 
     /**
@@ -1355,17 +1217,118 @@ public class MySQLIOs
         return String.format("%s\n%s", status.toString(), statusMessage);
     }
 
-    public static DataServerConditionMapping getConditionMappingFromQueryStatus(
+    /**
+     * Returns the ResourceState that maps to the status of the query execution.
+     * 
+     * @param status
+     */
+    public static ResourceState getStateFromQueryStatus(
             ExecuteQueryStatus status)
     {
-        return DataServerConditionMappingConfiguration
-                .getConditionMapping(status);
+        if (stateMapConfig != null)
+        {
+            try
+            {
+                return QueryStatusToResourceStateConfiguration
+                        .getMappedState(status);
+            }
+            catch (ConfigurationException c)
+            {
+                if (logger.isDebugEnabled())
+                {
+                    logger.debug(String.format("%s\nUsing default mapping.\n"
+                            + "Check the file at %s and correct any issues.",
+                            c.getLocalizedMessage(),
+                            stateMapConfig.getConfigFileNameInUse()));
+                }
+            }
+        }
+
+        switch (status)
+        {
+            case OK :
+                return ResourceState.ONLINE;
+
+            case SOCKET_CONNECT_TIMEOUT :
+            case LOGIN_RESPONSE_TIMEOUT :
+            case QUERY_EXEC_TIMEOUT :
+            case QUERY_RESULTS_TIMEOUT :
+            case SEND_QUERY_TIMEOUT :
+                return ResourceState.TIMEOUT;
+
+            case SOCKET_IO_ERROR :
+                return ResourceState.STOPPED;
+
+            case HOST_IS_DOWN :
+            case NO_ROUTE_TO_HOST :
+            case QUERY_TOO_LARGE :
+            case OPEN_FILE_LIMIT_ERROR :
+            case SOCKET_NO_IO :
+            case QUERY_RESULT_FAILED :
+            case QUERY_EXECUTION_FAILED :
+            case MYSQL_ERROR :
+            case UNEXPECTED_EXCEPTION :
+            case MYSQL_PREMATURE_EOF :
+            case UNTRAPPED_CONDITION :
+            case TOO_MANY_CONNECTIONS :
+            case UNKNOWN_HOST :
+            default :
+                return ResourceState.SUSPECT;
+        }
     }
 
     public static void loadStateMappingConfiguration()
             throws ConfigurationException
     {
-        stateMapConfig = DataServerConditionMappingConfiguration.getInstance();
+        stateMapConfig = QueryStatusToResourceStateConfiguration.getInstance();
+    }
+
+    public static String showStateMapping()
+    {
+        StringBuilder builder = new StringBuilder();
+
+        ResourceState mappedState = null;
+
+        for (ExecuteQueryStatus status : ExecuteQueryStatus.values())
+        {
+
+            try
+            {
+                mappedState = QueryStatusToResourceStateConfiguration
+                        .getMappedState(status);
+
+                if (mappedState != null)
+                {
+                    builder.append(String.format("OVERRIDE: %s = %s\n", status,
+                            mappedState));
+
+                    continue;
+                }
+            }
+            catch (ConfigurationException c)
+            {
+                if (logger.isDebugEnabled())
+                {
+                    if (stateMapConfig != null)
+                    {
+                        logger.debug("Exception using default mapping."
+                                + " Check the file at "
+                                + stateMapConfig.getConfigFileNameInUse()
+                                + " and correct any issues.");
+                    }
+                    else
+                    {
+                        logger.debug("Default config for " + status + " = "
+                                + mappedState + " is invalid");
+                    }
+                }
+            }
+
+            builder.append(String.format(" DEFAULT: %s = %s\n", status,
+                    getStateFromQueryStatus(status)));
+        }
+
+        return builder.toString();
     }
 
     private static TungstenProperties logAndReturnProperties(
@@ -1377,48 +1340,5 @@ public class MySQLIOs
         }
 
         return props;
-    }
-
-    public static boolean isTestConditionEnabled()
-    {
-        return testConditionEnabled;
-    }
-
-    public static void setTestConditionEnabled(boolean testConditionEnabled)
-    {
-        if (testConditionEnabled != MySQLIOs.testConditionEnabled)
-        {
-            CLUtils.println(String.format("TEST CONDITION=%s, enabled=%s",
-                    testCondition, testConditionEnabled));
-        }
-        MySQLIOs.testConditionEnabled = testConditionEnabled;
-    }
-
-    public static ExecuteQueryStatus getTestCondition()
-    {
-        return testCondition;
-    }
-
-    public static void setTestCondition(ExecuteQueryStatus testCondition)
-    {
-        if (testCondition != MySQLIOs.testCondition)
-        {
-            CLUtils.println(String.format(
-                    "TEST CONDITION %s => %s, enabled=%s",
-                    MySQLIOs.testCondition, testCondition,
-                    MySQLIOs.testConditionEnabled));
-        }
-        MySQLIOs.testCondition = testCondition;
-    }
-
-    public static void clearTestCondition()
-    {
-        MySQLIOs.setTestCondition(ExecuteQueryStatus.UNDEFINED);
-        setTestConditionEnabled(false);
-    }
-
-    public static DataServerConditionMappingConfiguration getStateMapConfig()
-    {
-        return stateMapConfig;
     }
 }

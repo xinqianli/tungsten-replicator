@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2012 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Scott Martin
- * Contributor(s): Stephane Giron, Linas Virbalas
+ * Contributor(s): Stephane Giron
  */
 
 package com.continuent.tungsten.replicator.database;
@@ -32,18 +32,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Hashtable;
 import java.util.Iterator;
-import java.util.List;
 
 import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.common.csv.CsvWriter;
-import com.continuent.tungsten.common.csv.NullPolicy;
 import com.continuent.tungsten.replicator.ReplicatorException;
-import com.continuent.tungsten.replicator.channel.ShardChannelTable;
-import com.continuent.tungsten.replicator.consistency.ConsistencyTable;
 import com.continuent.tungsten.replicator.dbms.OneRowChange;
 import com.continuent.tungsten.replicator.heartbeat.HeartbeatTable;
-import com.continuent.tungsten.replicator.shard.ShardTable;
 
 /**
  * Defines an interface to the Oracle database
@@ -79,12 +74,6 @@ public class OracleDatabase extends AbstractDatabase
             "VALUES", "VARCHAR", "VARCHAR2", "VIEW", "WHENEVER", "WHERE",
             "WITH"                                                            }));
 
-    private static final List<String>      SYSTEM_SCHEMAS             = Arrays.asList(new String[]{
-            "SYS", "SYSMAN", "SYSTEM", "TSMSYS", "WMSYS", "XDB",
-            "SI_INFORMTN_SCHEMA", "ANONYMOUS", "CTXSYS", "DBSNMP", "DIP",
-            "DMSYS", "EXFSYS", "MDDATA", "MDSYS", "MGMT_VIEW", "OLAPSYS",
-            "ORACLE_OCM", "ORDPLUGINS", "ORDSYS", "OUTLN"             });
-
     public OracleDatabase()
     {
         dbms = DBMS.ORACLE;
@@ -103,19 +92,21 @@ public class OracleDatabase extends AbstractDatabase
     @Override
     public SqlOperationMatcher getSqlNameMatcher() throws ReplicatorException
     {
-        // Return MySQL matcher for now.
+        // TODO: Develop matcher for Oracle dialect.
         return new MySQLOperationMatcher();
     }
 
     /**
      * In Oracle, to support timestamp with local time zone replication we need
      * to set the session level time zone to be the same as the database time
-     * zone.
+     * zone. {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#connect(boolean)
      */
     @Override
-    public synchronized void connect() throws SQLException
+    public synchronized void connect(boolean binlog) throws SQLException
     {
-        super.connect();
+        super.connect(binlog);
         ResultSet res = null;
         Statement statement = createStatement();
         String timeZone = "00:00";
@@ -219,20 +210,6 @@ public class OracleDatabase extends AbstractDatabase
             default :
                 return "UNKNOWN";
         }
-    }
-
-    @Override
-    protected Column addColumn(ResultSet rs) throws SQLException
-    {
-        // Generic initialization.
-        Column column = super.addColumn(rs);
-
-        // Oracle specifics.
-        int type = column.getType();
-        column.setBlob(type == Types.BLOB || type == Types.BINARY
-                || type == Types.VARBINARY || type == Types.LONGVARBINARY);
-
-        return column;
     }
 
     private void createNonUnique(Table t) throws SQLException
@@ -371,18 +348,8 @@ public class OracleDatabase extends AbstractDatabase
 
     public void useDefaultSchema(String schema) throws SQLException
     {
-        try
-        {
-            execute(getUseSchemaQuery(schema));
-            this.defaultSchema = schema;
-        }
-        catch (SQLException e)
-        {
-            // If we get exception at this time, Oracle error message is
-            // obscure, hence we're providing additional information.
-            logger.error("Setting current Oracle user failed: " + schema);
-            throw e;
-        }
+        execute(getUseSchemaQuery(schema));
+        this.defaultSchema = schema;
     }
 
     public String getUseSchemaQuery(String schema)
@@ -643,20 +610,11 @@ public class OracleDatabase extends AbstractDatabase
         return md.getPrimaryKeys(null, schemaName, tableName);
     }
 
-    protected ResultSet getIndexResultSet(DatabaseMetaData md,
-            String schemaName, String tableName, boolean unique)
-            throws SQLException
-    {
-        return md.getIndexInfo(null, schemaName, tableName, unique, true);
-    }
-
     protected ResultSet getTablesResultSet(DatabaseMetaData md,
             String schemaName, boolean baseTablesOnly) throws SQLException
     {
-        if (baseTablesOnly)
-            return md.getTables(null, schemaName, null, new String[]{"TABLE"});
-        else
-            return md.getTables(null, schemaName, null, null);
+        // TODO: Implement ability to fetch base tables properly.
+        return md.getTables(schemaName, null, null, null);
     }
 
     public String getNowFunction()
@@ -696,20 +654,9 @@ public class OracleDatabase extends AbstractDatabase
      */
     public CsvWriter getCsvWriter(BufferedWriter writer)
     {
-        if (this.csvSpec == null)
-        {
-            CsvWriter csv = new CsvWriter(writer);
-            csv.setQuoteChar('"');
-            csv.setQuoted(true);
-            csv.setEscapeChar('\\');
-            csv.setEscapedChars("\\");
-            csv.setNullPolicy(NullPolicy.nullValue);
-            csv.setNullValue("\\N");
-            csv.setWriteHeaders(false);
-            return csv;
-        }
-        else
-            return csvSpec.createCsvWriter(writer);
+        // Need to implement in order to support CSV.
+        throw new UnsupportedOperationException(
+                "CSV output is not supported for this database type");
     }
 
     /**
@@ -724,15 +671,9 @@ public class OracleDatabase extends AbstractDatabase
             throws SQLException
     {
         createTable(table, replace);
-        createChangeTable(table, tungstenSchema, tungstenTableType, serviceName);
-
-    }
-
-    private void createChangeTable(Table table, String tungstenSchema,
-            String tungstenTableType, String serviceName) throws SQLException
-    {
 
         String tableName = HeartbeatTable.TABLE_NAME.toUpperCase();
+
         if (tungstenTableType.startsWith("CDC")
                 && table.getSchema().equals(tungstenSchema)
                 && table.getName().equalsIgnoreCase(tableName))
@@ -756,6 +697,7 @@ public class OracleDatabase extends AbstractDatabase
                 if (rs != null)
                     rs.close();
                 statement.close();
+
             }
 
             if (changeTableAlreadyDefined)
@@ -769,7 +711,11 @@ public class OracleDatabase extends AbstractDatabase
 
             if (!tungstenTableType.equals("CDCSYNC"))
             {
-                // Prepare table for asynchronous capture.
+                // Disable Tungsten Change Set
+                execute("BEGIN DBMS_CDC_PUBLISH.ALTER_CHANGE_SET(change_set_name=>'"
+                        + changeSetName + "',enable_capture=>'N'); END;");
+
+                // Or prepare table for asynchronous capture.
                 // This should not be done for synchronous capture as this would
                 // not work on standard edition.
                 try
@@ -789,11 +735,11 @@ public class OracleDatabase extends AbstractDatabase
             }
 
             String cdcSQL;
-            int oracleVersion = dbConn.getMetaData().getDatabaseMajorVersion();
-            if (tungstenTableType.equals("CDCSYNC") && oracleVersion >= 11)
+            if (tungstenTableType.equals("CDCSYNC")
+                    && dbConn.getMetaData().getDatabaseMajorVersion() >= 11)
             {
-                logger.info("Setting up synchronous data capture with version = "
-                        + oracleVersion);
+                logger.info("Setting up synchronous data capture with version > "
+                        + dbConn.getMetaData().getDatabaseMajorVersion());
                 cdcSQL = "BEGIN "
                         + "DBMS_CDC_PUBLISH.CREATE_CHANGE_TABLE(owner=>'"
                         + table.getSchema()
@@ -811,7 +757,8 @@ public class OracleDatabase extends AbstractDatabase
                         + "', capture_values => 'both', rs_id => 'y', row_id => 'n', "
                         + "user_id => 'n', timestamp => 'n', object_id => 'n', "
                         + "target_colmap => 'y', source_colmap => 'n', ddl_markers=>'n', "
-                        + "options_string=>''); END;";
+                        + "options_string=>'TABLESPACE " + table.getSchema()
+                        + "'); END;";
 
             }
             else
@@ -832,27 +779,21 @@ public class OracleDatabase extends AbstractDatabase
                         + "', capture_values => 'both', rs_id => 'y', row_id => 'n', "
                         + "user_id => 'n', timestamp => 'n', object_id => 'n', "
                         + "target_colmap => 'y', source_colmap => 'n', "
-                        + "options_string=>''); END;";
+                        + "options_string=>'TABLESPACE " + table.getSchema()
+                        + "'); END;";
 
-            try
-            {
-                execute(cdcSQL);
-            }
-            catch (SQLException e1)
-            {
-                if (e1.getErrorCode() == 31415)
-                {
-                    throw new SQLException(
-                            "The change set "
-                                    + changeSetName
-                                    + " does not seem to exist on Oracle. Did you run setupCDC.sh?",
-                            e1);
-                }
-                throw e1;
-            }
+            execute(cdcSQL);
 
             execute("GRANT SELECT ON CT_" + tableName + " TO PUBLIC");
             execute("GRANT SELECT ON " + tableName + " TO PUBLIC");
+
+            if (!tungstenTableType.equals("CDCSYNC"))
+            {
+                // Enable Tungsten Change Set back
+                execute("BEGIN DBMS_CDC_PUBLISH.ALTER_CHANGE_SET(change_set_name=>'"
+                        + changeSetName + "',enable_capture=>'Y'); END;");
+            }
+
         }
     }
 
@@ -870,202 +811,4 @@ public class OracleDatabase extends AbstractDatabase
         // usually we don't have permissions to do that.
         return reservedWords;
     }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#dropTungstenCatalogTables(String,
-     *      String, String)
-     */
-    @Override
-    public void dropTungstenCatalogTables(String schemaName,
-            String tungstenTableType, String serviceName) throws SQLException
-    {
-        // In Oracle, Tungsten user is not dropped automatically.
-        // However, all Tungsten tables will be dropped.
-        dropTable(new Table(schemaName, ConsistencyTable.TABLE_NAME));
-        dropTable(new Table(schemaName, ShardChannelTable.TABLE_NAME));
-        dropTable(new Table(schemaName, ShardTable.TABLE_NAME));
-        dropTable(new Table(schemaName, HeartbeatTable.TABLE_NAME),
-                tungstenTableType, serviceName);
-
-    }
-
-    private void dropTable(Table table, String tungstenTableType,
-            String serviceName) throws SQLException
-    {
-        dropChangeTable(table, tungstenTableType, serviceName);
-        super.dropTable(table);
-    }
-
-    private void dropChangeTable(Table table, String tungstenTableType,
-            String serviceName) throws SQLException
-    {
-        String tableName = HeartbeatTable.TABLE_NAME.toUpperCase();
-
-        if (tungstenTableType.startsWith("CDC"))
-        {
-            String changeSetName = TUNGSTEN_CHANGE_SET_PREFIX + serviceName;
-
-            Statement statement = dbConn.createStatement();
-            ResultSet rs = null;
-            boolean changeTableExists = false;
-            try
-            {
-                rs = statement
-                        .executeQuery("SELECT * FROM USER_TABLES WHERE table_name='CT_"
-                                + tableName + "'");
-
-                changeTableExists = rs.next();
-            }
-            finally
-            {
-                if (rs != null)
-                    rs.close();
-                statement.close();
-            }
-
-            if (!changeTableExists)
-            {
-                logger.info("Tungsten Heartbeat change table not found for service '"
-                        + serviceName + "'. Skipping");
-                // We are done, just exit.
-                return;
-            }
-
-            logger.info("Dropping Tungsten Heartbeat change table for service '"
-                    + serviceName + "'");
-
-            String cdcSQL;
-            cdcSQL = "BEGIN " + "DBMS_CDC_PUBLISH.DROP_CHANGE_TABLE(owner=>'"
-                    + table.getSchema() + "', change_table_name=> '" + "CT_"
-                    + tableName + "', force_flag=>'Y'); END;";
-
-            try
-            {
-                execute(cdcSQL);
-                execute("BEGIN DBMS_CAPTURE_ADM.ABORT_TABLE_INSTANTIATION('"
-                        + table.getSchema() + "." + tableName + "'); END;");
-            }
-            catch (SQLException e1)
-            {
-                if (e1.getErrorCode() == 31415)
-                {
-                    throw new SQLException(
-                            "The change set "
-                                    + changeSetName
-                                    + " does not seem to exist on Oracle. Did you run setupCDC.sh?",
-                            e1);
-                }
-                throw e1;
-            }
-        }
-        // else no change table, as table type is not CDC like
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#isSystemSchema(java.lang.String)
-     */
-    @Override
-    public boolean isSystemSchema(String schemaName)
-    {
-        return SYSTEM_SCHEMAS.contains(schemaName);
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#getDatabaseObjectName(java.lang.String)
-     */
-    @Override
-    public String getDatabaseObjectName(String name)
-    {
-        return '\"' + name + '\"';
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#getCurrentPosition(boolean)
-     */
-    @Override
-    public String getCurrentPosition(boolean flush) throws ReplicatorException
-    {
-        Statement st = null;
-        ResultSet rs = null;
-        try
-        {
-            st = createStatement();
-            logger.debug("Seeking current SCN from database");
-            rs = st.executeQuery("SELECT current_scn FROM V$DATABASE");
-            if (!rs.next())
-                throw new ReplicatorException(
-                        "Error getting current SCN from database");
-            String scn = rs.getString(1);
-
-            return scn;
-        }
-        catch (SQLException e)
-        {
-            throw new ReplicatorException(
-                    "Error getting current SCN from database", e);
-        }
-        finally
-        {
-            if (rs != null)
-            {
-                try
-                {
-                    rs.close();
-                }
-                catch (SQLException ignore)
-                {
-                }
-            }
-            if (st != null)
-            {
-                try
-                {
-                    st.close();
-                }
-                catch (SQLException ignore)
-                {
-                }
-            }
-        }
-
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#supportsFlashbackQuery()
-     */
-    @Override
-    public boolean supportsFlashbackQuery()
-    {
-        return true;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#getFlashbackQuery(java.lang.String)
-     */
-    @Override
-    public String getFlashbackQuery(String position)
-    {
-        // position is either of the form ora:<SCN> or <SCN>, but only the SCN
-        // part needs to get used in the query
-        OracleEventId eventId = new OracleEventId(position);
-        if (eventId.isValid())
-        {
-            return " AS OF SCN " + eventId.getSCN();
-        }
-        else
-            return " AS OF SCN " + position;
-    }
-
 }

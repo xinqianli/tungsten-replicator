@@ -1,6 +1,6 @@
 /**
  * Tungsten: An Application Server for uni/cluster.
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2009 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,6 +22,7 @@
 
 package com.continuent.tungsten.replicator.database;
 
+import java.io.BufferedWriter;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -32,6 +33,7 @@ import java.util.Iterator;
 
 import org.apache.log4j.Logger;
 
+import com.continuent.tungsten.common.csv.CsvWriter;
 import com.continuent.tungsten.replicator.ReplicatorException;
 
 /**
@@ -61,7 +63,7 @@ public class DrizzleDatabase extends AbstractDatabase
     @Override
     public SqlOperationMatcher getSqlNameMatcher() throws ReplicatorException
     {
-        // Return MySQL matcher for now. 
+        // TODO: Develop matcher for Drizzle dialect.
         return new MySQLOperationMatcher();
     }
 
@@ -112,9 +114,20 @@ public class DrizzleDatabase extends AbstractDatabase
      */
     public void connect() throws SQLException
     {
+        connect(false);
+    }
+
+    /**
+     * Connect to a Drizzle database, which includes setting the wait_timeout to
+     * a very high value so we don't lose our connection. {@inheritDoc}
+     * 
+     * @see AbstractDatabase#connect(boolean)
+     */
+    public void connect(boolean binlog) throws SQLException
+    {
         // Use superclass method to avoid missing things like loading the
         // driver class.
-        super.connect();
+        super.connect(binlog);
 
         // set connection timeout to maximum to prevent timeout on the
         // server side
@@ -369,17 +382,11 @@ public class DrizzleDatabase extends AbstractDatabase
         return md.getPrimaryKeys(schemaName, null, tableName);
     }
 
-    protected ResultSet getIndexResultSet(DatabaseMetaData md,
-            String schemaName, String tableName, boolean unique)
-            throws SQLException
-    {
-        return md.getIndexInfo(schemaName, null, tableName, unique, true);
-    }
-
     protected ResultSet getTablesResultSet(DatabaseMetaData md,
             String schemaName, boolean baseTablesOnly) throws SQLException
     {
-        // Returns tables and views but drizzle does not have views anyway. 
+        // TODO: Implement ability to select base tables only. For now
+        // views are not a problem because drizzle does not have them.
         return md.getTables(schemaName, null, null, null);
     }
 
@@ -411,5 +418,17 @@ public class DrizzleDatabase extends AbstractDatabase
         retval += "))";
 
         return retval;
+    }
+
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.database.Database#getCsvWriter(java.io.BufferedWriter)
+     */
+    public CsvWriter getCsvWriter(BufferedWriter writer)
+    {
+        // Need to implement in order to support CSV. 
+        throw new UnsupportedOperationException(
+                "CSV output is not supported for this database type");
     }
 }

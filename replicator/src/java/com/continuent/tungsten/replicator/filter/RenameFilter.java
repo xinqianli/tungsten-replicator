@@ -32,7 +32,6 @@ import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.conf.ReplicatorConf;
 import com.continuent.tungsten.replicator.dbms.DBMSData;
 import com.continuent.tungsten.replicator.dbms.OneRowChange;
-import com.continuent.tungsten.replicator.dbms.StatementData;
 import com.continuent.tungsten.replicator.dbms.OneRowChange.ColumnSpec;
 import com.continuent.tungsten.replicator.dbms.RowChangeData;
 import com.continuent.tungsten.replicator.event.ReplDBMSEvent;
@@ -40,8 +39,7 @@ import com.continuent.tungsten.replicator.plugin.PluginContext;
 
 /**
  * Filter which renames schemas, tables and columns based on a file provided.
- * IMPORTANT: mainly row change events supported; only default schema is renamed
- * for statement events.
+ * IMPORTANT: supports row change events only!
  * 
  * @author <a href="mailto:linas.virbalas@continuent.com">Linas Virbalas</a>
  * @version 1.0
@@ -178,29 +176,6 @@ public class RenameFilter implements Filter
                     if (newSchemaName != null)
                         orc.setSchemaName(newSchemaName);
                 }
-            }
-            else if (dataElem instanceof StatementData)
-            {
-                StatementData sdata = (StatementData) dataElem;
-
-                // Search for "*,*,*" rule, if default schema is not defined.
-                String defaultSchema = "*";
-                if (sdata.getDefaultSchema() != null)
-                    defaultSchema = sdata.getDefaultSchema();
-
-                // Don't analyze Tungsten schema.
-                if (defaultSchema.compareToIgnoreCase(tungstenSchema) == 0)
-                {
-                    if (logger.isDebugEnabled())
-                        logger.debug("Ignoring " + tungstenSchema + " schema");
-                    continue;
-                }
-
-                // Get new schema name if there's a request.
-                String newSchemaName = renameDefinitions.getNewSchemaName(
-                        defaultSchema, "*");
-                if (newSchemaName != null)
-                    sdata.setDefaultSchema(newSchemaName);
             }
         }
         return event;

@@ -96,19 +96,6 @@ public class EventGenerationHelper
     }
 
     /**
-     * Convenience method to create a transaction event from a row insert using
-     * the current time as the commit time.
-     */
-    public ReplDBMSEvent eventFromRowInsert(long seqno, String schema,
-            String table, String[] names, Object[] values, int fragNo,
-            boolean lastFrag)
-    {
-        Timestamp ts = new Timestamp(System.currentTimeMillis());
-        return eventFromRowInsert(seqno, schema, table, names, values, fragNo,
-                lastFrag, ts);
-    }
-
-    /**
      * Creates a transaction event from a row insert.
      * 
      * @param seqno Sequence number
@@ -118,12 +105,11 @@ public class EventGenerationHelper
      * @param values Value columns
      * @param fragNo Fragment number within transaction
      * @param lastFrag If true, last fragment in the transaction
-     * @param commitTime Time of commit
      * @return A fully formed event containing a single row change
      */
     public ReplDBMSEvent eventFromRowInsert(long seqno, String schema,
             String table, String[] names, Object[] values, int fragNo,
-            boolean lastFrag, Timestamp commitTime)
+            boolean lastFrag)
     {
         // Create row change data. This will contain a set of updates.
         OneRowChange rowChange = generateRowChange(schema, table,
@@ -145,10 +131,11 @@ public class EventGenerationHelper
         ArrayList<DBMSData> data = new ArrayList<DBMSData>();
         data.add(rowChangeData);
 
+        Timestamp ts = new Timestamp(System.currentTimeMillis());
         DBMSEvent dbmsEvent = new DBMSEvent(new Long(seqno).toString(), null,
                 data, lastFrag, new Timestamp(System.currentTimeMillis()));
         ReplDBMSEvent replDbmsEvent = new ReplDBMSEvent(seqno, (short) fragNo,
-                lastFrag, "NONE", 0, commitTime, dbmsEvent);
+                lastFrag, "NONE", 0, ts, dbmsEvent);
         return replDbmsEvent;
     }
 
@@ -178,7 +165,7 @@ public class EventGenerationHelper
         for (int i = 0; i < names.length; i++)
         {
             ColumnSpec colSpec = oneRowChange.new ColumnSpec();
-            colSpec.setIndex(i + 1);
+            colSpec.setIndex(1);
             colSpec.setName(names[i]);
             colSpec.setType(Types.VARCHAR);
             specArray.add(colSpec);
@@ -198,13 +185,12 @@ public class EventGenerationHelper
                 values.length);
 
         // Iterate through the value columns and add each value.
-        for (int i = 0; i < values.length; i++)
+        for (int i = 0; i < valueColumns.size(); i++)
         {
             ColumnVal cv1 = oneRowChange.new ColumnVal();
             cv1.setValue(values[i].toString());
             valueColumns.add(cv1);
         }
-        valueList.add(valueColumns);
 
         // Return the resulting list.
         return valueList;

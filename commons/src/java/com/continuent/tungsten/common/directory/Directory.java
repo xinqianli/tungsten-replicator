@@ -196,7 +196,7 @@ public class Directory extends ResourceTree
     /**
      * Creates an instance of Directory with some base-level resources.
      * 
-     * @param memberName 
+     * @param memberName TODO
      * @throws ResourceException
      */
     private Directory(String clusterName, String memberName)
@@ -898,14 +898,12 @@ public class Directory extends ResourceTree
 
                 if (foundNode == null)
                 {
-                    throw new DirectoryNotFoundException(
-                            String.format(
-                                    "element '%s' not found in path '%s' while searching for entry '%s'",
-                                    element,
-                                    formatPath(
-                                            getAbsolutePath(getRootNode(),
-                                                    nodeToSearch, true), true),
-                                    path));
+                    throw new DirectoryNotFoundException(String.format(
+                            "element '%s' not found in path '%s' while searching for entry '%s'",
+                            element,
+                            formatPath(
+                                    getAbsolutePath(getRootNode(),
+                                            nodeToSearch, true), true), path));
                 }
 
                 nodeToSearch = foundNode;
@@ -934,17 +932,17 @@ public class Directory extends ResourceTree
      * @return
      * @throws DirectoryNotFoundException
      */
-//    private ResourceNode getLast(Map<String, ResourceNode> map)
-//            throws DirectoryNotFoundException
-//    {
-//        ResourceNode lastNode = null;
-//        for (ResourceNode node : map.values())
-//        {
-//            lastNode = node;
-//        }
-//
-//        return lastNode;
-//    }
+    private ResourceNode getLast(Map<String, ResourceNode> map)
+            throws DirectoryNotFoundException
+    {
+        ResourceNode lastNode = null;
+        for (ResourceNode node : map.values())
+        {
+            lastNode = node;
+        }
+        
+        return lastNode;
+    }
 
     /**
      * @param path
@@ -1427,28 +1425,6 @@ public class Directory extends ResourceTree
      * @param path
      * @throws DirectoryNotFoundException
      */
-    public synchronized void rm(String sessionID, String path,
-            ResourceNode targetNode) throws DirectoryNotFoundException,
-            DirectoryException
-    {
-        ResourceNode nodeToRemove = null;
-
-        nodeToRemove = getStartNode(sessionID, path);
-
-        if (nodeToRemove != targetNode)
-        {
-            throw new DirectoryException(String.format(
-                    "Found node %s is not the same as the target node %s",
-                    nodeToRemove, targetNode));
-        }
-        nodeToRemove.getParent().removeChild(nodeToRemove.getKey());
-    }
-
-    /**
-     * @param sessionID
-     * @param path
-     * @throws DirectoryNotFoundException
-     */
     public synchronized void rm(String sessionID, String path)
             throws DirectoryNotFoundException, DirectoryException
     {
@@ -1641,12 +1617,7 @@ public class Directory extends ResourceTree
         ResourceNode destinationNode = destination.getRootNode();
         Integer nodesMerged = new Integer(0);
 
-        System.out.println("###### START DIRECTORY MERGE ########");
-
         _merge(sourceNode, destinationNode, nodesMerged);
-
-        System.out.println(String.format(
-                "###### END DIRECTORY MERGE, MERGED=%d ########", nodesMerged));
 
         // While we are at it, make sure that we add any sessionsByID we do
         // not already know about.
@@ -1660,7 +1631,6 @@ public class Directory extends ResourceTree
     private void _merge(ResourceNode sourceNode, ResourceNode destinationNode,
             Integer nodesMerged)
     {
-
         Map<String, ResourceNode> sourceChildren = sourceNode.getChildren();
         Map<String, ResourceNode> destinationChildren = destinationNode
                 .getChildren();
@@ -1923,7 +1893,7 @@ public class Directory extends ResourceTree
 
     public void run()
     {
-        
+        // TODO Auto-generated method stub
     }
 
     public synchronized void flush()
@@ -1996,12 +1966,12 @@ public class Directory extends ResourceTree
 
     public void prepare() throws Exception
     {
-        
+        // TODO Auto-generated method stub
 
     }
 
     /**
-     * @param siteName 
+     * @param siteName TODO
      * @param clusterName
      * @param host
      * @param beanServiceName
@@ -2102,7 +2072,6 @@ public class Directory extends ResourceTree
             ResourceNode processNode = create(sessionID, path, true);
             Process process = (Process) processNode.getResource();
             process.setMember(memberName);
-            process.setClusterName(clusterName);
             process.setPort(port);
             return processNode;
         }

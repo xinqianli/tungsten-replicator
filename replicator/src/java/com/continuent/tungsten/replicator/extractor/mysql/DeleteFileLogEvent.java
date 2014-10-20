@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2009-2013 Continuent Inc.
+ * Copyright (C) 2009 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -28,24 +28,19 @@ import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.extractor.mysql.conversion.LittleEndianConversion;
 
 /**
+ * 
  * @author <a href="mailto:stephane.giron@continuent.com">Stephane Giron</a>
  * @version 1.0
  */
-public class DeleteFileLogEvent extends LogEvent implements LoadDataInfileEvent
+public class DeleteFileLogEvent extends LogEvent
 {
-    int             fileID;
-    private boolean nextEventCanBeAppended = false;
+    int    fileID;
 
     public DeleteFileLogEvent(byte[] buffer, int eventLength,
-            FormatDescriptionLogEvent descriptionEvent, String currentPosition)
+            FormatDescriptionLogEvent descriptionEvent)
             throws ReplicatorException
     {
         super(buffer, descriptionEvent, MysqlBinlog.DELETE_FILE_EVENT);
-
-        this.startPosition = currentPosition;
-        if (logger.isDebugEnabled())
-            logger.debug("Extracting event at position  : " + startPosition
-                    + " -> " + getNextEventPosition());
 
         int commonHeaderLength, postHeaderLength;
 
@@ -62,12 +57,6 @@ public class DeleteFileLogEvent extends LogEvent implements LoadDataInfileEvent
         /* Read the fixed data part */
         fixedPartIndex = commonHeaderLength;
 
-        if (descriptionEvent.useChecksum())
-        {
-            // Removing the checksum from the size of the event
-            eventLength -= 4;
-        }
-
         try
         {
             /* 4 Bytes for file ID */
@@ -79,25 +68,10 @@ public class DeleteFileLogEvent extends LogEvent implements LoadDataInfileEvent
         {
             logger.error("Rows log event parsing failed : ", e);
         }
-
-        doChecksum(buffer, eventLength, descriptionEvent);
-
     }
 
     public int getFileID()
     {
         return fileID;
-    }
-
-    @Override
-    public void setNextEventCanBeAppended(boolean b)
-    {
-        this.nextEventCanBeAppended = b;
-    }
-
-    @Override
-    public boolean canNextEventBeAppended()
-    {
-        return nextEventCanBeAppended;
     }
 }

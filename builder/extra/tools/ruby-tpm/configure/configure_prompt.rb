@@ -32,6 +32,7 @@ class ConfigurePrompt
     @class_default = default
     @default = nil
     @config = nil
+    @weight = 0
   end
   
   # Used to ensure that the basics have been set
@@ -41,6 +42,80 @@ class ConfigurePrompt
     else
       true
     end
+  end
+  
+  # Collect the value from the command line
+  def run
+    # Skip this prompt and remove the config value if this prompt isn't needed
+    unless enabled_for_config?()
+      save_disabled_value()
+    end
+    
+    unless enabled?
+      return
+    end
+
+    description = get_description()
+    unless description == nil
+      Configurator.instance.output("")
+      Configurator.instance.write_divider
+      Configurator.instance.output(description)
+      Configurator.instance.output("")
+    end
+    
+    value = get_input_value()
+    save_input_value(value)
+  end
+  
+  def get_input_value
+    value = nil
+    while value == nil do
+      begin
+        # Display the prompt and collect the response
+        raw_value = input_value(get_display_prompt(), get_prompt_value())
+        
+        case raw_value
+        when COMMAND_HELP
+          Configurator.instance.output("")
+          Configurator.instance.output(get_help())
+          Configurator.instance.output("")
+        when COMMAND_PREVIOUS
+          # Go back
+          raise ConfigurePreviousPrompt
+        when COMMAND_ACCEPT_DEFAULTS
+          # Accept the default value for this and all remaining prompts
+          raise ConfigureAcceptAllDefaults
+        when COMMAND_SAVE
+          # Save the current config values and exit
+          raise ConfigureSaveConfigAndExit
+        else
+          # Validate the response against the prompt validation rule
+          value = accept?(raw_value)
+        end
+      rescue PropertyValidatorException => e
+        if raw_value == "" && !required?()
+          value = nil
+          break
+        end
+        # Catch a prompt validation error and display the prompt again
+        Configurator.instance.error(e.to_s)
+      end
+    end
+    
+    value
+  end
+  
+  def save_input_value(value)
+    # Save the validated response to the config object
+    if save_value?(value)
+      @config.setProperty(get_name(), value)
+    else
+      @config.setProperty(get_name(), nil)
+    end
+  end
+  
+  def get_prompt_value
+    get_value()
   end
   
   def get_stored_value()
@@ -58,8 +133,33 @@ class ConfigurePrompt
     value
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     get_value()
+  end
+  
+  # Save the current value back to the config object or the default 
+  # value if none is set
+  def save_current_value
+    value = get_value()
+    if save_value?(value)
+      @config.setProperty(get_name(), value)
+    else
+      @config.setProperty(get_name(), nil)
+    end
+  end
+
+  # Save the disabled value back to the config object
+  def save_disabled_value
+    value = get_disabled_value()
+    if save_value?(value)
+      @config.setProperty(get_name(), value)
+    else
+      @config.setProperty(get_name(), nil)
+    end
+  end
+  
+  def save_value?(v)
+    (v != get_default_value())
   end
   
   def save_system_default
@@ -307,7 +407,7 @@ class ConfigurePrompt
     return value
   end
   
-  def find_template_value(attrs)
+  def find_template_value(attrs, transform_values_method)
     if attrs[0] != @name
       raise IgnoreError
     end
@@ -316,7 +416,7 @@ class ConfigurePrompt
       raise "Unable to find_template_value:#{attrs.join('.')} for #{self.class.name}"
     end
     
-    get_template_value()
+    get_template_value(transform_values_method)
   end
   
   def replace_deprecated_key(deprecated_key)
@@ -326,12 +426,8 @@ class ConfigurePrompt
     end
   end
   
-  def build_command_line_argument?(member, v)
-    enabled_for_command_line?()
-  end
-  
-  def build_command_line_argument(member, v, public_argument = false)
-    if build_command_line_argument?(member, v)
+  def build_command_line_argument(v)
+    if enabled_for_command_line?()
       return ["--#{get_command_line_argument()}=#{v}"]
     else
       debug("The argument for #{@name} is not accepted on the command line")
@@ -357,14 +453,6 @@ class ConfigurePrompt
       return [get_name()]
     else
       return []
-    end
-  end
-  
-  def get_command_line_argument_value
-    if @validator == PV_BOOLEAN
-      "true"
-    else
-      super()
     end
   end
 end
@@ -429,14 +517,16 @@ module ConstantValueModule
     
     return enabled_for_config?()
   end
+  
+  def output_config_file_usage
+  end
 end
 
 module HiddenValueModule
   def output_usage
   end
   
-  def required?
-    false
+  def output_template_file_usage
   end
 end
 
@@ -524,12 +614,101 @@ module FindFilesystemDefaultModule
   end
 end
 
+class InterfaceMessage < ConfigurePrompt
+  def initialize(message_id, title = nil)
+    @name = message_id
+    @title = title
+    @weight = 0
+  end
+  
+  def is_initialized?
+    true
+  end
+  
+  def run
+    unless enabled?()
+      return
+    end
+    
+    Configurator.instance.output("")
+    if @title == nil
+      Configurator.instance.write_divider
+    else
+      Configurator.instance.write_header(@title)
+    end
+    
+    Configurator.instance.output(get_description())
+  end
+  
+  def validate
+    true
+  end
+  
+  def allow_previous?
+    false
+  end
+end
+
+class AdvancedInterfaceMessage < InterfaceMessage
+  def enabled?
+    Configurator.instance.advanced_mode?()
+  end
+end
+
+class TemporaryPrompt < ConfigurePrompt
+  def initialize(prompt, validator = nil, default = "")
+    super("", prompt, validator, default)
+    @config = Properties.new
+  end
+  
+  def is_initialized?
+    if get_prompt() == nil
+      false
+    else
+      true
+    end
+  end
+  
+  # Collect the value from the command line
+  def run
+    # Skip this prompt and remove the config value if this prompt isn't needed
+    unless enabled?()
+      return
+    end
+    
+    description = get_description()
+    unless description == nil
+      Configurator.instance.output("")
+      Configurator.instance.write_divider
+      Configurator.instance.output(description)
+      Configurator.instance.output("")
+    end
+    
+    get_input_value()
+  end
+  
+  def get_name
+    ""
+  end
+  
+  def get_keys
+    []
+  end
+  
+  def save_current_value
+  end
+
+  # Save the disabled value back to the config object
+  def save_disabled_value
+  end
+end
+
 module CommercialPrompt
   def enabled?
     if Configurator.instance.is_enterprise?()
       super()
     else
-      super()
+      false
     end
   end
   
@@ -537,7 +716,7 @@ module CommercialPrompt
     if Configurator.instance.is_enterprise?()
       super()
     else
-      super()
+      false
     end
   end
 end
@@ -560,35 +739,6 @@ module NoStoredServerConfigValue
       @config.setProperty(get_name(), nil)
       @config.setProperty([SYSTEM] + get_name().split('.'), nil)
     end
-  end
-end
-
-module PrivateArgumentModule
-  def build_command_line_argument(member, v, public_argument = false)
-    if public_argument == true
-      v = Array.new(v.length).fill("@").join("")
-    end
-    
-    super(member, v, public_argument)
-  end
-end
-
-module MigrateFromReplicationServices
-  def update_deprecated_keys
-    @config.getPropertyOr([REPL_SERVICES], {}).each{
-      |rs_alias,rs_props|
-      if rs_props.has_key?(@name)
-        @config.setProperty([HOSTS, rs_props[DEPLOYMENT_HOST], @name], rs_props[@name])
-        rs_props.delete(@name)
-      end
-    }
-    @config.getPropertyOr([DATASERVICE_REPLICATION_OPTIONS], {}).each{
-      |rs_alias,rs_props|
-      if rs_props.has_key?(@name)
-        @config.setProperty([DATASERVICE_HOST_OPTIONS, rs_alias, @name], rs_props[@name])
-        rs_props.delete(@name)
-      end
-    }
   end
 end
 
@@ -630,15 +780,5 @@ module PortForReplicators
 
   def self.paths
     @paths || []
-  end
-end
-module DeploymentFiles
-  def self.register(local, global, group = HOSTS)
-    @prompts ||= []
-    @prompts << {:local => local, :global => global, :group => group}
-  end
-
-  def self.prompts
-    @prompts || []
   end
 end

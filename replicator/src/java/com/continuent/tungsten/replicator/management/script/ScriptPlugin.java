@@ -347,6 +347,7 @@ public class ScriptPlugin extends NotificationBroadcasterSupport
      */
     public boolean heartbeat(TungstenProperties params) throws Exception
     {
+        // TODO Auto-generated method stub
         return false;
     }
 
@@ -446,7 +447,7 @@ public class ScriptPlugin extends NotificationBroadcasterSupport
                 new RestoreCompletionNotification(real_uri));
     }
 
-    public int consistencyCheck(String method, String schemaName,
+    public void consistencyCheck(String method, String schemaName,
             String tableName, int rowOffset, int rowLimit) throws Exception
     {
         throw new ReplicatorException("Consistency check is not supported");

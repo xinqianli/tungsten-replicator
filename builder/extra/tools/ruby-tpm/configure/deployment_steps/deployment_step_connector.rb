@@ -8,41 +8,38 @@ module ConfigureDeploymentStepConnector
   
   def deploy_connector
     unless is_connector?()
-      info("Tungsten Connector is not active; skipping configuration")
+      info("Tungsten Connector is not active; skipping connector configuration")
       return
     end
     
-    Configurator.instance.write_header("Performing Tungsten Connector configuration")
-    transform_host_template("tungsten-connector/conf/connector.properties",
-      "tungsten-connector/samples/conf/connector.properties.tpl")
+    Configurator.instance.write_header("Performing Tungsten Connector configuration...")
+    transformer = Transformer.new(
+		  "#{get_deployment_basedir()}/tungsten-connector/samples/conf/connector.properties.tpl",
+			"#{get_deployment_basedir()}/tungsten-connector/conf/connector.properties", "#")
+	  transformer.set_fixed_properties(@config.getTemplateValue(get_host_key(FIXED_PROPERTY_STRINGS)))
+    transformer.transform_values(method(:transform_values))
     
-    connector_readonly_properties = "#{get_deployment_basedir()}/tungsten-connector/conf/connector.ro.properties"
-    if @config.getPropertyOr(CONN_RO_LISTEN_PORT) != "" && @config.getProperty(ENABLE_CONNECTOR_RO) != "true"
-      ConfigureDeploymentStepConnector.connector_ro_mode?(true)
-      transform_host_template(connector_readonly_properties,
-        "tungsten-connector/samples/conf/connector.properties.tpl")
-      ConfigureDeploymentStepConnector.connector_ro_mode?(false)
-    else
-      if File.exist?(connector_readonly_properties)
-        FileUtils.rm_f(connector_readonly_properties)
-      end
-    end
+    transformer.output
+    watch_file(transformer.get_filename())
     
+    write_connector_wrapper_conf()
     write_user_map()
     
-    Configurator.instance.write_header "Writing Bristlecone performance test configurations"
-    write_bristlecone_evaluator_xml()
-    write_evaluator("readonly")
-    write_evaluator("readwrite")
-    
+    # Configure user name in service script.
+    set_run_as_user("#{get_deployment_basedir()}/tungsten-connector/bin/connector")
+
     add_service("tungsten-connector/bin/connector")
     add_log_file("tungsten-connector/log/connector.log")
-    set_run_as_user("tungsten-connector/bin/connector")
-    transform_host_template("tungsten-connector/conf/wrapper.conf",
-      "tungsten-connector/samples/conf/wrapper.conf")
     
     FileUtils.cp("#{get_deployment_basedir()}/tungsten-connector/conf/connector.service.properties", 
       "#{get_deployment_basedir()}/cluster-home/conf/cluster/#{@config.getProperty(DATASERVICENAME)}/service/connector.properties")
+    
+    Configurator.instance.write_header "Writing Bristlecone performance test configurations"
+    
+    write_bristlecone_evaluator_xml()
+    
+    write_evaluator("readonly")
+    write_evaluator("readwrite")
   end
   
   def write_user_map
@@ -52,22 +49,30 @@ module ConfigureDeploymentStepConnector
     if File.exists?(user_map) && @config.getProperty(CONN_DELETE_USER_MAP) == "false"
       info("NOTE: File user.map already exists and delete option is false")
       info("File not regenerated: #{user_map}")
-    elsif @config.getProperty(ENABLE_CONNECTOR_BRIDGE_MODE) == "false"
-      host_transformer(user_map) {
-        |t|
-        t.mode(0600)
-        t.set_template("tungsten-connector/samples/conf/user.map.tpl")
-      }
+    else
+      transformer = Transformer.new(
+        "#{get_deployment_basedir()}/tungsten-connector/samples/conf/user.map.tpl", 
+        user_map, "# ")
+      transformer.set_fixed_properties(@config.getTemplateValue(get_host_key(FIXED_PROPERTY_STRINGS)))
+      transformer.transform_values(method(:transform_values))
+      transformer.output
+      
+      unless File.chmod(0600, user_map) == 1
+        error("Unable to set the file permissions for #{user_map}")
+      end
     end
   end
     
   def write_bristlecone_evaluator_xml
-    Dir["#{get_deployment_basedir()}/bristlecone/samples/config/evaluator/*.xml"].sort().each do |file|
-      host_transformer("bristlecone/config/evaluator/#{File.basename(file)}") {
-        |t|
-        t.timestamp?(false)
-        t.set_template("bristlecone/samples/config/evaluator/#{File.basename(file)}")
-      }
+    Dir["#{get_deployment_basedir()}/bristlecone/samples/config/evaluator/*.xml"].sort().each do |file| 
+      debug(file)
+      transformer = Transformer.new(file, 
+        "#{get_deployment_basedir()}/bristlecone/config/evaluator/#{File.basename(file)}",
+        nil)
+      transformer.set_fixed_properties(@config.getTemplateValue(get_host_key(FIXED_PROPERTY_STRINGS)))
+      transformer.transform_values(method(:transform_values))
+      transformer.output
+      watch_file(transformer.get_filename())
     end
   end
 
@@ -98,14 +103,15 @@ module ConfigureDeploymentStepConnector
     out.close
     info "GENERATED FILE: " + script
   end
-	
-	# Force the connector.ro.properties file to be written using
-	# read-only option settings
-	def self.connector_ro_mode?(v = nil)
-	  if v != nil
-	    @connector_ro_mode = v
-	  end
-	
-	  @connector_ro_mode || nil
-	end
+  
+  def write_connector_wrapper_conf
+    transformer = Transformer.new(
+      "#{get_deployment_basedir()}/tungsten-connector/samples/conf/wrapper.conf",
+      "#{get_deployment_basedir()}/tungsten-connector/conf/wrapper.conf", nil)
+    transformer.set_fixed_properties(@config.getTemplateValue(get_host_key(FIXED_PROPERTY_STRINGS)))
+    transformer.transform_values(method(:transform_values))
+
+    transformer.output
+    watch_file(transformer.get_filename())
+  end
 end

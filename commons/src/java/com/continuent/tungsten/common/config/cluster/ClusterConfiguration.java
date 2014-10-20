@@ -22,7 +22,6 @@
 
 package com.continuent.tungsten.common.config.cluster;
 
-import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -31,7 +30,6 @@ import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.RandomAccessFile;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -62,7 +60,7 @@ public class ClusterConfiguration
     private File              clusterConfigDir     = null;
     private File              clusterConfigRootDir = null;
 
-    private static String     configFileNameInUse  = null;
+    private String            configFileNameInUse  = null;
 
     public ClusterConfiguration(String clusterName)
     {
@@ -156,51 +154,20 @@ public class ClusterConfiguration
 
             for (File resourceConf : resources.listFiles(propFilter))
             {
+                InputStream is = null;
                 TungstenProperties resourceProps = null;
-                RandomAccessFile resourceFile = null;
-                InputStream byteStream = null;
-
                 try
                 {
-                    resourceFile = new RandomAccessFile(
-                            resourceConf.getAbsolutePath(), "r");
-
-                    resourceFile.seek(0);
-
-                    byte[] bytes = new byte[(int) resourceConf.length()];
-
-                    resourceFile.read(bytes);
-                    byteStream = new ByteArrayInputStream(bytes);
-                    resourceFile.close();
-                    resourceFile = null;
-
+                    is = new FileInputStream(resourceConf);
                     resourceProps = new TungstenProperties();
-
-                    resourceProps.load(byteStream);
-                    byteStream.close();
-                    byteStream = null;
-
-                }
-                catch (IOException i)
-                {
-                    throw new ConfigurationException(String.format(
-                            "Unable to load resource %s\n%s",
-                            resourceConf.getAbsolutePath(), i.getMessage()));
+                    resourceProps.load(is);
                 }
                 finally
                 {
-                    if (resourceFile != null)
+                    if (is != null)
                     {
-                        resourceFile.close();
-                        resourceFile = null;
+                        is.close();
                     }
-
-                    if (byteStream != null)
-                    {
-                        byteStream.close();
-                        byteStream = null;
-                    }
-
                 }
 
                 if (resourceProps.getString("name") == null)
@@ -337,7 +304,7 @@ public class ClusterConfiguration
      * @param clusterName
      * @param resourceType
      */
-    public static String getResourceConfigDirName(String clusterHome,
+    public String getResourceConfigDirName(String clusterHome,
             String clusterName, ResourceType resourceType)
     {
 
@@ -499,7 +466,7 @@ public class ClusterConfiguration
     /**
      * Creates a new router configuration file in the correct location.
      * 
-     * @param clusterName
+     * @param clusterName TODO
      * @throws ConfigurationException
      */
     public void createRouterConfiguration(String clusterName)
@@ -519,13 +486,16 @@ public class ClusterConfiguration
         }
 
         RouterConfiguration config = new RouterConfiguration(null);
+        config.setUseNewProtocol(true);
         config.setClusterHome(getClusterHome());
         config.setHost(ConfigurationConstants.TR_RMI_DEFAULT_HOST);
-
-        ArrayList<String> al = new ArrayList<String>();
-        al.add("localhost:9998");
-        config.setManagerList(al);
-
+        // TODO:
+        if (config.getUseNewProtocol())
+        {
+            ArrayList<String> al = new ArrayList<String>();
+            al.add("localhost:9998");
+            config.setManagerList(al);
+        }
         TungstenProperties configProps = new TungstenProperties();
         configProps.extractProperties(config, true);
 
@@ -539,7 +509,7 @@ public class ClusterConfiguration
     /**
      * Creates a default policy manager configuration in the correct location
      * 
-     * @param clusterName
+     * @param clusterName TODO
      * @throws ConfigurationException
      */
     public void createPolicyManagerConfiguration(String clusterName)
@@ -576,7 +546,7 @@ public class ClusterConfiguration
     /**
      * Creates a default data services configuration in the correct location
      * 
-     * @param clusterName
+     * @param clusterName TODO
      * @throws ConfigurationException
      */
     public void createDataServicesConfiguration(String clusterName)
@@ -649,16 +619,14 @@ public class ClusterConfiguration
     }
 
     /**
-     * Gets a cluster configuration from a file located on the classpath and
-     * returns it.
+     * Loads a cluster configuration from a file located on the classpath.
      * 
      * @param configFileName
      * @throws ConfigurationException
      */
-    public static TungstenProperties getConfiguration(String configFileName)
-            throws ConfigurationException
+    public void load(String configFileName) throws ConfigurationException
     {
-        TungstenProperties props = new TungstenProperties();
+        props = new TungstenProperties();
         InputStream is = null;
         File configFile = null;
 
@@ -735,24 +703,7 @@ public class ClusterConfiguration
             }
         }
 
-        return props;
-    }
-
-    /**
-     * Loads a cluster configuration from a file located on the classpath and
-     * applies the properties found to the current instance.
-     * 
-     * @param configFileName
-     * @throws ConfigurationException
-     */
-    public void load(String configFileName) throws ConfigurationException
-    {
-        props = getConfiguration(configFileName);
-
-        if (props != null)
-        {
-            props.applyProperties(this, true);
-        }
+        props.applyProperties(this, true);
     }
 
     static public void store(String configFileName, TungstenProperties props)
@@ -899,7 +850,7 @@ public class ClusterConfiguration
      * @param dirName
      * @throws ConfigurationException
      */
-    public static File getDir(String dirName) throws ConfigurationException
+    public File getDir(String dirName) throws ConfigurationException
     {
         File dir = new File(dirName);
         if (!dir.isDirectory())

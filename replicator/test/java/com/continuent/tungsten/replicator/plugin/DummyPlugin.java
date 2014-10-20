@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2008 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -44,7 +44,8 @@ public class DummyPlugin implements ReplicatorPlugin
      */
     public void configure(PluginContext context) throws ReplicatorException
     {
-        // Do nothing. 
+        // TODO Auto-generated method stub
+        logger.debug("");
     }
 
     /**
@@ -53,7 +54,8 @@ public class DummyPlugin implements ReplicatorPlugin
      */
     public void prepare(PluginContext context) throws ReplicatorException
     {
-        // Do nothing. 
+        // TODO Auto-generated method stub
+        logger.debug("");
     }
 
     /**
@@ -62,7 +64,8 @@ public class DummyPlugin implements ReplicatorPlugin
      */
     public void release(PluginContext context) throws ReplicatorException
     {
-        // Do nothing. 
+        // TODO Auto-generated method stub
+        logger.debug("");
     }
     
     String a = null;
@@ -88,4 +91,10 @@ public class DummyPlugin implements ReplicatorPlugin
     {
         return b;
     }
+
+    {
+        // TODO Auto-generated method stub
+        
+    }
+
 }

@@ -1,6 +1,6 @@
 /**
  * Tungsten: An Application Server for uni/cluster.
- * Copyright (C) 2011-2014 Continuent Inc.
+ * Copyright (C) 2011 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -41,14 +41,13 @@ import java.util.Map;
 public class CsvWriter
 {
     // Properties.
-    private String               fieldSeparator  = ",";
-    private String               recordSeparator = "\n";
+    private char                 separator       = ',';
     private boolean              writeHeaders    = true;
     private boolean              quoted          = false;
     private NullPolicy           nullPolicy      = NullPolicy.skip;
     private String               nullValue       = null;
     private boolean              nullAutofill    = false;
-    private char                 quoteChar       = '\"';
+    private char                 quoteChar       = '"';
     private char                 escapeChar      = '\\';
     private String               escapedChars    = "";
     private String               suppressedChars = "";
@@ -87,35 +86,19 @@ public class CsvWriter
     }
 
     /**
-     * Sets the field separator characters.
+     * Sets the separator characters.
      */
-    public void setFieldSeparator(String fieldSeparators)
+    public void setSeparator(char separator)
     {
-        this.fieldSeparator = fieldSeparators;
+        this.separator = separator;
     }
 
     /**
-     * Returns field separator character.
+     * Returns separator character.
      */
-    public String getFieldSeparator()
+    public char getSeparator()
     {
-        return this.fieldSeparator;
-    }
-
-    /**
-     * Sets the record separator characters.
-     */
-    public void setRecordSeparator(String recordSeparator)
-    {
-        this.recordSeparator = recordSeparator;
-    }
-
-    /**
-     * Returns record separator character.
-     */
-    public String getRecordSeparator()
-    {
-        return this.recordSeparator;
+        return separator;
     }
 
     /** Returns true if values will be enclosed by a quote character. */
@@ -186,29 +169,13 @@ public class CsvWriter
     }
 
     /**
-     * Sets the quote character from string input.
-     */
-    public synchronized void setQuoteChar(String quoteString)
-    {
-        if (quoteString != null && quoteString.length() > 0)
-            this.quoteChar = quoteString.charAt(0);
-    }
-
-    /**
      * Sets character used to escape quotes and other escaped characters.
+     * 
+     * @see #setQuoteChar(char)
      */
     public synchronized void setEscapeChar(char quoteEscapeChar)
     {
         this.escapeChar = quoteEscapeChar;
-    }
-
-    /**
-     * Sets the escape character from string input.
-     */
-    public synchronized void setEscapeChar(String escapeString)
-    {
-        if (escapeString != null && escapeString.length() > 0)
-            this.escapeChar = escapeString.charAt(0);
     }
 
     /** Returns the escape character. */
@@ -303,9 +270,9 @@ public class CsvWriter
     }
 
     /**
-     * Add a row id name. Row IDs are a numeric counter that can be inserted in
-     * any column. By defining the row id name, the matching column always has
-     * the batch row number automatically added to it.
+     * Add a row id name. Row IDs are a numeric counter that can be inserted
+     * in any column.  By defining the row id name, the matching column always
+     * has the batch row number automatically added to it. 
      * 
      * @param name Row ID name
      * @throws CsvException Thrown if the row ID has already been set.
@@ -475,15 +442,15 @@ public class CsvWriter
         {
             // Nulls are handled according to the null value policy.
             if (this.nullPolicy == NullPolicy.emptyString)
-                value = processString("");
+                value = addQuotes("");
             else if (nullPolicy == NullPolicy.skip)
                 value = null;
             else
                 value = nullValue;
         }
-        else
+        else if (quoted)
         {
-            value = processString(value);
+            value = addQuotes(value);
         }
         row.set(arrayIndex, value);
         colCount++;
@@ -500,13 +467,12 @@ public class CsvWriter
         return put(index, value);
     }
 
-    // Utility routine to escape characters and enclose string in
-    // quotes if so desired.
-    private String processString(String base)
+    // Utility routine to escape string contents and enclose in
+    // quotes.
+    private String addQuotes(String base)
     {
         StringBuffer sb = new StringBuffer();
-        if (quoted)
-            sb.append(quoteChar);
+        sb.append(quoteChar);
         for (int i = 0; i < base.length(); i++)
         {
             // Fetch character and look up its disposition.
@@ -514,7 +480,7 @@ public class CsvWriter
             Disposition disp = disposition.get(next);
 
             // Emit the character according to CSV formatting rules.
-            if (next == quoteChar && quoted)
+            if (next == quoteChar)
             {
                 // Escape any quote character.
                 sb.append(escapeChar).append(quoteChar);
@@ -535,8 +501,7 @@ public class CsvWriter
                 sb.append(next);
             }
         }
-        if (quoted)
-            sb.append(quoteChar);
+        sb.append(quoteChar);
         return sb.toString();
     }
 
@@ -551,13 +516,13 @@ public class CsvWriter
         for (int i = 0; i < row.size(); i++)
         {
             if (i > 0)
-                writer.append(fieldSeparator);
+                writer.append(separator);
             String value = row.get(i);
             if (value == null)
             {
                 // Nulls are handled according to the null value policy.
                 if (this.nullPolicy == NullPolicy.emptyString)
-                    writer.append(processString(""));
+                    writer.append(addQuotes(""));
                 else if (nullPolicy == NullPolicy.skip)
                     writer.append(null);
                 else
@@ -566,6 +531,6 @@ public class CsvWriter
             else
                 writer.append(row.get(i));
         }
-        writer.append(recordSeparator);
+        writer.newLine();
     }
 }

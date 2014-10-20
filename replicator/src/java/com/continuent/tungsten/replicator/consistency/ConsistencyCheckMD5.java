@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2009 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -45,7 +45,6 @@ public class ConsistencyCheckMD5 extends ConsistencyCheckAbstract
 
     private static Logger       logger           = Logger.getLogger(ConsistencyCheckMD5.class);
 
-    private boolean             usePKForLimit    = false;
     private int                 rowFrom          = ConsistencyTable.ROW_UNSET;
     private int                 rowLimit         = ConsistencyTable.ROW_UNSET;
 
@@ -65,21 +64,6 @@ public class ConsistencyCheckMD5 extends ConsistencyCheckAbstract
         this.rowLimit = rowLimit;
         this.checkColumnNames = checkColumnNames;
         this.checkColumnTypes = checkColumnTypes;
-    }
-
-    /**
-     * Creates a new <code>ConsistencyCheckMD5</code> object
-     */
-    public ConsistencyCheckMD5(int id, Table table, int rowFrom, int rowLimit,
-            boolean checkColumnNames, boolean checkColumnTypes,
-            boolean usePKForLimit)
-    {
-        super(id, table, ConsistencyCheck.Method.MD5PK);
-        this.rowFrom = rowFrom;
-        this.rowLimit = rowLimit;
-        this.checkColumnNames = checkColumnNames;
-        this.checkColumnTypes = checkColumnTypes;
-        this.usePKForLimit = true;
     }
 
     /**
@@ -132,6 +116,7 @@ public class ConsistencyCheckMD5 extends ConsistencyCheckAbstract
             case DERBY :
                 throw new UnsupportedOperationException("Not implemented.");
         }
+        // TODO Auto-generated method stub
         return null;
     }
 
@@ -250,50 +235,10 @@ public class ConsistencyCheckMD5 extends ConsistencyCheckAbstract
         sb.append(tableName);
         if (rowFrom >= 0)
         {
-            if (usePKForLimit)
-            {
-                if (keyColumns != null)
-                {
-                    if (table.getPrimaryKey().getColumns().size() == 1)
-                    {
-                        sb.append(" WHERE ");
-                        sb.append(keyColumns);
-                        sb.append(" >= ");
-                        sb.append(rowFrom);
-                        sb.append(" AND ");
-                        sb.append(keyColumns);
-                        sb.append(" < ");
-                        // Addition below is to make the meaning of rowLimit
-                        // consistent with the SQL LIMIT variant:
-                        sb.append(rowFrom + rowLimit);
-                    }
-                    else
-                    {
-                        throw new ConsistencyException(
-                                "Row limiting with the use of PK is supported only on tables with a single PK, which is not the case in "
-                                        + schemaName
-                                        + "."
-                                        + tableName
-                                        + " ("
-                                        + table.getPrimaryKey().getColumns()
-                                                .size() + "): " + keyColumns,
-                                null);
-                    }
-                }
-                else
-                {
-                    throw new ConsistencyException(
-                            "Use of PK for row limiting selected, but no PK available in "
-                                    + schemaName + "." + tableName, null);
-                }
-            }
-            else
-            {
-                sb.append(" LIMIT ");
-                sb.append(rowFrom);
-                sb.append(',');
-                sb.append(rowLimit);
-            }
+            sb.append(" LIMIT ");
+            sb.append(rowFrom);
+            sb.append(',');
+            sb.append(rowLimit);
         }
         sb.append(" LOCK IN SHARE MODE) AS tungsten_consistency_check_tmp");
         sb.append(" ORDER BY ");
@@ -361,6 +306,9 @@ public class ConsistencyCheckMD5 extends ConsistencyCheckAbstract
             keyColumns = columnsMySQL(conn, table.getPrimaryKey().getColumns());
         }
 
+        // TODO: unhardcode the "tungsten." schema name in SQL statements
+        // bellow, as it might be defined differently under properties.
+
         StringBuffer sb = new StringBuffer();
         sb.append("SELECT ");
         sb.append("COUNT(*) AS this_cnt,");
@@ -384,6 +332,7 @@ public class ConsistencyCheckMD5 extends ConsistencyCheckAbstract
         }
         if (rowFrom >= 0)
         {
+            // TODO: translate from MySQL to PG dialect:
             sb.append(" LIMIT ");
             sb.append(rowFrom);
             sb.append(',');
@@ -408,6 +357,18 @@ public class ConsistencyCheckMD5 extends ConsistencyCheckAbstract
             if (checkColumnNames || checkColumnTypes)
             {
                 logger.warn("Column name and type checking is not implemented for PostgreSQL!");
+                // if (logger.isDebugEnabled())
+                // logger.debug("SET @colcrc := MD5('"
+                // + columnInfoMySQL(table.getAllColumns()) + "')");
+                // st.execute("SET @colcrc := MD5('"
+                // + columnInfoMySQL(table.getAllColumns()) + "')");
+            }
+            else
+            {
+                // TODO: Include column names and their types in the MD5
+                // calculation
+                // (TREP-268) or just an empty string if settings are not
+                // to check for column names/types (TREP-67).
             }
 
             // Clear temporary variables' table:

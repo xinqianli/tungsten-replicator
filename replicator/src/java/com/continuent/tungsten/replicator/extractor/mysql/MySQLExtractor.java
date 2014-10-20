@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -40,13 +40,10 @@ import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.conf.FailurePolicy;
 import com.continuent.tungsten.replicator.conf.ReplicatorRuntime;
 import com.continuent.tungsten.replicator.database.Database;
+import com.continuent.tungsten.replicator.database.DatabaseFactory;
 import com.continuent.tungsten.replicator.database.MySQLOperationMatcher;
 import com.continuent.tungsten.replicator.database.SqlOperation;
 import com.continuent.tungsten.replicator.database.SqlOperationMatcher;
-import com.continuent.tungsten.replicator.database.Table;
-import com.continuent.tungsten.replicator.database.TableMetadataCache;
-import com.continuent.tungsten.replicator.datasource.SqlConnectionSpec;
-import com.continuent.tungsten.replicator.datasource.SqlDataSource;
 import com.continuent.tungsten.replicator.dbms.DBMSData;
 import com.continuent.tungsten.replicator.dbms.LoadDataFileDelete;
 import com.continuent.tungsten.replicator.dbms.LoadDataFileFragment;
@@ -70,102 +67,111 @@ import com.continuent.tungsten.replicator.plugin.PluginContext;
  */
 public class MySQLExtractor implements RawExtractor
 {
-    private static Logger                   logger                    = Logger.getLogger(MySQLExtractor.class);
+    private static Logger                   logger                  = Logger.getLogger(MySQLExtractor.class);
 
-    private ReplicatorRuntime               runtime                   = null;
-    private SqlDataSource                   dataSourceImpl;
-    private SqlConnectionSpec               connectionSpec;
-    private String                          url;
-    private String                          user;
-    private String                          password;
-
-    // Properties.
-    private String                          dataSource;
-    private boolean                         strictVersionChecking     = true;
-    private boolean                         parseStatements           = true;
+    private ReplicatorRuntime               runtime                 = null;
+    private String                          host                    = "localhost";
+    private int                             port                    = 3306;
+    private String                          user                    = "root";
+    private String                          password                = "";
+    private boolean                         strictVersionChecking   = true;
+    private boolean                         parseStatements         = true;
 
     /** Replicate from MySQL master using either binlog or client connection. */
-    private static String                   MODE_MASTER               = "master";
+    private static String                   MODE_MASTER             = "master";
     /** Replicate from MySQL relay logs on MySQL slave. */
-    private static String                   MODE_SLAVE_RELAY          = "slave-relay";
-    private String                          binlogMode                = MODE_MASTER;
+    private static String                   MODE_SLAVE_RELAY        = "slave-relay";
+    private String                          binlogMode              = MODE_MASTER;
 
     // Location of binlogs and pattern.
-    private String                          binlogFilePattern         = "mysql-bin";
-    private String                          binlogDir                 = "/var/log/mysql";
+    private String                          binlogFilePattern       = "mysql-bin";
+    private String                          binlogDir               = "/var/log/mysql";
 
-    private boolean                         useRelayLogs              = false;
-    private long                            relayLogWaitTimeout       = 0;
-    private long                            relayLogReadTimeout       = 0;
-    private boolean                         deterministicIo           = true;
-    private int                             relayLogRetention         = 3;
-    private String                          relayLogDir               = null;
-    private int                             serverId                  = 1;
+    private boolean                         useRelayLogs            = false;
+    private long                            relayLogWaitTimeout     = 0;
+    private long                            relayLogReadTimeout     = 0;
+    private int                             relayLogRetention       = 3;
+    private String                          relayLogDir             = null;
+    private int                             serverId                = 1;
 
-    private static long                     binlogPositionMaxLength   = 10;
-    BinlogReader                            binlogPosition            = null;
+    private String                          url;
+
+    private static long                     binlogPositionMaxLength = 10;
+    BinlogReader                            binlogPosition          = null;
 
     // Number of milliseconds to wait before checking log index for a missing
     // log-rotate event.
-    private static long                     INDEX_CHECK_INTERVAL      = 60000;
+    private static long                     INDEX_CHECK_INTERVAL    = 60000;
 
     // SQL parser.
-    SqlOperationMatcher                     sqlMatcher                = new MySQLOperationMatcher();
+    SqlOperationMatcher                     sqlMatcher              = new MySQLOperationMatcher();
 
-    private HashMap<Long, TableMapLogEvent> tableEvents               = new HashMap<Long, TableMapLogEvent>();
+    private HashMap<Long, TableMapLogEvent> tableEvents             = new HashMap<Long, TableMapLogEvent>();
 
-    private int                             transactionFragSize       = 0;
-    private boolean                         fragmentedTransaction     = false;
+    private int                             transactionFragSize     = 0;
+    private boolean                         fragmentedTransaction   = false;
 
     // Built-in task to manage relay logs.
-    private RelayLogTask                    relayLogTask              = null;
-    private Thread                          relayLogThread            = null;
-    private LinkedBlockingQueue<File>       relayLogQueue             = null;
+    private RelayLogTask                    relayLogTask            = null;
+    private Thread                          relayLogThread          = null;
+    private LinkedBlockingQueue<File>       relayLogQueue           = null;
 
     // Varchar type fields can be retrieved and stored in THL either using
     // String datatype or bytes arrays. By default, using string datatype.
-    private boolean                         useBytesForStrings        = false;
+    private boolean                         useBytesForStrings      = false;
 
     // If true this means we are taking over for MySQL slave replication and can
     // position from the MySQL slave when starting for the first time.
-    private boolean                         nativeSlaveTakeover       = false;
+    private boolean                         nativeSlaveTakeover     = false;
 
     // Should schema name be prefetched when a Load Data Infile Begin event is
     // extracted ?
-    private boolean                         prefetchSchemaNameLDI     = true;
+    private boolean                         prefetchSchemaNameLDI   = true;
 
     private HashMap<Integer, String>        loadDataSchemas;
 
-    // Header for JDBC, which allows us to switch driver.
     private String                          jdbcHeader;
 
-    // JDBC URL options.
-    private String                          urlOptions;
+    private int                             bufferSize              = 32768;
 
-    private int                             bufferSize                = 32768;
-
-    // This has to be a set to a valid checksum value when the binlog is
-    // first opened.
-    private Integer                         checksumAlgo              = null;
-
-    // Maria 10 special handling (changes in the way datetime, timestamp and
-    // time datatypes are logged in the binlog in Maria10)
-    private boolean                         isMaria10                 = false;
-
-    // Metadata cache variables
-    private TableMetadataCache              metadataCache;
-    private Database                        metadataConnection        = null;
-    private int                             reconnectTimeoutInSeconds = 180;
-    private long                            lastConnectionTime        = 0;
-
-    public String getDatabaseSource()
+    public String getHost()
     {
-        return dataSource;
+        return host;
     }
 
-    public void setDataSource(String dataSource)
+    public void setHost(String host)
     {
-        this.dataSource = dataSource;
+        this.host = host;
+    }
+
+    public int getPort()
+    {
+        return port;
+    }
+
+    public void setPort(int port)
+    {
+        this.port = port;
+    }
+
+    public String getUser()
+    {
+        return user;
+    }
+
+    public void setUser(String user)
+    {
+        this.user = user;
+    }
+
+    public String getPassword()
+    {
+        return password;
+    }
+
+    public void setPassword(String password)
+    {
+        this.password = password;
     }
 
     public String getBinlogFilePattern()
@@ -298,16 +304,6 @@ public class MySQLExtractor implements RawExtractor
         this.jdbcHeader = jdbcHeader;
     }
 
-    public String getUrlOptions()
-    {
-        return urlOptions;
-    }
-
-    public void setUrlOptions(String urlOptions)
-    {
-        this.urlOptions = urlOptions;
-    }
-
     public String getBinlogMode()
     {
         return binlogMode;
@@ -376,19 +372,13 @@ public class MySQLExtractor implements RawExtractor
 
             // We can assume a V4 format description as we don't support MySQL
             // versions prior to 5.0.
-            FormatDescriptionLogEvent descriptionEvent = new FormatDescriptionLogEvent(
-                    4, checksumAlgo, isMaria10);
+            FormatDescriptionLogEvent description_event = new FormatDescriptionLogEvent(
+                    4);
 
             // Read from the log.
             LogEvent event = LogEvent.readLogEvent(runtime, position,
-                    descriptionEvent, parseStatements, useBytesForStrings,
+                    description_event, parseStatements, useBytesForStrings,
                     prefetchSchemaNameLDI);
-
-            if (event instanceof FormatDescriptionLogEvent)
-            {
-                this.checksumAlgo = ((FormatDescriptionLogEvent) event)
-                        .getChecksumAlgo();
-            }
             position.setEventID(position.getEventID() + 1);
 
             return event;
@@ -433,11 +423,12 @@ public class MySQLExtractor implements RawExtractor
         try
         {
             logger.info("Positioning from MySQL master current position");
-            conn = dataSourceImpl.getConnection();
+            conn = DatabaseFactory.createDatabase(url, user, password, true);
+            conn.connect();
             st = conn.createStatement();
-            if (flush && runtime.isPrivilegedMaster())
+            if (flush)
             {
-                logger.debug("Flushing logs for fast start");
+                logger.debug("Flushing logs");
                 st.executeUpdate("FLUSH LOGS");
             }
             logger.debug("Seeking head position in binlog");
@@ -448,6 +439,13 @@ public class MySQLExtractor implements RawExtractor
             String binlogFile = rs.getString(1);
             long binlogOffset = rs.getLong(2);
 
+            // If we are using relay logs make sure that relay logging is
+            // functioning here.
+            if (useRelayLogs)
+            {
+                startRelayLogs(binlogFile, binlogOffset);
+            }
+
             logger.info("Starting from master binlog position: " + binlogFile
                     + ":" + binlogOffset);
             return new BinlogReader(binlogOffset, binlogFile, binlogDir,
@@ -455,9 +453,9 @@ public class MySQLExtractor implements RawExtractor
         }
         catch (SQLException e)
         {
-            String message = "Unable to open binlog: url=" + url + " user="
-                    + user;
-            throw new ExtractorException(message, e);
+            logger.info("url: " + url + " user: " + user
+                    + " password: ********");
+            throw new ExtractorException(e);
         }
         finally
         {
@@ -478,9 +476,13 @@ public class MySQLExtractor implements RawExtractor
         {
             logger.info("Positioning from MySQL slave current position");
             // Use local database to ensure we get the right slave information.
+            String url = runtime.getJdbcUrl(null);
+            String user = runtime.getJdbcUser();
+            String password = runtime.getJdbcPassword();
             logger.info("Establishing connection to local DBMS to get slave info: url="
                     + url);
-            conn = dataSourceImpl.getConnection();
+            conn = DatabaseFactory.createDatabase(url, user, password, true);
+            conn.connect();
             st = conn.createStatement();
             // Stop the MySQL slave if it is currently running.
             logger.info("Stopping MySQL slave io and SQL threads if they are running");
@@ -502,9 +504,9 @@ public class MySQLExtractor implements RawExtractor
         }
         catch (SQLException e)
         {
-            String message = "Unable to position from MySQL slave: url=" + url
-                    + " user=" + user;
-            throw new ExtractorException(message, e);
+            logger.info("url: " + url + " user: " + user
+                    + " password: ********");
+            throw new ExtractorException(e);
         }
         finally
         {
@@ -523,12 +525,9 @@ public class MySQLExtractor implements RawExtractor
         fragmentedTransaction = false;
         boolean autocommitMode = true;
         boolean doFileFragment = false;
-
-        boolean doLDIfragmentation = false;
-
         Timestamp startTime = null;
 
-        long sessionId = -1;
+        long sessionId = 0;
         ArrayList<DBMSData> dataArray = new ArrayList<DBMSData>();
 
         boolean foundRowsLogEvent = false;
@@ -539,12 +538,6 @@ public class MySQLExtractor implements RawExtractor
             RowChangeData rowChangeData = null;
             long fragSize = 0;
             int serverId = -1;
-
-            int gtidDomainId = -1;
-            long gtidSeqno = -1;
-
-            boolean canNextEventBeAppended = false;
-
             while (true)
             {
                 DBMSEvent dbmsEvent = null;
@@ -586,21 +579,7 @@ public class MySQLExtractor implements RawExtractor
 
                 boolean unsafeForBlockCommit = false;
 
-                if (logEvent.getClass() == MariaDBGTIDEvent.class)
-                {
-                    // Start of new transaction for MariaDB 10 with GTID
-                    // enforced
-
-                    inTransaction = true;
-                    doCommit = false;
-                    MariaDBGTIDEvent event = (MariaDBGTIDEvent) logEvent;
-                    // This is an equivalent of BEGIN statement : not sure where
-                    // session variables are stored though
-                    gtidDomainId = event.getGTIDDomainId();
-                    gtidSeqno = event.getGTIDSeqno();
-                    continue;
-                }
-                else if (logEvent.getClass() == QueryLogEvent.class)
+                if (logEvent.getClass() == QueryLogEvent.class)
                 {
                     QueryLogEvent event = (QueryLogEvent) logEvent;
                     String queryString = event.getQuery();
@@ -704,7 +683,7 @@ public class MySQLExtractor implements RawExtractor
 
                         if (sessionId == -1)
                         {
-                            // first query in transaction / event
+                            // first query in transaction
                             sessionId = event.getSessionId();
                         }
                         else
@@ -727,12 +706,7 @@ public class MySQLExtractor implements RawExtractor
                             statement.addOption(
                                     StatementData.CREATE_OR_DROP_DB, "");
 
-                        // Issue 960 : correctly handling temporary tables
-                        if (sqlOperation.getObjectType() == SqlOperation.TABLE
-                                && !sqlOperation.isAutoCommit()
-                                && (operation == SqlOperation.CREATE || operation == SqlOperation.DROP))
-                            unsafeForBlockCommit = false;
-                        else if (operation == SqlOperation.CREATE
+                        if (operation == SqlOperation.CREATE
                                 || operation == SqlOperation.DROP
                                 || operation == SqlOperation.ALTER
                                 || operation == SqlOperation.UNRECOGNIZED)
@@ -895,11 +869,6 @@ public class MySQLExtractor implements RawExtractor
                         if (useRelayLogs)
                             purgeRelayLogs(false);
                     }
-                    if (inTransaction && !canNextEventBeAppended)
-                    {
-                        doCommit = true;
-                        inTransaction = !autocommitMode;
-                    }
                 }
                 else if (logEvent.getClass() == TableMapLogEvent.class)
                 {
@@ -907,10 +876,6 @@ public class MySQLExtractor implements RawExtractor
                     // remember last table map event
                     TableMapLogEvent tableEvent = (TableMapLogEvent) logEvent;
                     tableEvents.put(tableEvent.getTableId(), tableEvent);
-                    if (isMaria10)
-                    {
-                        fetchMetadata(tableEvent);
-                    }
                 }
                 else if (logEvent instanceof RowsLogEvent)
                 {
@@ -937,28 +902,7 @@ public class MySQLExtractor implements RawExtractor
                     }
                     dataArray.add(new LoadDataFileFragment(event.getFileID(),
                             event.getData(), event.getSchemaName()));
-                    /**
-                     * Check whether next event from MySQL binlog could be
-                     * appended into the same THL event : this is possible if<br>
-                     * 1. next event is also AppendBlockLogEvent or
-                     * ExecuteLoadQueryLogEvent or DeleteFileLogEvent<br>
-                     * 2. next event has the same fileID<br>
-                     * 3. current THL event size is not greater than the
-                     * fragmentation size.
-                     */
-                    if (!event.canNextEventBeAppended())
-                    {
-                        // Next event cannot be appended to this LDI block
-                        // Flush the event in THL (interleaved transaction)
-                        doCommit = true;
-                    }
-                    else if (transactionFragSize == 0)
-                        doFileFragment = true;
-                    else
-                    {
-                        doLDIfragmentation = true;
-                        fragSize += event.getData().length;
-                    }
+                    doFileFragment = true;
                 }
                 else if (logEvent instanceof AppendBlockLogEvent)
                 {
@@ -969,30 +913,7 @@ public class MySQLExtractor implements RawExtractor
                                 .getFileID()));
                     dataArray.add(new LoadDataFileFragment(event.getFileID(),
                             event.getData(), schema));
-
-                    /**
-                     * Check whether next event from MySQL binlog could be
-                     * appended into the same THL event : this is possible if<br>
-                     * 1. next event is also AppendBlockLogEvent or
-                     * ExecuteLoadQueryLogEvent or DeleteFileLogEvent<br>
-                     * 2. next event has the same fileID<br>
-                     * 3. current THL event size is not greater than the
-                     * fragmentation size.
-                     */
-                    canNextEventBeAppended = event.canNextEventBeAppended();
-                    if (!canNextEventBeAppended)
-                    {
-                        // Next event cannot be appended to this LDI block
-                        // Flush the event in THL (interleaved transaction)
-                        doCommit = true;
-                    }
-                    else if (transactionFragSize == 0)
-                        doFileFragment = true;
-                    else
-                    {
-                        fragSize += event.getData().length;
-                        doLDIfragmentation = true;
-                    }
+                    doFileFragment = true;
                 }
                 else if (logEvent instanceof ExecuteLoadQueryLogEvent)
                 {
@@ -1040,23 +961,13 @@ public class MySQLExtractor implements RawExtractor
                     }
                     statement.setErrorCode(event.getErrorCode());
                     dataArray.add(statement);
-
-                    if (!inTransaction)
-                    {
-                        doCommit = true;
-                    }
-                    // else commit will be found later in the binlog
+                    doFileFragment = true;
                 }
                 else if (logEvent instanceof DeleteFileLogEvent)
                 {
                     LoadDataFileDelete delete = new LoadDataFileDelete(
                             ((DeleteFileLogEvent) logEvent).getFileID());
                     dataArray.add(delete);
-                    if (!inTransaction)
-                    {
-                        doCommit = true;
-                    }
-                    // else commit will be found later in the binlog
                 }
                 else
                 {
@@ -1096,18 +1007,10 @@ public class MySQLExtractor implements RawExtractor
                     if (foundRowsLogEvent)
                         dbmsEvent.setOptions(savedOptions);
 
-                    if (doLDIfragmentation)
-                    {
-                        fragmentedTransaction = inTransaction;
-                    }
-                    else
-                        this.fragmentedTransaction = true;
+                    this.fragmentedTransaction = true;
                 }
                 else if (doFileFragment)
                 {
-                    // Now, file fragmentation is done using the same code path
-                    // than transaction fragmentation. This part of code would
-                    // be just used if there is no fragmentation (frag_size=0)
                     doFileFragment = false;
                     runtime.getMonitor().incrementEvents(dataArray.size());
                     String eventId = getDBMSEventId(position, sessionId);
@@ -1121,17 +1024,6 @@ public class MySQLExtractor implements RawExtractor
                 {
                     dbmsEvent.addMetadataOption(ReplOptionParams.SERVER_ID,
                             String.valueOf(serverId));
-
-                    if (gtidDomainId >= 0)
-                        dbmsEvent.addMetadataOption(
-                                ReplOptionParams.GTID_DOMAIN_ID,
-                                String.valueOf(gtidDomainId));
-
-                    if (gtidSeqno >= 0)
-                        dbmsEvent.addMetadataOption(
-                                ReplOptionParams.GTID_SEQNO,
-                                String.valueOf(gtidSeqno));
-
                     if (doRollback)
                         dbmsEvent.addMetadataOption(ReplOptionParams.ROLLBACK,
                                 "");
@@ -1171,75 +1063,6 @@ public class MySQLExtractor implements RawExtractor
     }
 
     /**
-     * Fetches metadata for the table from the cache or from the database if
-     * needed
-     * 
-     * @param tableEvent the table event that is currently handled
-     */
-    private void fetchMetadata(TableMapLogEvent tableEvent)
-            throws SQLException, ReplicatorException
-    {
-        if (metadataCache == null)
-            metadataCache = new TableMetadataCache(5000);
-
-        Table table = metadataCache.retrieve(tableEvent.getDatabaseName(),
-                tableEvent.getTableName());
-
-        if (table == null || table.getTableId() != tableEvent.getTableId())
-        {
-            // If table is not in the cache or the table identifier changed, we
-            // need to fetch it from database
-            prepareMetadataConnection();
-
-            table = metadataConnection.findTable(tableEvent.getDatabaseName(),
-                    tableEvent.getTableName(), false);
-
-            if (table != null)
-            {
-                table.setTableId(tableEvent.getTableId());
-                metadataCache.store(table);
-            }
-        }
-        else if (logger.isDebugEnabled())
-            logger.debug("Table " + tableEvent.getDatabaseName() + "."
-                    + tableEvent.getTableName() + " found in cache.");
-
-        if (table == null)
-        {
-            logger.warn("No metadata found for table "
-                    + tableEvent.getDatabaseName() + "."
-                    + tableEvent.getTableName());
-        }
-        else
-        {
-            tableEvent.setTable(table);
-        }
-    }
-
-    /**
-     * Prepare the metadata connection for use : connect or reconnect if needed.
-     */
-    private void prepareMetadataConnection() throws SQLException,
-            ReplicatorException
-    {
-        if (metadataConnection == null)
-            metadataConnection = dataSourceImpl.getConnection();
-
-        long currentTime = System.currentTimeMillis();
-        if (lastConnectionTime == 0)
-        {
-            lastConnectionTime = currentTime;
-        }
-        else if (reconnectTimeoutInSeconds > 0
-                && currentTime - lastConnectionTime > reconnectTimeoutInSeconds * 1000)
-        {
-            // Time to reconnect
-            dataSourceImpl.releaseConnection(metadataConnection);
-            metadataConnection = dataSourceImpl.getConnection();
-        }
-    }
-
-    /**
      * {@inheritDoc}
      * 
      * @see com.continuent.tungsten.replicator.extractor.RawExtractor#extract()
@@ -1247,21 +1070,9 @@ public class MySQLExtractor implements RawExtractor
     public synchronized DBMSEvent extract() throws InterruptedException,
             ReplicatorException
     {
-        // If we are using relay logs make sure they are enabled.
+        // If we are using relay logs make sure that relay logging is
+        // functioning.
         assertRelayLogsEnabled();
-
-        // If this is the first time we have read the log, try to read
-        // the first event. This is necessary in MySQL 5.6 to detect
-        // whether checksums are in use. In MySQL 5.6 the first event after
-        // the header will tell us what the actual checksum algorithm is.
-        if (this.checksumAlgo == null)
-        {
-            // 0xff is a dummy value but sufficient to find out what the real
-            // value is.
-            this.checksumAlgo = 0xff;
-            processFile(new BinlogReader(4, binlogPosition.getFileName(),
-                    binlogDir, binlogFilePattern, bufferSize));
-        }
 
         // Extract the next event.
         DBMSEvent event = extractEvent(binlogPosition);
@@ -1338,6 +1149,12 @@ public class MySQLExtractor implements RawExtractor
                 binlogPosition = positionBinlogMaster(true);
             }
         }
+
+        // If we are using relay logs make sure that relay logging is
+        // functioning here and we are up to point required by binlog
+        // position.
+        startRelayLogs(binlogPosition.getFileName(),
+                binlogPosition.getPosition());
     }
 
     /**
@@ -1348,6 +1165,18 @@ public class MySQLExtractor implements RawExtractor
     public void configure(PluginContext context) throws ReplicatorException
     {
         runtime = (ReplicatorRuntime) context;
+
+        // Compute our MySQL dbms URL.
+        StringBuffer sb = new StringBuffer();
+        if (jdbcHeader == null)
+            sb.append("jdbc:mysql://");
+        else
+            sb.append(jdbcHeader);
+        sb.append(host);
+        sb.append(":");
+        sb.append(port);
+        sb.append("/");
+        url = sb.toString();
 
         // See if we are operating in native slave takeover mode.
         nativeSlaveTakeover = context.nativeSlaveTakeover();
@@ -1392,6 +1221,9 @@ public class MySQLExtractor implements RawExtractor
                 logger.info("Using relay log directory as source of binlogs: "
                         + relayLogDir);
                 binlogDir = relayLogDir;
+
+                // Note the source of our binlog data.
+                context.setPipelineSource(url);
             }
             else
             {
@@ -1445,78 +1277,38 @@ public class MySQLExtractor implements RawExtractor
             return;
         }
 
-        // Locate our data source from which we are extracting.
-        logger.info("Connecting to data source");
-        dataSourceImpl = (SqlDataSource) context.getDataSource(dataSource);
-        if (dataSourceImpl == null)
-        {
-            throw new ReplicatorException("Unable to locate data source: name="
-                    + dataSource);
-        }
-
-        // Compute our MySQL DBMS URL.
-        connectionSpec = dataSourceImpl.getConnectionSpec();
-        url = connectionSpec.createUrl(false);
-        user = connectionSpec.getUser();
-        password = connectionSpec.getPassword();
-
-        // If url options include ssl, the stream's availability() method cannot
-        // be trusted.
-        if (url.toLowerCase().contains("ssl"))
-        {
-            this.deterministicIo = false;
-        }
-
-        // Correctly show the pipeline source based on whether we are reading
-        // from binlog files or downloading.
-        if (this.useRelayLogs)
-        {
-            context.setPipelineSource(url);
-        }
-        else
-        {
-            context.setPipelineSource(binlogDir);
-        }
-
         // Proceed with database checks.
         Database conn = null;
 
         try
         {
-            conn = dataSourceImpl.getConnection();
+            conn = DatabaseFactory.createDatabase(url, user, password, true);
+            conn.connect();
 
             String version = getDatabaseVersion(conn);
             logger.info("MySQL version: " + version);
 
             // For now only MySQL 5.0, 5.1, and 5.5 are certified.
-            if (version == null)
+            if (version != null && version.startsWith("5"))
             {
-                logger.warn("Unable to fetch MySQL version");
-                logger.warn("Binlog extraction is *not* certified");
-                logger.warn("You may experience replication failures due to binlog incompatibilities");
+                logger.info("Binlog extraction is supported for this MySQL version");
             }
             else
             {
-                if (version.startsWith("5"))
-                {
-                    logger.info("Binlog extraction is supported for this MySQL version");
-                }
-                else if (version.contains("MariaDB")
-                        && version.startsWith("10"))
-                {
-                    logger.info("Binlog extraction is supported for this MariaDB version");
-                    isMaria10 = true;
-                }
-                else
-                {
-                    logger.warn("Binlog extraction is *not* certified for this MySQL version");
-                    logger.warn("You may experience replication failures due to binlog incompatibilities");
-                }
+                logger.warn("Binlog extraction is *not* certified for this MySQL version");
+                logger.warn("You may experience replication failures due to binlog incompatibilities");
             }
 
             getMaxBinlogSize(conn);
 
             checkInnoDBSupport(conn);
+        }
+        catch (SQLException e)
+        {
+            String message = "Unable to connect to MySQL server while preparing extractor; is server available?";
+            message += "\n(url: " + url + " user: " + user
+                    + " password: *********)";
+            throw new ExtractorException(message, e);
         }
         finally
         {
@@ -1642,13 +1434,12 @@ public class MySQLExtractor implements RawExtractor
         relayClient.setServerId(serverId);
         relayClient.setLogQueue(relayLogQueue);
         relayClient.setReadTimeout(relayLogReadTimeout);
-        relayClient.setDeterministicIo(deterministicIo);
         relayClient.connect();
 
         // Start the relay log task.
         relayLogTask = new RelayLogTask(relayClient);
-        relayLogThread = new Thread(relayLogTask, "Relay Client - "
-                + runtime.getServiceName());
+        relayLogThread = new Thread(relayLogTask, "Relay Client " + host + ":"
+                + port);
         relayLogThread.start();
 
         // Delay until the relay log opens the file and reaches the desired
@@ -1802,11 +1593,6 @@ public class MySQLExtractor implements RawExtractor
      */
     public void release(PluginContext context) throws ReplicatorException
     {
-        if (metadataConnection != null)
-        {
-            metadataConnection.close();
-            metadataConnection = null;
-        }
         stopRelayLogs();
     }
 
@@ -1818,18 +1604,13 @@ public class MySQLExtractor implements RawExtractor
     public String getCurrentResourceEventId() throws ReplicatorException,
             InterruptedException
     {
-        // If we are not prepared, we cannot get status because we won't have a
-        // data source available.
-        if (dataSourceImpl == null)
-            return "NONE";
-
-        // Now compute status.
         Database conn = null;
         Statement st = null;
         ResultSet rs = null;
         try
         {
-            conn = dataSourceImpl.getConnection();
+            conn = DatabaseFactory.createDatabase(url, user, password, true);
+            conn.connect();
             st = conn.createStatement();
             logger.debug("Seeking head position in binlog");
             rs = st.executeQuery("SHOW MASTER STATUS");
@@ -1846,22 +1627,10 @@ public class MySQLExtractor implements RawExtractor
         }
         catch (SQLException e)
         {
-            logger.warn("url: " + url + " user: " + user
-                    + " password: ******** because of "
-                    + e.getLocalizedMessage());
-            if (logger.isDebugEnabled())
-                logger.debug("Full error was ", e);
+            logger.info("url: " + url + " user: " + user
+                    + " password: ********");
             throw new ExtractorException(
                     "Unable to run SHOW MASTER STATUS to find log position", e);
-        }
-        catch (NullPointerException e)
-        {
-            // Suppress NPEs due to data sources being in a bad state. This is
-            // being addressed by Google Issue 1033.
-            logger.warn(
-                    "Unable to run SHOW MASTER STATUS to find log position; this can occur when service is going on/offline",
-                    e);
-            return null;
         }
         finally
         {
@@ -1893,17 +1662,8 @@ public class MySQLExtractor implements RawExtractor
             {
             }
         }
-        // We proceed carefully here as we might hit a race condition where
-        // the dataSourceImpl disappears due to a concurrent offline command.
-        if (dataSourceImpl != null)
-        {
-            dataSourceImpl.releaseConnection(conn);
-        }
-        else if (conn != null)
-        {
-            // Do not lose the resource even if dataSourceImpl is gone.
+        if (conn != null)
             conn.close();
-        }
     }
 
     public void setPrefetchSchemaNameLDI(boolean prefetchSchemaNameLDI)

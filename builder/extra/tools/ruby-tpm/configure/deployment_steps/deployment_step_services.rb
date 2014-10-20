@@ -1,18 +1,18 @@
 module ConfigureDeploymentStepServices
   def get_methods
     [
-      ConfigureCommitmentMethod.new("set_maintenance_policy", ConfigureDeploymentStepMethod::FIRST_GROUP_ID, ConfigureDeploymentStepMethod::FIRST_STEP_WEIGHT),
+      ConfigureDeploymentMethod.new("apply_config_services", 0, ConfigureDeployment::FINAL_STEP_WEIGHT),
+      ConfigureCommitmentMethod.new("set_maintenance_policy", ConfigureDeployment::FIRST_GROUP_ID, ConfigureDeployment::FIRST_STEP_WEIGHT),
       ConfigureCommitmentMethod.new("stop_replication_services", -1, 0),
-      ConfigureDeploymentMethod.new("apply_config_services", 0, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT),
       ConfigureCommitmentMethod.new("update_metadata", 1, 0),
       ConfigureCommitmentMethod.new("deploy_services", 1, 1),
-      ConfigureCommitmentMethod.new("start_replication_services_unless_provisioning", 2, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT-1, false),
-      ConfigureCommitmentMethod.new("wait_for_manager", 2, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT, false),
+      ConfigureCommitmentMethod.new("start_replication_services", 1, ConfigureDeployment::FINAL_STEP_WEIGHT),
+      ConfigureCommitmentMethod.new("wait_for_manager", 2, -1),
+      ConfigureCommitmentMethod.new("set_automatic_policy", 3, 0),
       ConfigureCommitmentMethod.new("start_connector", 4, 1, false),
-      ConfigureCommitmentMethod.new("set_original_policy", 5, 0),
-      ConfigureCommitmentMethod.new("provision_server", 5, 1),
-      ConfigureCommitmentMethod.new("report_services", ConfigureDeploymentStepMethod::FINAL_GROUP_ID, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT-1, false),
-      ConfigureCommitmentMethod.new("check_ping", ConfigureDeploymentStepMethod::FINAL_GROUP_ID, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT)
+      ConfigureCommitmentMethod.new("set_original_policy", 4, 2),
+      ConfigureCommitmentMethod.new("report_services", ConfigureDeployment::FINAL_GROUP_ID, ConfigureDeployment::FINAL_STEP_WEIGHT-1, false),
+      ConfigureCommitmentMethod.new("check_ping", ConfigureDeployment::FINAL_GROUP_ID, ConfigureDeployment::FINAL_STEP_WEIGHT)
     ]
   end
   module_function :get_methods
@@ -27,6 +27,25 @@ module ConfigureDeploymentStepServices
     write_undeployall()
     write_startall()
     write_stopall()
+    
+    prepare_dir = get_deployment_basedir()
+    out = File.open(prepare_dir + "/.watchfiles", "w")
+    
+    @watchfiles.uniq().each{
+      |file|
+      
+      FileUtils.cp(file, get_original_watch_file(file))
+      if file =~ /#{prepare_dir}/
+        file_to_watch = file.sub(prepare_dir, "")
+        if file_to_watch[0, 1] == "/"
+          file_to_watch.slice!(0)
+        end 
+      else
+        file_to_watch = file
+      end
+      out.puts file_to_watch
+    }
+    out.close
   end
   
   def deploy_services
@@ -59,43 +78,15 @@ module ConfigureDeploymentStepServices
       return
     end
     
+    if get_additional_property(ACTIVE_DIRECTORY_PATH) && get_additional_property(CONNECTOR_IS_RUNNING) == "true"
+      info("Stopping the old connector")
+      info(cmd_result("#{get_additional_property(ACTIVE_DIRECTORY_PATH)}/tungsten-connector/bin/connector stop"))
+    end
+    
     if get_additional_property(ACTIVE_DIRECTORY_PATH) && get_additional_property(CONNECTOR_ENABLED) == "true"
       if get_additional_property(CONNECTOR_IS_RUNNING) == "true"
-        if get_additional_property(ACTIVE_DIRECTORY_PATH) == File.readlink(@config.getProperty(CURRENT_RELEASE_DIRECTORY))
-          if get_additional_property(RECONFIGURE_CONNECTORS_ALLOWED) == true
-            # We are updating the existing directory so `connector reconfigure` can be used
-            info("Tell the connector to update its configuration")
-            info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/bin/connector reconfigure"))
-          else
-            # Stop the connector and start it again so that the full configuration, including ports, are reloaded
-            begin
-              info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/bin/connector graceful-stop 30"))
-            ensure
-              sleep(1)
-              info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/bin/connector start"))
-            end
-          end
-        else
-          # We are switching to a new active directory. Start the new connector 
-          # so it goes into a loop trying to bind the connector port
-          info("Starting the new connector")
-          info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/bin/connector start"))
-          
-          # Attempt to use the graceful-stop command but fail back to a regular stop
-          info("Stopping the old connector")
-          begin
-            info(cmd_result("#{get_additional_property(ACTIVE_DIRECTORY_PATH)}/tungsten-connector/bin/connector graceful-stop 30"))
-          rescue CommandError => ce
-            if ce.result =~ /Usage:/
-              debug("The running version doesn't support graceful-stop")
-              # The running version of the connector doesn't support graceful-stop
-              info(cmd_result("#{get_additional_property(ACTIVE_DIRECTORY_PATH)}/tungsten-connector/bin/connector stop"))
-            else
-              # The graceful-stop command failed for another reason so we should bubble that up
-              raise ce
-            end
-          end
-        end
+        info("Starting the connector")
+        info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/bin/connector start"))
       end
     elsif @config.getProperty(SVC_START) == "true"
       info("Starting the connector")
@@ -147,7 +138,7 @@ module ConfigureDeploymentStepServices
     out.puts "# Start all services using local service scripts"
     out.puts "THOME=`dirname $0`/../.."
     out.puts "cd $THOME"
-    @services.sort.reverse.each { |svc| out.puts svc + " start" }
+    @services.each { |svc| out.puts svc + " start" }
     out.puts "# AUTO-CONFIGURED: #{DateTime.now}"
     out.chmod(0755)
     out.close
@@ -162,7 +153,7 @@ module ConfigureDeploymentStepServices
     out.puts "# Stop all services using local service scripts"
     out.puts "THOME=`dirname $0`/../.."
     out.puts "cd $THOME"
-    @services.sort.each { |svc| out.puts svc + " stop" }
+    @services.reverse_each { |svc| out.puts svc + " stop" }
     out.puts "# AUTO-CONFIGURED: #{DateTime.now}"
     out.chmod(0755)
     out.close
@@ -230,9 +221,9 @@ module ConfigureDeploymentStepServices
     super()
   end
   
-  def start_replication_services(offline = false)
+  def start_replication_services
     if get_additional_property(ACTIVE_DIRECTORY_PATH) && get_additional_property(REPLICATOR_ENABLED) == "true"
-      super(offline)
+      super()
     elsif @config.getProperty(SVC_START) == "true"
       if is_manager?() && manager_is_running?() != true
         info("Starting the manager")
@@ -240,39 +231,15 @@ module ConfigureDeploymentStepServices
       end
 
       if is_replicator?() && replicator_is_running?() != true
-        if offline == true
-          start_command = "start offline"
-        else
-          start_command = "start"
-        end
-        
         info("Starting the replicator")
-        info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/bin/replicator #{start_command}"))
+        info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/bin/replicator start"))
       end
-    end
-  end
-  
-  def start_replication_services_unless_provisioning
-    unless provision_server?()
-      start_replication_services()
     end
   end
   
   def update_metadata
     if get_additional_property(ACTIVE_VERSION) =~ /^1.5.[0-9][\-0-9]+$/
       upgrade_from_1_5()
-    else
-      if is_replicator?() && get_additional_property(ACTIVE_DIRECTORY_PATH).to_s() != ""
-        current_data = get_additional_property(ACTIVE_DIRECTORY_PATH) + "/tungsten-replicator/data"
-        if File.exist?(current_data)
-          target_data = @config.getProperty(REPL_METADATA_DIRECTORY)
-          if File.exist?(target_data)
-            Configurator.instance.warning("Position information was found at #{current_data} and #{target_data}. The information at #{target_data} will be kept unchanged.")
-          else
-            cmd_result("mv #{current_data} #{target_data}")
-          end
-        end
-      end
     end
   end
   
@@ -309,16 +276,13 @@ module ConfigureDeploymentStepServices
       
       @config.getPropertyOr([REPL_SERVICES], {}).each_key{
         |rs_alias|
-        if rs_alias == DEFAULTS
-          next
-        end
         
         begin
           create_tungsten_schema(rs_alias)
           
           applier = get_applier_datasource(rs_alias)
           if applier.is_a?(MySQLDatabasePlatform)
-            applier.run("SET SQL_LOG_BIN=0; INSERT INTO #{@config.getProperty([REPL_SERVICES, rs_alias, REPL_SVC_SCHEMA])}.trep_commit_seqno (seqno, fragno, last_frag, source_id, epoch_number, eventid, applied_latency, update_timestamp, shard_id, extract_timestamp) SELECT seqno, fragno, last_frag, source_id, epoch_number, eventid, applied_latency, update_timestamp, '#UNKNOWN', update_timestamp FROM tungsten.trep_commit_seqno")
+            applier.run("SET SQL_LOG_BIN=0; INSERT INTO #{@config.getProperty([REPL_SERVICES, rs_alias, REPL_SVC_SCHEMA])}.trep_commit_seqno (seqno, fragno, last_frag, source_id, epoch_number, eventid, applied_latency, update_timestamp, extract_timestamp) SELECT seqno, fragno, last_frag, source_id, epoch_number, eventid, applied_latency, update_timestamp, update_timestamp FROM tungsten.trep_commit_seqno")
           elsif applier.is_a?(PGDatabasePlatform)
             # Nothing to do here
           end
@@ -326,106 +290,6 @@ module ConfigureDeploymentStepServices
           warning(e.message)
         end
       }
-    end
-  end
-  
-  def provision_server?()
-    # The ProvisionNewSlavesPackageModule module will only set this value
-    # if this server was not previously configured as a replicator 
-    if ["false", ""].include?(get_additional_property(PROVISION_NEW_SLAVES).to_s())
-      return false
-    end
-    
-    unless is_replicator?()
-      return false
-    end
-    
-    Configurator.instance.command.build_topologies(@config)    
-    @config.getPropertyOr([REPL_SERVICES], {}).each_key{
-      |rs_alias|
-      if rs_alias == DEFAULTS
-        next
-      end
-      
-      # If there is a non-master service, we should provision
-      if @config.getProperty([REPL_SERVICES, rs_alias, REPL_ROLE]) != REPL_ROLE_M
-        return true
-      end
-    }
-    
-    return false
-  end
-  
-  def provision_server
-    unless provision_server?()
-      return
-    end
-    
-    services = AUTODETECT
-    source = AUTODETECT
-    if get_additional_property(PROVISION_NEW_SLAVES) == "true"
-      info("Provision #{@config.getProperty(HOST)}")
-    else
-      info("Provision #{@config.getProperty(HOST)} using #{get_additional_property(PROVISION_NEW_SLAVES)}")
-
-      # Identify the service that should be provisioned, a source may
-      # optionally be provided in the --provision-new-slaves option
-      match = get_additional_property(PROVISION_NEW_SLAVES).to_s().match(/^^([a-zA-Z0-9_]+)(@([a-zA-Z0-9_\.\-]+))?$/)
-      if match == nil
-        error("Unable to parse the provision source: #{get_additional_property(PROVISION_NEW_SLAVES)}")
-        return false
-      end
-      
-      services = [match[1]]
-      unless match[3].to_s() == ""
-        source = match[3]
-      end
-    end
-
-    start_replication_services_offline()
-    
-    # Find all services that should be provisioned. For Fan-In replication, 
-    # we may provision from each master server
-    if services == AUTODETECT
-      services = []
-      @config.getPropertyOr([REPL_SERVICES], {}).each_key{
-        |rs_alias|
-        if rs_alias == DEFAULTS
-          next
-        end
-        
-        if @config.getProperty([REPL_SERVICES, rs_alias, REPL_ROLE]) == REPL_ROLE_M
-          next
-        end
-        
-        services << @config.getProperty([REPL_SERVICES, rs_alias, DEPLOYMENT_DATASERVICE])
-        
-        # Stop after finding one until we properly support multi-master topologies
-        break
-      }
-    end
-
-    begin
-      is_first = true
-      services.each{
-        |svc|
-        args = []
-        args << "--source=#{source}"
-        args << "--service=#{svc}"
-      
-        if is_first == false
-          # Do not add this argument until it is supported and we properly support multi-master topologies
-          # args << "--logical"
-        end
-      
-        notice("Provision the #{svc} replication service on #{@config.getProperty(HOST)}")
-        info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/scripts/tungsten_provision_slave #{args.join(' ')}"))
-        is_first = false
-      }
-    
-      online_replication_services()
-    rescue CommandError => ce
-      error("There was a problem running #{ce.command}\n#{ce.result}\nResolve the issue and run the tungsten_provision_slave script on #{@config.getProperty(HOST)}")
     end
   end
 end

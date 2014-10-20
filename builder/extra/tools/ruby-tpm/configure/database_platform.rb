@@ -1,25 +1,16 @@
 class ConfigureDatabasePlatform
-  attr_reader :username, :password, :host, :port, :extractor
+  attr_reader :username, :password, :host, :port
   
-  def initialize(prefix, config, extractor = false)
+  def initialize(prefix, config)
     if prefix == nil || config == nil
       return
     end
     
     @prefix = prefix
-    @extractor = extractor
-    
-    if @extractor == true
-      @host = config.getProperty(prefix + [EXTRACTOR_REPL_DBHOST])
-      @port = config.getProperty(prefix + [EXTRACTOR_REPL_DBPORT])
-      @username = config.getProperty(prefix + [EXTRACTOR_REPL_DBLOGIN])
-      @password = config.getProperty(prefix + [EXTRACTOR_REPL_DBPASSWORD])
-    else
-      @host = config.getProperty(prefix + [REPL_DBHOST])
-      @port = config.getProperty(prefix + [REPL_DBPORT])
-      @username = config.getProperty(prefix + [REPL_DBLOGIN])
-      @password = config.getProperty(prefix + [REPL_DBPASSWORD])
-    end
+    @host = config.getProperty(prefix + [REPL_DBHOST])
+    @port = config.getProperty(prefix + [REPL_DBPORT])
+    @username = config.getProperty(prefix + [REPL_DBLOGIN])
+    @password = config.getProperty(prefix + [REPL_DBPASSWORD])
     @config = config
   end
   
@@ -28,15 +19,11 @@ class ConfigureDatabasePlatform
   end
   
   def run(command)
-    Configurator.instance.debug("Unable to run #{command} against #{self.class.name} connection")
-    
-    nil
+    raise "Undefined function: #{self.class.name}.run"
   end
   
   def get_value(command, column = nil)
-    Configurator.instance.debug("Unable to run #{command} against #{self.class.name} connection")
-    
-    nil
+    raise "Undefined function: #{self.class.name}.get_value"
   end
 	
 	def get_extractor_template
@@ -47,27 +34,8 @@ class ConfigureDatabasePlatform
     "tungsten-replicator/samples/conf/appliers/#{get_uri_scheme()}.tpl"
 	end
 	
-	def get_datasource_template
-    "tungsten-replicator/samples/conf/datasources/#{get_uri_scheme()}.tpl"
-	end
-	
-	def get_datasource_template_ds_name(ds_name)
-    "tungsten-replicator/samples/conf/datasources/#{get_uri_scheme()}_#{ds_name}.tpl"
-	end
-
 	def get_extractor_filters()
-    filters = []
-	  if @config.getProperty(@prefix + [ENABLE_HETEROGENOUS_MASTER]) == "true"
-	    unless extractor_provides_colnames?()
-	      filters << "colnames"
-	    end
-	    if @config.getProperty(@prefix + [DROP_STATIC_COLUMNS]) == "true"
-	      filters << "optimizeupdates"
-	    end
-	    filters << "pkey"
-	  end
-	  
-	  return filters
+	  []
 	end
 	
 	def get_thl_filters()
@@ -75,15 +43,7 @@ class ConfigureDatabasePlatform
 	end
 	
 	def get_applier_filters()
-	  filters = []
-	  if @config.getProperty(@prefix + [ENABLE_HETEROGENOUS_SLAVE]) == "false"
-	    if @config.getProperty(@prefix + [DROP_STATIC_COLUMNS]) == "true"
-	      filters << "optimizeupdates"
-	    end
-	    filters << "pkey"
-	  end
-	  
-	  return filters
+	  ["pkey"]
 	end
 	
 	def get_backup_agents()
@@ -113,32 +73,12 @@ class ConfigureDatabasePlatform
 	def check_thl_schema(thl_schema)
   end
   
-  def getJdbcQueryUrl()
-    getJdbcUrl()
-  end
-  
   def getJdbcUrl()
     raise "Undefined function: #{self.class.name}.getJdbcUrl"
-  end
-
-  def getJdbcUrlSSLOptions()
-    ""
-  end
-  
-  def getExtractorJdbcUrl
-    getJdbcUrl()
-  end
-  
-  def getExtractorJdbcUrlSSLOptions()
-    getJdbcUrlSSLOptions()
   end
   
   def getJdbcDriver()
     raise "Undefined function: #{self.class.name}.getJdbcDriver"
-  end
-  
-  def getJdbcScheme()
-    getVendor()
   end
   
   def getVendor()
@@ -178,7 +118,7 @@ class ConfigureDatabasePlatform
   end
   
   def get_valid_backup_methods
-    "none|script|file-copy-snapshot|ebs-snapshot"
+    "none|script"
   end
   
   def get_connection_summary(password = true)
@@ -218,7 +158,7 @@ class ConfigureDatabasePlatform
   end
   
   def get_replication_schema
-    nil
+    "tungsten_${service.name}"
   end
   
   def get_default_table_engine
@@ -229,26 +169,9 @@ class ConfigureDatabasePlatform
     ["innodb"]
   end
   
-  def extractor_provides_colnames?
-    false
-  end
-  
-  def applier_supports_parallel_apply?()
-    false
-  end
-  
-  def applier_supports_reset?
-    false
-  end
-  
-  def self.build(prefix, config, extractor = false)
-    if extractor == true
-      key = EXTRACTOR_REPL_DBTYPE
-    else
-      key = REPL_DBTYPE
-    end
-    klass = self.get_class(config.getProperty(prefix + [key]))
-    return klass.new(prefix, config, extractor)
+  def self.build(prefix, config)
+    klass = self.get_class(config.getProperty(prefix + [REPL_DBTYPE]))
+    return klass.new(prefix, config)
   end
   
   def self.get_class(scheme)

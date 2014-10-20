@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -25,7 +25,6 @@ package com.continuent.tungsten.replicator.ddlscan;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.FilenameFilter;
 import java.io.IOException;
@@ -35,14 +34,11 @@ import java.sql.SQLException;
 import java.util.Hashtable;
 import java.util.Properties;
 
-import au.com.bytecode.opencsv.CSVReader;
-
 import com.continuent.tungsten.common.config.TungstenProperties;
 import com.continuent.tungsten.common.exec.ArgvIterator;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.conf.ReplicatorConf;
 import com.continuent.tungsten.replicator.conf.ReplicatorRuntimeConf;
-import com.continuent.tungsten.replicator.management.ReplicationServiceManager;
 
 /**
  * This class defines a DDLScanCtrl that implements a utility to access DDLScan
@@ -76,12 +72,10 @@ public class DDLScanCtrl
     private String                pass              = null;
 
     private String                tables            = null;
-    private String                tableFile         = null;
 
     private String                renameDefinitions = null;
 
     private String                templateFile      = null;
-    private String                additionalPath    = null;
     Hashtable<String, String>     templateOptions   = null;
     private String                outFile           = null;
 
@@ -95,9 +89,8 @@ public class DDLScanCtrl
      * @throws Exception
      */
     public DDLScanCtrl(String url, String user, String pass, String db,
-            String tables, String tableFile, String templateFile,
-            String outFile, String renameDefinitions,
-            Hashtable<String, String> templateOptions, String additionalPath)
+            String tables, String templateFile, String outFile,
+            String renameDefinitions, Hashtable<String, String> templateOptions)
             throws Exception
     {
         // JDBC connection string.
@@ -108,11 +101,9 @@ public class DDLScanCtrl
         // Tables to extract.
         this.db = db;
         this.tables = tables;
-        this.tableFile = tableFile;
 
         // Template, options and output file.
         this.templateFile = templateFile;
-        this.additionalPath = additionalPath;
         this.templateOptions = templateOptions;
         this.outFile = outFile;
 
@@ -140,7 +131,7 @@ public class DDLScanCtrl
         try
         {
             scanner = new DDLScan(url, db, user, pass);
-            scanner.prepare(additionalPath);
+            scanner.prepare();
         }
         catch (SQLException e)
         {
@@ -189,17 +180,10 @@ public class DDLScanCtrl
             }
         }
 
-        if (tableFile != null)
-            tables = tableFileToRegex(tableFile);
-
         if (outFile == null)
             writer = new StringWriter();
         else
             writer = new BufferedWriter(new FileWriter(new File(outFile)));
-
-        // Summarize tables to stdout if we are going to an output file.
-        if (tables != null && outFile != null)
-            println("tables = " + tables);
 
         scanner.scan(tables, templateOptions, writer);
 
@@ -213,58 +197,6 @@ public class DDLScanCtrl
             println("rendered to = " + outFile);
 
         return true;
-    }
-
-    private String tableFileToRegex(String tableFile) throws IOException
-    {
-        return tableFileToRegex(null, tableFile);
-    }
-
-    /**
-     * Converts a new-line seperated text file containing table names into a
-     * format accepted by DDLScan:
-     * table1,table2,...,tableN
-     * 
-     * @param schema Prefix to add before each table name. If null - not added.
-     * @param tableFile Table file like tungsten.tables used by Oracle
-     *            setupCDC.sh.
-     * @return Comma-separated regex searchable list of tables.
-     * @throws IOException Exception is thrown if file is not found or similar
-     *             error occurs.
-     */
-    public static String tableFileToRegex(String schema, String tableFile)
-            throws IOException
-    {
-        StringBuilder tables = new StringBuilder();
-        CSVReader reader = new CSVReader(new FileReader(tableFile));
-        String[] cols;
-        boolean first = true;
-        while ((cols = reader.readNext()) != null)
-        {
-            if (cols.length == 1 && cols[0].length() == 0)
-            {
-                // Empty line.
-            }
-            else if (cols.length > 0 && cols[0].length() > 0
-                    && cols[0].charAt(0) == '#')
-            {
-                // Comment line.
-            }
-            else
-            {
-                if (!first)
-                    tables.append(",");
-                if (schema != null)
-                {
-                    tables.append(schema);
-                    tables.append(".");
-                }
-                tables.append(cols[0]);
-            }
-            first = false;
-        }
-        reader.close();
-        return tables.toString();
     }
 
     public void release()
@@ -316,14 +248,12 @@ public class DDLScanCtrl
             // Command line parameters and options.
             String configFile = null;
             String service = null;
-
+            String command = null;
             String templateFile = null;
-            String additionalPath = null;
             String user = null;
             String pass = null;
             String url = null;
             String tables = null;
-            String tableFile = null;
             String db = null;
             String outFile = null;
             String renameDefinitions = null;
@@ -372,20 +302,10 @@ public class DDLScanCtrl
                     if (argvIterator.hasNext())
                         tables = argvIterator.next();
                 }
-                else if ("-tableFile".equals(curArg))
-                {
-                    if (argvIterator.hasNext())
-                        tableFile = argvIterator.next();
-                }
                 else if ("-template".equals(curArg))
                 {
                     if (argvIterator.hasNext())
                         templateFile = argvIterator.next();
-                }
-                else if ("-path".equals(curArg))
-                {
-                    if (argvIterator.hasNext())
-                        additionalPath = argvIterator.next();
                 }
                 else if ("-out".equals(curArg))
                 {
@@ -427,6 +347,8 @@ public class DDLScanCtrl
                     printHelp();
                     fail();
                 }
+                else
+                    command = curArg;
             }
 
             if (templateFile == null)
@@ -504,10 +426,10 @@ public class DDLScanCtrl
 
             // Construct DDLScanCtrl from JDBC URL credentials.
             DDLScanCtrl ddlScanManager = new DDLScanCtrl(url, user, pass, db,
-                    tables, tableFile, templateFile, outFile,
-                    renameDefinitions, templateOptions, additionalPath);
+                    tables, templateFile, outFile, renameDefinitions,
+                    templateOptions);
 
-            if (tables == null && tableFile == null && outFile != null)
+            if (tables == null && outFile != null)
                 println("Tables not specified - extracting everything!");
 
             ddlScanManager.prepare();
@@ -526,16 +448,15 @@ public class DDLScanCtrl
      * Return the service configuration file if there is one and only one file
      * that matches the static-svcname.properties pattern.
      */
-    public static String lookForConfigFile()
+    private static String lookForConfigFile()
     {
         File configDir = ReplicatorRuntimeConf.locateReplicatorConfDir();
         FilenameFilter propFileFilter = new FilenameFilter()
         {
             public boolean accept(File fdir, String fname)
             {
-                if (fname
-                        .startsWith(ReplicationServiceManager.CONFIG_FILE_PREFIX)
-                        && fname.endsWith(ReplicationServiceManager.CONFIG_FILE_SUFFIX))
+                if (fname.startsWith("static-")
+                        && fname.endsWith(".properties"))
                     return true;
                 else
                     return false;
@@ -548,50 +469,41 @@ public class DDLScanCtrl
             return null;
     }
 
-    /**
-     * Parse out service name from static configuration file name.
-     * 
-     * @param configFileName File name like "static-service.properties".
-     * @return Service name.
-     */
-    public static String serviceFromConfigFileName(String configFileName)
-    {
-        String prefx = ReplicationServiceManager.CONFIG_FILE_PREFIX;
-        String suffix = ReplicationServiceManager.CONFIG_FILE_SUFFIX;
-        if (configFileName.contains(prefx) && configFileName.endsWith(suffix))
-        {
-            int iP = configFileName.indexOf(prefx);
-            return configFileName.substring(iP + prefx.length(),
-                    configFileName.length() - suffix.length());
-        }
-        else
-            return null;
-    }
-
     protected static void printHelp()
     {
         println("DDLScan Utility");
         println("Syntax: ddlscan [conf|conn] [scan-spec] -db <db> -template <file> [template-options] [out]");
         println("Conf options:");
-        println("  -conf path       - Path to a static-<svc>.properties file to read JDBC");
-        println("     OR              connection address and credentials");
-        println("  -service name    - Name of a replication service instead of path to config");
+        println("  -conf path     - Path to a static-<svc>.properties file to read JDBC");
+        println("     OR            connection address and credentials or:");
+        println("  -service name  - Name of a replication service instead of path to config");
         println("OR connection options:");
-        println("  -user user       - JDBC username");
-        println("  -pass secret     - JDBC password");
-        println("  -url jdbcUrl     - JDBC connection string (use single quotes to escape)");
+        println("  -user user     - JDBC username");
+        println("  -pass secret   - JDBC password");
+        println("  -url jdbcUrl   - JDBC connection string (use single quotes to escape)");
         println("Schema scan specification:");
-        println(" [-tables regex]   - Comma-separated list of tables to find");
-        println(" [-tableFile file] - New-line seperated definitions file of tables to find");
-        println(" [-rename file]    - Definitions file for renaming schemas, tables and columns");
+        println(" [-tables regex] - Regular expression enabled list defining tables to find");
+        println(" [-rename file]  - Definitions file for renaming schemas, tables and columns");
         println("Global options:");
-        println("  -db db           - Database to use (will substitute "
+        println("  -db db         - Database to use (will substitute "
                 + DBNAME_VAR + " in the URL, if needed)");
-        println("  -template file   - Specify template file to render");
-        println("  -path path       - Add additional search path for loading Velocity templates");
-        println(" [-opt opt val]    - Option(s) to pass to template, try: -opt help me");
-        println(" [-out file]       - Render to file (print to stdout if not specified)");
-        println("  -help            - Print this help display");
+        println("  -template file - Specify template file to render");
+        println(" [-opt opt val]  - Option(s) to pass to template, try: -opt help me");
+        println(" [-out file]     - Render to file (print to stdout if not specified)");
+        println("  -help          - Print this help display");
+    }
+
+    /**
+     * Appends a message to a given stringBuilder, adds a newline character at
+     * the end.
+     * 
+     * @param msg String to print.
+     * @param stringBuilder StringBuilder object to add a message to.
+     */
+    private static void println(StringBuilder stringBuilder, String msg)
+    {
+        stringBuilder.append(msg);
+        stringBuilder.append("\n");
     }
 
     /**

@@ -127,7 +127,7 @@ class ConfigureValidationHandler
           # Invoke ValidationChecks on the remote server
           if Configurator.instance.command.use_remote_package?()
             validation_temp_directory = get_validation_temp_directory()
-            command = "#{@config.getProperty(REMOTE_PACKAGE_PATH)}/tools/tpm validate-single-config --profile=#{validation_temp_directory}/#{Configurator::TEMP_DEPLOY_HOST_CONFIG} --command-class=#{Configurator.instance.command.class.name} #{Configurator.instance.get_remote_tpm_options().join(' ')}"
+            command = "#{@config.getProperty(REMOTE_PACKAGE_PATH)}/tools/tpm validate-single-config --profile #{validation_temp_directory}/#{Configurator::TEMP_DEPLOY_HOST_CONFIG} --command-class=#{Configurator.instance.command.class.name} #{Configurator.instance.get_remote_tpm_options().join(' ')}"
           else
             command = "#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tools/tpm validate-single-config --command-class=#{Configurator.instance.command.class.name} #{Configurator.instance.get_remote_tpm_options().join(' ')}"
           end
@@ -178,7 +178,6 @@ class ConfigureValidationHandler
   # Handle the remote side of the validate function
   def validate_config(config)
     @config.import(config)
-    Configurator.instance.command.build_topologies(@config)
     
     begin
       @deployment_checks.each{
@@ -234,7 +233,7 @@ class ConfigureValidationHandler
           # Invoke ValidationChecks on the remote server
           if Configurator.instance.command.use_remote_package?()
             validation_temp_directory = get_validation_temp_directory()
-            command = "#{@config.getProperty(REMOTE_PACKAGE_PATH)}/tools/tpm validate-commit-config --profile=#{validation_temp_directory}/#{Configurator::TEMP_DEPLOY_HOST_CONFIG} --command-class=#{Configurator.instance.command.class.name} #{Configurator.instance.get_remote_tpm_options().join(' ')}"
+            command = "#{@config.getProperty(REMOTE_PACKAGE_PATH)}/tools/tpm validate-commit-config --profile #{validation_temp_directory}/#{Configurator::TEMP_DEPLOY_HOST_CONFIG} --command-class=#{Configurator.instance.command.class.name} #{Configurator.instance.get_remote_tpm_options().join(' ')}"
           else
             command = "#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tools/tpm validate-commit-config --command-class=#{Configurator.instance.command.class.name} #{Configurator.instance.get_remote_tpm_options().join(' ')}"
           end
@@ -262,7 +261,6 @@ class ConfigureValidationHandler
   # Handle the remote side of the validate function
   def validate_commit_config(config)
     @config.import(config)
-    Configurator.instance.command.build_topologies(@config)
     
     begin
       @commit_checks.each{
@@ -284,6 +282,52 @@ class ConfigureValidationHandler
     return get_remote_result()
   end
   
+  def start_listeners(configs)
+    reset_errors()
+    configs.each{
+      |config|
+      
+      begin
+        @config.import(config)
+        
+        if (run_locally?() == false)
+          command = Escape.shell_command(["#{@config.getProperty(REMOTE_PACKAGE_PATH)}/tools/tpm", "firewall", "--start-listeners", "--profile #{get_validation_temp_directory()}/#{Configurator::TEMP_DEPLOY_HOST_CONFIG}"]).to_s
+          ssh_result(command, @config.getProperty(HOST), @config.getProperty(USERID))
+        else
+          Thread.new{
+            FirewallCommand.start_listeners(config)
+          }
+        end
+      rescue => e
+        exception(e)
+      end
+    }
+    
+    is_valid?()
+  end
+  
+  def stop_listeners(configs)
+    reset_errors()
+    configs.each{
+      |config|
+      
+      begin
+        @config.import(config)
+        
+        if (run_locally?() == false)
+          command = Escape.shell_command(["#{@config.getProperty(REMOTE_PACKAGE_PATH)}/tools/tpm", "firewall", "--stop-listeners", "--profile #{get_validation_temp_directory()}/#{Configurator::TEMP_DEPLOY_HOST_CONFIG}"]).to_s
+          ssh_result(command, @config.getProperty(HOST), @config.getProperty(USERID))
+        else
+          FirewallCommand.stop_listeners(config)
+        end
+      rescue => e
+        exception(e)
+      end
+    }
+        
+    is_valid?()
+  end
+  
   def get_validation_temp_directory
     "#{@config.getProperty(TEMP_DIRECTORY)}/#{@config.getProperty(CONFIG_TARGET_BASENAME)}/"
   end
@@ -302,11 +346,28 @@ class ConfigureValidationHandler
   end
   
   def get_message_hostname
-    @config.getProperty(DEPLOYMENT_HOST)
+    @config.getProperty(HOST)
   end
   
   def get_message_host_key
-    @config.getProperty([DEPLOYMENT_CONFIGURATION_KEY])
+    @config.getProperty(DEPLOYMENT_HOST)
+  end
+  
+  # Read the prompt response from the command line.
+  def input_value(prompt, default)
+    default = default.to_s
+    if (default.length + prompt.length < 75)
+      printf "%s [%s]: ", prompt, default
+    else
+      printf "%s\n[%s]:", prompt, default
+    end
+    value = STDIN.gets
+    value.strip!
+    if value == ""
+      return default
+    else
+      return value
+    end
   end
   
   def self.skip_validation_class?(klass, cfg)
@@ -360,6 +421,16 @@ class ConfigureValidationHandler
   
   def self.get_enabled_validation_warnings
     @@enabled_warnings || []
+  end
+  
+  def use_firewall_listeners?
+    @deployment_checks.each{
+      |check|
+      if check.enabled?() && check.use_firewall_listeners?() == true
+        return true
+      end
+    }
+    false
   end
 end
 

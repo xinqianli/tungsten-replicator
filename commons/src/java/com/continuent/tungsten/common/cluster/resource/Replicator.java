@@ -60,13 +60,6 @@ public class Replicator extends Resource implements Serializable
      * originally generated.
      */
     public static final String APPLIED_LATENCY                = "appliedLatency";
-    
-    /**
-     * Time, in seconds, that has elapesed between the last update timestamp an 'now()'.
-     * This value will increase, second-for-second, when a replicator is 'idle' i.e.
-     * not processing any transactions.
-     */
-    public static final String RELATIVE_LATENCY                = "relativeLatency";
 
     /** Current epoch number used by replicator, if it has one. */
     public static final String LATEST_EPOCH_NUMBER            = "latestEpochNumber";
@@ -94,9 +87,6 @@ public class Replicator extends Resource implements Serializable
 
     /** URI that slaves should use when connecting to this master. */
     public static final String MASTER_LISTEN_URI              = "masterListenUri";
-
-    /** Indicates if SSL connection is used. */
-    public static final String USE_SSL_CONNECTION             = "useSSLConnection";
 
     /** Name of the cluster to which this replicator belongs. */
     public static final String CLUSTERNAME                    = "clusterName";

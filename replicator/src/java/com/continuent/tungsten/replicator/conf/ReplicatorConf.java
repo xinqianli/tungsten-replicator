@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Teemu Ollakka
- * Contributor(s): Alex Yurchenko, Linas Virbalas, Stephane Giron, Robert Hodges
+ * Contributor(s): Alex Yurchenko, Linas Virbalas, Stephane Giron
  */
 
 package com.continuent.tungsten.replicator.conf;
@@ -64,31 +64,6 @@ public class ReplicatorConf
     /** Whether to go online automatically at startup time. */
     static public final String   AUTO_ENABLE                           = "replicator.auto_enable";
     static public final String   AUTO_ENABLE_DEFAULT                   = "false";
-
-    /** How many times to attempt to go online automatically after an error. */
-    static public final String   AUTO_RECOVERY_MAX_ATTEMPTS            = "replicator.autoRecoveryMaxAttempts";
-    static public final String   AUTO_RECOVERY_MAX_ATTEMPTS_DEFAULT    = "0";
-
-    /**
-     * How long to delay when processing an online request initiated by
-     * auto-recovery.
-     */
-    static public final String   AUTO_RECOVERY_DELAY_INTERVAL          = "replicator.autoRecoveryDelayInterval";
-    static public final String   AUTO_RECOVERY_DELAY_INTERVAL_DEFAULT  = "300s";
-
-    /**
-     * How long a replicator must be online to reset the count of recovery
-     * attempts.
-     */
-    static public final String   AUTO_RECOVERY_RESET_INTERVAL          = "replicator.autoRecoveryResetInterval";
-    static public final String   AUTO_RECOVERY_RESET_INTERVAL_DEFAULT  = "300s";
-
-    /**
-     * Whether to reposition data extraction automatically on a master when the
-     * source_id changes.
-     */
-    static public final String   AUTO_MASTER_REPOSITIONING             = "replicator.repositionOnSourceIdChange";
-    static public final String   AUTO_MASTER_REPOSITIONING_DEFAULT     = "true";
 
     /** Whether to automatically provision this server at startup time. */
     static public final String   AUTO_PROVISION                        = "replicator.auto_provision";
@@ -141,13 +116,9 @@ public class ReplicatorConf
     static public final String   LOG_SLAVE_UPDATES                     = "replicator.log.slave.updates";
     static public final String   LOG_SLAVE_UPDATES_DEFAULT             = "false";
 
-    /** Whether slave updates can assume a privileged account. */
-    static public final String   PRIVILEGED_SLAVE                      = "replicator.privileged.slave";
-    static public final String   PRIVILEGED_SLAVE_DEFAULT              = "true";
-
-    /** Whether master extracts can assume a privileged account. */
-    static public final String   PRIVILEGED_MASTER                     = "replicator.privileged.master";
-    static public final String   PRIVILEGED_MASTER_DEFAULT             = "true";
+    /** Whether slave updates use a privileged account. */
+    static public final String   PRIVILEGED_SLAVE_UPDATE               = "replicator.privileged.slave.update";
+    static public final String   PRIVILEGED_SLAVE_UPDATE_DEFAULT       = "true";
 
     /**
      * Whether to allow SQL comments to distinguish statements for different
@@ -193,10 +164,6 @@ public class ReplicatorConf
     /** Store parameter names. */
     static public final String   STORE                                 = "store";
     static public final String   STORE_ROOT                            = "replicator.store";
-
-    /** Data source parameter names. */
-    static public final String   DATASOURCE                            = "datasource";
-    static public final String   DATASOURCE_ROOT                       = "replicator.datasource";
 
     /** Applier failure policy */
     static public final String   APPLIER_FAILURE_POLICY                = "replicator.applier.failure_policy";
@@ -252,11 +219,9 @@ public class ReplicatorConf
 
     /**
      * This information will be used by the sql router to create data sources
-     * dynamically. It is also used by Heartbeat on the master side.
+     * dynamically
      */
     static public final String   RESOURCE_JDBC_URL                     = "replicator.resourceJdbcUrl";
-    static public final String   RESOURCE_JDBC_INIT_SCRIPT             = "replicator.resourceJdbcInitScript";
-
     /** Default value provided to enable unit tests to run. */
     static public final String   RESOURCE_JDBC_URL_DEFAULT             = "jdbc:mysql://localhost/${DBNAME}";
     static public final String   RESOURCE_JDBC_DRIVER                  = "replicator.resourceJdbcDriver";

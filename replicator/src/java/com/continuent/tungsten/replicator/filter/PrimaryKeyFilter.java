@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2014 Continuent Inc.
+ * Copyright (C) 2010-2011 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -58,7 +58,7 @@ import com.continuent.tungsten.replicator.plugin.PluginContext;
  */
 public class PrimaryKeyFilter implements Filter
 {
-    private static Logger                               logger                    = Logger.getLogger(PrimaryKeyFilter.class);
+    private static Logger                               logger               = Logger.getLogger(PrimaryKeyFilter.class);
 
     // Metadata cache is a hashtable indexed by the database name and each
     // database uses a hashtable indexed by the table name (This is done in
@@ -67,24 +67,20 @@ public class PrimaryKeyFilter implements Filter
     // updated only when a table is used for the first time by a row event.
     private Hashtable<String, Hashtable<String, Table>> metadataCache;
 
-    Database                                            conn                      = null;
+    Database                                            conn                 = null;
 
     private String                                      user;
     private String                                      url;
     private String                                      password;
 
-    private List<String>                                tables                    = null;
-    private List<String>                                schemas                   = null;
-    private String                                      processTablesSchemas      = null;
-    private boolean                                     addPkeyToInserts          = false;
-    private boolean                                     addColumnsToDeletes       = false;
-
-    private long                                        reconnectTimeoutInSeconds = 60;
+    private List<String>                                tables               = null;
+    private List<String>                                schemas              = null;
+    private String                                      processTablesSchemas = null;
+    private boolean                                     addPkeyToInserts     = false;
+    private boolean                                     addColumnsToDeletes  = false;
 
     // SQL parser.
-    SqlOperationMatcher                                 sqlMatcher                = new MySQLOperationMatcher();
-
-    private long                                        lastConnectionTime;
+    SqlOperationMatcher                                 sqlMatcher           = new MySQLOperationMatcher();
 
     /**
      * {@inheritDoc}
@@ -124,7 +120,7 @@ public class PrimaryKeyFilter implements Filter
 
         // Load defaults for connection
         if (url == null)
-            url = context.getJdbcUrl(null);
+            url = context.getJdbcUrl("tungsten_" + context.getServiceName());
         if (user == null || user.compareTo("") == 0)
             user = context.getJdbcUser();
         if (password == null || password.compareTo("") == 0)
@@ -134,8 +130,6 @@ public class PrimaryKeyFilter implements Filter
         try
         {
             conn = DatabaseFactory.createDatabase(url, user, password);
-            if (reconnectTimeoutInSeconds > 0)
-                lastConnectionTime = System.currentTimeMillis();
             conn.connect();
         }
         catch (SQLException e)
@@ -304,9 +298,8 @@ public class PrimaryKeyFilter implements Filter
                 logger.debug("Detected a schema change for table "
                         + orc.getSchemaName() + "." + tableName
                         + " - Removing table metadata from cache");
-            reconnectIfNeeded();
             Table newTable = conn.findTable(orc.getSchemaName(),
-                    orc.getTableName(), false);
+                    orc.getTableName());
             if (newTable != null)
             {
                 newTable.setTableId(orc.getTableId());
@@ -325,33 +318,6 @@ public class PrimaryKeyFilter implements Filter
                         + " not found in cache");
             return;
         }
-
-        // At this point we take a break to add column information to deletes.
-        // This is not really related to primary keys but is a feature of this
-        // filter and has to be done now or will be missed if there is no
-        // primary key.
-        if (orc.getAction() == ActionType.DELETE && this.addColumnsToDeletes)
-        {
-            // Optionally get table columns and add them to metadata for the
-            // DELETE.
-            List<ColumnSpec> colSpecs = orc.getColumnSpec();
-            if (colSpecs.size() == 0)
-            {
-                List<Column> cols = table.getAllColumns();
-                for (int i = 0; i < cols.size(); i++)
-                {
-                    Column column = cols.get(i);
-                    OneRowChange.ColumnSpec colSpec = orc.new ColumnSpec();
-                    colSpec.setIndex(column.getPosition());
-                    colSpec.setName(column.getName());
-                    colSpec.setType(column.getType());
-                    colSpec.setTypeDescription(column.getTypeDescription());
-                    colSpecs.add(colSpec);
-                }
-            }
-        }
-
-        // Find the table primary key.
         Key primaryKey = table.getPrimaryKey();
         if (primaryKey == null)
         {
@@ -431,30 +397,38 @@ public class PrimaryKeyFilter implements Filter
                     colSpec.setType(column.getType());
                     colSpec.setTypeDescription(column.getTypeDescription());
                     keySpecs.add(colSpec);
+
+                    // Add empty dummy column values to the key column.
+                    // Without this ProtobufSerializer will fail.
+                    ArrayList<ColumnVal> columnValues = new ArrayList<ColumnVal>();
+                    keyValues.add(columnValues);
                 }
-                // Add empty dummy column values to the key column.
-                // Without this ProtobufSerializer will fail.
-                // Issue 1003 : Add it only once!
-                ArrayList<ColumnVal> columnValues = new ArrayList<ColumnVal>();
-                keyValues.add(columnValues);
             }
             else
             {
                 logger.debug("INSERT already contain keys: " + keySpecs.size());
             }
         }
-    }
-
-    private void reconnectIfNeeded() throws SQLException
-    {
-        long currentTime = System.currentTimeMillis();
-        if (reconnectTimeoutInSeconds > 0
-                && currentTime - lastConnectionTime > reconnectTimeoutInSeconds * 1000)
+        else if (orc.getAction() == ActionType.DELETE
+                && this.addColumnsToDeletes)
         {
-            // Time to reconnect now
-            lastConnectionTime = currentTime;
-            conn.close();
-            conn.connect();
+            // Optionally get table columns and add them to metadata for the
+            // DELETE.
+            List<ColumnSpec> colSpecs = orc.getColumnSpec();
+            if (colSpecs.size() == 0)
+            {
+                List<Column> cols = table.getAllColumns();
+                for (int i = 0; i < cols.size(); i++)
+                {
+                    Column column = cols.get(i);
+                    OneRowChange.ColumnSpec colSpec = orc.new ColumnSpec();
+                    colSpec.setIndex(column.getPosition());
+                    colSpec.setName(column.getName());
+                    colSpec.setType(column.getType());
+                    colSpec.setTypeDescription(column.getTypeDescription());
+                    colSpecs.add(colSpec);
+                }
+            }
         }
     }
 
@@ -494,10 +468,5 @@ public class PrimaryKeyFilter implements Filter
     public synchronized void setAddColumnsToDeletes(boolean addColumnsToDeletes)
     {
         this.addColumnsToDeletes = addColumnsToDeletes;
-    }
-
-    public void setReconnectTimeout(long seconds)
-    {
-        reconnectTimeoutInSeconds = seconds;
     }
 }

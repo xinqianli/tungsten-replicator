@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,8 +22,6 @@
 
 package com.continuent.tungsten.replicator.database;
 
-import java.io.BufferedWriter;
-import java.io.Serializable;
 import java.sql.Blob;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -35,23 +33,16 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
 import org.apache.log4j.Logger;
 
-import com.continuent.tungsten.common.csv.CsvSpecification;
-import com.continuent.tungsten.common.csv.CsvWriter;
 import com.continuent.tungsten.replicator.ReplicatorException;
-import com.continuent.tungsten.replicator.channel.ShardChannelTable;
 import com.continuent.tungsten.replicator.consistency.ConsistencyCheck;
 import com.continuent.tungsten.replicator.consistency.ConsistencyException;
 import com.continuent.tungsten.replicator.consistency.ConsistencyTable;
 import com.continuent.tungsten.replicator.dbms.OneRowChange;
-import com.continuent.tungsten.replicator.extractor.ExtractorException;
-import com.continuent.tungsten.replicator.heartbeat.HeartbeatTable;
-import com.continuent.tungsten.replicator.shard.ShardTable;
 
 /**
  * Provides a generic implementation for Database interface. Subclasses must
@@ -80,10 +71,6 @@ public abstract class AbstractDatabase implements Database
 
     protected static Map<String, Class<?>> drivers       = new HashMap<String, Class<?>>();
     protected boolean                      connected     = false;
-
-    protected String                       initScript    = null;
-
-    protected CsvSpecification             csvSpec       = null;
 
     /**
      * Create a new database instance. To use the database instance you must at
@@ -131,16 +118,6 @@ public abstract class AbstractDatabase implements Database
         this.privileged = privileged;
     }
 
-    public CsvSpecification getCsvSpecification()
-    {
-        return csvSpec;
-    }
-
-    public void setCsvSpecification(CsvSpecification csvSpec)
-    {
-        this.csvSpec = csvSpec;
-    }
-
     public String getPlaceHolder(OneRowChange.ColumnSpec col, Object colValue,
             String typeDesc)
     {
@@ -173,6 +150,16 @@ public abstract class AbstractDatabase implements Database
      */
     public synchronized void connect() throws SQLException
     {
+        connect(false);
+    }
+
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.database.Database#connect(boolean)
+     */
+    public synchronized void connect(boolean binlog) throws SQLException
+    {
         if (dbConn == null)
         {
             if (dbDriver != null && drivers.get(dbDriver) == null)
@@ -192,6 +179,14 @@ public abstract class AbstractDatabase implements Database
 
             dbConn = DriverManager.getConnection(dbUri, dbUser, dbPassword);
             connected = (dbConn != null);
+
+            if (connected)
+            {
+                if (supportsControlSessionLevelLogging())
+                {
+                    this.controlSessionLevelLogging(!binlog);
+                }
+            }
         }
     }
 
@@ -269,16 +264,6 @@ public abstract class AbstractDatabase implements Database
     /**
      * {@inheritDoc}
      * 
-     * @see com.continuent.tungsten.replicator.database.Database#supportsBLOB()
-     */
-    public boolean supportsBLOB()
-    {
-        return true;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
      * @see com.continuent.tungsten.replicator.database.Database#useDefaultSchema(java.lang.String)
      */
     public void useDefaultSchema(String schema) throws SQLException
@@ -318,28 +303,6 @@ public abstract class AbstractDatabase implements Database
     {
         throw new UnsupportedOperationException(
                 "Controlling session level logging is not supported");
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.datasource.UniversalConnection#setLogged(boolean)
-     */
-    public void setLogged(boolean logged) throws ReplicatorException
-    {
-        // This is harmless if session logging is not supported.
-        if (supportsControlSessionLevelLogging())
-        {
-            try
-            {
-                controlSessionLevelLogging(!logged);
-            }
-            catch (SQLException e)
-            {
-                throw new ReplicatorException("Unable to set logging: "
-                        + e.getMessage(), e);
-            }
-        }
     }
 
     /**
@@ -571,14 +534,7 @@ public abstract class AbstractDatabase implements Database
         return c.getName() + "= ?";
     }
 
-    /**
-     * Executes a prepared statement using values supplied as arguments.
-     * 
-     * @param columns List of values
-     * @param statement The prepared statement instance
-     * @return Number of rows updated
-     */
-    protected int executePrepareStatement(List<Column> columns,
+    private int executePrepareStatement(List<Column> columns,
             PreparedStatement statement) throws SQLException
     {
         int bindNo = 1;
@@ -587,39 +543,28 @@ public abstract class AbstractDatabase implements Database
         {
             statement.setObject(bindNo++, c.getValue());
         }
-
+        // System.out.format("%s (%d binds)\n", SQL, bindNo - 1);
         return statement.executeUpdate();
     }
 
-    protected int executePrepareStatement(Table table,
-            PreparedStatement statement) throws SQLException
+    private int executePrepareStatement(Table table, PreparedStatement statement)
+            throws SQLException
     {
         return executePrepareStatement(table.getAllColumns(), statement);
     }
 
-    protected int executePrepare(Table table, List<Column> columns, String SQL)
+    private int executePrepare(Table table, List<Column> columns, String SQL)
             throws SQLException
     {
         return executePrepare(table, columns, SQL, false, -1);
     }
 
-    protected int executePrepare(Table table, String SQL) throws SQLException
+    private int executePrepare(Table table, String SQL) throws SQLException
     {
         return executePrepare(table, table.getAllColumns(), SQL, false, -1);
     }
 
-    /**
-     * Executes a prepared statement using values supplied as arguments.
-     * 
-     * @param table Table on which to run
-     * @param columns List of values
-     * @param SQL The SQL statement to execute
-     * @param keep If true cache prepared statement in table instance
-     * @param type Statement type assigned by caller (and used to tag
-     *            statements)
-     * @return Number of rows updated
-     */
-    protected int executePrepare(Table table, List<Column> columns, String SQL,
+    private int executePrepare(Table table, List<Column> columns, String SQL,
             boolean keep, int type) throws SQLException
     {
         int bindNo = 1;
@@ -633,8 +578,7 @@ public abstract class AbstractDatabase implements Database
 
             for (Column c : columns)
             {
-                Serializable val = c.getValue();
-                statement.setObject(bindNo++, val);
+                statement.setObject(bindNo++, c.getValue());
             }
             affectedRows = statement.executeUpdate();
         }
@@ -830,17 +774,6 @@ public abstract class AbstractDatabase implements Database
     /**
      * {@inheritDoc}
      * 
-     * @see com.continuent.tungsten.replicator.database.Database#setInitScript(java.lang.String)
-     */
-    @Override
-    public void setInitScript(String pathToScript)
-    {
-        this.initScript = pathToScript;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
      * @see com.continuent.tungsten.replicator.database.Database#createTable(com.continuent.tungsten.replicator.database.Table,
      *      boolean)
      */
@@ -985,22 +918,6 @@ public abstract class AbstractDatabase implements Database
     /**
      * This function should be implemented in concrete class.
      * 
-     * @param md DatabaseMetaData object.
-     * @param schemaName Schema name.
-     * @param tableName Table name.
-     * @param unique When true, return only indices for unique values; when
-     *            false, return indices regardless of whether unique or not.
-     * @return ResultSet as produced by DatabaseMetaData.getIndexInfo() for a
-     *         given schema and table.
-     * @throws SQLException
-     */
-    protected abstract ResultSet getIndexResultSet(DatabaseMetaData md,
-            String schemaName, String tableName, boolean unique)
-            throws SQLException;
-
-    /**
-     * This function should be implemented in concrete class.
-     * 
      * @param md DatabaseMetaData object
      * @param schemaName schema name
      * @param baseTablesOnly If true, return only base tables, not catalogs or
@@ -1011,90 +928,6 @@ public abstract class AbstractDatabase implements Database
      */
     protected abstract ResultSet getTablesResultSet(DatabaseMetaData md,
             String schemaName, boolean baseTablesOnly) throws SQLException;
-    
-    /**
-     * Override in specific database classes. Adds column from a metadata result
-     * set with database-specific logic.
-     * 
-     * @param rs Metadata resultset
-     * @return the column definition
-     * @throws SQLException if an error occurs
-     */
-    protected Column addColumn(ResultSet rs) throws SQLException
-    {
-        String colName = rs.getString("COLUMN_NAME");
-        int colType = rs.getInt("DATA_TYPE");
-        long colLength = rs.getLong("COLUMN_SIZE");
-        boolean isNotNull = rs.getInt("NULLABLE") == DatabaseMetaData.columnNoNulls;
-        String valueString = rs.getString("COLUMN_DEF");
-        String typeDesc = rs.getString("TYPE_NAME").toUpperCase();
-        int columnIdx = rs.getInt("ORDINAL_POSITION");
-
-        Column column = new Column(colName, colType, colLength, isNotNull,
-                valueString);
-        column.setPosition(columnIdx);
-        column.setTypeDescription(typeDesc);
-        return column;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.Database#findTable(java.lang.String,
-     *      java.lang.String, boolean)
-     */
-    public Table findTable(String schemaName, String tableName,
-            boolean withUniqueIndex) throws SQLException
-    {
-        DatabaseMetaData md = this.getDatabaseMetaData();
-        Table table = null;
-
-        ResultSet rsc = getColumnsResultSet(md, schemaName, tableName);
-        List<Column> columns = new LinkedList<Column>();
-        while (rsc.next())
-        {
-            Column column = addColumn(rsc);
-            columns.add(column);
-        }
-        rsc.close();
-
-        // If we found no columns, the table does not exist.
-        if (columns.size() == 0)
-            return null;
-
-        // Create the table instance and add the columns.
-        Map<String, Column> cm = new HashMap<String, Column>();
-        table = new Table(schemaName, tableName);
-        for (Column col : columns)
-        {
-            table.AddColumn(col);
-            cm.put(col.getName(), col);
-        }
-
-        // Look for primary key columns.
-        ResultSet rsk = getPrimaryKeyResultSet(md, schemaName, tableName);
-        Key pKey = new Key(Key.Primary);
-        while (rsk.next())
-        {
-            String colName = rsk.getString("COLUMN_NAME");
-            Column column = cm.get(colName);
-            // Adding columns in the primary key order
-            pKey.AddColumn(column, rsk.getShort("KEY_SEQ"));
-        }
-        rsk.close();
-
-        // Add the Primary key if we found any columns.
-        if (pKey.columns.size() > 0)
-        {
-            table.AddKey(pKey);
-        }
-
-        // Find unique indexes.
-        if (withUniqueIndex)
-            findUniqueIndexes(md, schemaName, tableName, cm, table);
-
-        return table;
-    }
 
     /**
      * {@inheritDoc}
@@ -1102,74 +935,62 @@ public abstract class AbstractDatabase implements Database
      * @see com.continuent.tungsten.replicator.database.Database#findTable(java.lang.String,
      *      java.lang.String)
      */
-    @Override
     public Table findTable(String schemaName, String tableName)
             throws SQLException
     {
-        return findTable(schemaName, tableName, false);
-    }
+        DatabaseMetaData md = this.getDatabaseMetaData();
+        Table table = null;
 
-    /**
-     * Finds unique indexes from the metadata and adds them to the table.
-     * Primary key is included too, if it exists.
-     * 
-     * @throws SQLException
-     */
-    private void findUniqueIndexes(DatabaseMetaData md, String schemaName,
-            String tableName, Map<String, Column> cm, Table table)
-            throws SQLException
-    {
-        // Find unique indexes.
-        try
+        ResultSet rsc = getColumnsResultSet(md, schemaName, tableName);
+        if (rsc.isBeforeFirst())
         {
-            ResultSet rsi = getIndexResultSet(md, schemaName, tableName, true);
-            if (rsi.isBeforeFirst())
+            // found columns
+            Map<String, Column> cm = new HashMap<String, Column>();
+            table = new Table(schemaName, tableName);
+            while (rsc.next())
             {
-                String lastIdxName = null;
-                Key uIdx = null;
-                while (rsi.next())
-                {
-                    short idxType = rsi.getShort("TYPE");
-                    if (idxType != DatabaseMetaData.tableIndexStatistic)
-                    {
-                        // Results are ordered by NON_UNIQUE, TYPE,
-                        // INDEX_NAME, and ORDINAL_POSITION.
-                        String idxName = rsi.getString("INDEX_NAME");
-                        if (!idxName.equals(lastIdxName))
-                        {
-                            if (uIdx != null)
-                                table.AddKey(uIdx);
-                            uIdx = new Key(Key.Unique);
-                            uIdx.setName(idxName);
-                            lastIdxName = idxName;
-                        }
+                String colName = rsc.getString("COLUMN_NAME");
+                int colType = rsc.getInt("DATA_TYPE");
+                long colLength = rsc.getLong("COLUMN_SIZE");
+                boolean isNotNull = rsc.getInt("NULLABLE") == DatabaseMetaData.columnNoNulls;
+                String valueString = rsc.getString("COLUMN_DEF");
 
-                        String colName = rsi.getString("COLUMN_NAME");
-                        Column column = cm.get(colName);
-                        uIdx.AddColumn(column);
-                    }
-                }
-                if (uIdx != null)
-                    table.AddKey(uIdx);
+                Column column = new Column(colName, colType, colLength,
+                        isNotNull, valueString);
+                column.setPosition(rsc.getInt("ORDINAL_POSITION"));
+                column.setTypeDescription(rsc.getString("TYPE_NAME")
+                        .toUpperCase());
+                table.AddColumn(column);
+                cm.put(column.getName(), column);
             }
-            rsi.close();
+
+            ResultSet rsk = getPrimaryKeyResultSet(md, schemaName, tableName);
+            if (rsk.isBeforeFirst())
+            {
+                // primary key found
+                Key pKey = new Key(Key.Primary);
+                while (rsk.next())
+                {
+                    String colName = rsk.getString("COLUMN_NAME");
+                    Column column = cm.get(colName);
+                    pKey.AddColumn(column);
+                }
+                table.AddKey(pKey);
+            }
+            rsk.close();
         }
-        catch (UnsupportedOperationException e)
-        {
-            if (logger.isDebugEnabled())
-                logger.debug("Can't search for unique indexes, because this function is unsupported: "
-                        + e);
-        }
+        rsc.close();
+
+        return table;
     }
 
     /**
      * Implement ability to fetch tables. {@inheritDoc}
      * 
      * @see com.continuent.tungsten.replicator.database.Database#getTables(java.lang.String,
-     *      boolean, boolean)
+     *      boolean)
      */
-    public ArrayList<Table> getTables(String schemaName,
-            boolean baseTablesOnly, boolean withUniqueIndex)
+    public ArrayList<Table> getTables(String schemaName, boolean baseTablesOnly)
             throws SQLException
     {
         DatabaseMetaData md = this.getDatabaseMetaData();
@@ -1183,8 +1004,7 @@ public abstract class AbstractDatabase implements Database
                 while (rst.next())
                 {
                     String tableName = rst.getString("TABLE_NAME");
-                    Table table = findTable(schemaName, tableName,
-                            withUniqueIndex);
+                    Table table = findTable(schemaName, tableName);
                     if (table != null)
                     {
                         tables.add(table);
@@ -1198,19 +1018,6 @@ public abstract class AbstractDatabase implements Database
         }
 
         return tables;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.Database#getTables(java.lang.String,
-     *      boolean)
-     */
-    @Override
-    public ArrayList<Table> getTables(String schema, boolean baseTablesOnly)
-            throws SQLException
-    {
-        return getTables(schema, baseTablesOnly, false);
     }
 
     // this is part of TREP-232 workaround
@@ -1236,20 +1043,6 @@ public abstract class AbstractDatabase implements Database
      */
     public void consistencyCheck(Table ct, ConsistencyCheck cc)
             throws SQLException, ConsistencyException
-    {
-        consistencyCheck(ct, cc, null, -1);
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.Database#consistencyCheck(com.continuent.tungsten.replicator.database.Table,
-     *      com.continuent.tungsten.replicator.consistency.ConsistencyCheck,
-     *      String, int)
-     */
-    public void consistencyCheck(Table ct, ConsistencyCheck cc,
-            String masterCrc, int masterCnt) throws SQLException,
-            ConsistencyException
     {
         String tableName = cc.getTableName();
         String schemaName = cc.getSchemaName();
@@ -1338,35 +1131,12 @@ public abstract class AbstractDatabase implements Database
                 // Create SET array
                 Column col;
                 ArrayList<Column> setColumns = new ArrayList<Column>();
-                if (masterCrc == null)
-                {
-                    // We are the master, so put CC results into master columns.
-                    col = ctColumns.get(ConsistencyTable.masterCrcColumnIdx);
-                    col.setValue(rs
-                            .getString(ConsistencyTable.thisCrcColumnName));
-                    setColumns.add(col);
-                    col = ctColumns.get(ConsistencyTable.masterCntColumnIdx);
-                    col.setValue(rs.getInt(ConsistencyTable.thisCntColumnName));
-                    setColumns.add(col);
-                }
-                else
-                {
-                    // We got CC values from the master up-front.
-                    col = ctColumns.get(ConsistencyTable.masterCrcColumnIdx);
-                    col.setValue(masterCrc);
-                    setColumns.add(col);
-                    col = ctColumns.get(ConsistencyTable.masterCntColumnIdx);
-                    col.setValue(masterCnt);
-                    setColumns.add(col);
-                    // Save calculated CC values to "this" fields.
-                    col = ctColumns.get(ConsistencyTable.thisCrcColumnIdx);
-                    col.setValue(rs
-                            .getString(ConsistencyTable.thisCrcColumnName));
-                    setColumns.add(col);
-                    col = ctColumns.get(ConsistencyTable.thisCntColumnIdx);
-                    col.setValue(rs.getInt(ConsistencyTable.thisCntColumnName));
-                    setColumns.add(col);
-                }
+                col = ctColumns.get(ConsistencyTable.masterCrcColumnIdx);
+                col.setValue(rs.getString(ConsistencyTable.thisCrcColumnName));
+                setColumns.add(col);
+                col = ctColumns.get(ConsistencyTable.masterCntColumnIdx);
+                col.setValue(rs.getInt(ConsistencyTable.thisCntColumnName));
+                setColumns.add(col);
                 rs.close();
 
                 // record CC values obtained on master
@@ -1479,80 +1249,5 @@ public abstract class AbstractDatabase implements Database
     {
         throw new UnsupportedOperationException(
                 "List of reserved words is not implemented");
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.Database#dropTungstenCatalogTables(java.lang.String,
-     *      java.lang.String, java.lang.String)
-     */
-    public void dropTungstenCatalogTables(String schemaName,
-            String tungstenTableType, String serviceName) throws SQLException
-    {
-        dropTable(new Table(schemaName, ConsistencyTable.TABLE_NAME));
-        dropTable(new Table(schemaName, ShardChannelTable.TABLE_NAME));
-        dropTable(new Table(schemaName, ShardTable.TABLE_NAME));
-        dropTable(new Table(schemaName, HeartbeatTable.TABLE_NAME));
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.Database#isSystemSchema(java.lang.String)
-     */
-    @Override
-    public boolean isSystemSchema(String schemaName)
-    {
-        return false;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @throws ExtractorException
-     */
-    @Override
-    public String getCurrentPosition(boolean flush) throws ReplicatorException
-    {
-        return null;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.Database#supportsFlashbackQuery()
-     */
-    @Override
-    public boolean supportsFlashbackQuery()
-    {
-        return false;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.Database#getFlashbackQuery(java.lang.String)
-     */
-    @Override
-    public String getFlashbackQuery(String position)
-    {
-        return null;
-    }
-
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.database.Database#getCsvWriter(java.io.BufferedWriter)
-     */
-    public CsvWriter getCsvWriter(BufferedWriter writer)
-    {
-        if (this.csvSpec == null)
-        {
-            throw new UnsupportedOperationException(
-                    "CSV output specification is not configured");
-        }
-        else
-            return csvSpec.createCsvWriter(writer);
     }
 }

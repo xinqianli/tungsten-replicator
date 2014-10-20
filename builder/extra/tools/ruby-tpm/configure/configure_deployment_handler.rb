@@ -34,15 +34,14 @@ class ConfigureDeploymentHandler
         user = @config.getProperty(USERID)
         ssh_user = Configurator.instance.get_ssh_user(user)
         if user != ssh_user
-          ssh_result("sudo -n chown -R #{ssh_user} #{validation_temp_directory}", @config.getProperty(HOST), ssh_user)
+          ssh_result("sudo chown -R #{ssh_user} #{validation_temp_directory}", @config.getProperty(HOST), ssh_user)
         end
         
         if @config.getProperty(REMOTE_PACKAGE_PATH) == nil
           # Transfer validation code
           debug("Transfer validation tools to #{@config.getProperty(HOST)}")
           
-          ssh_result("mkdir -p #{validation_temp_directory}/#{Configurator.instance.get_basename}; ls -al #{validation_temp_directory}; ls -al #{validation_temp_directory}/#{Configurator.instance.get_basename}", @config.getProperty(HOST), ssh_user)
-          cmd_result("rsync -aze 'ssh #{Configurator.instance.get_ssh_command_options()}' --delete --exclude='tungsten-*' --exclude='gossiprouter' --exclude='bristlecone' #{Configurator.instance.get_base_path()}/ #{ssh_user}@#{@config.getProperty(HOST)}:#{validation_temp_directory}/#{Configurator.instance.get_basename}")
+          cmd_result("rsync -aze 'ssh -p#{Configurator.instance.get_ssh_port()}' --delete --exclude='tungsten-*' --exclude='gossiprouter' --exclude='bristlecone' #{Configurator.instance.get_base_path()}/ #{ssh_user}@#{@config.getProperty(HOST)}:#{validation_temp_directory}/#{Configurator.instance.get_basename}")
           @config.setProperty(REMOTE_PACKAGE_PATH, "#{get_validation_temp_directory()}/#{Configurator.instance.get_basename()}")
         end
         
@@ -56,107 +55,6 @@ class ConfigureDeploymentHandler
             return
           end
         end
-        
-        if @config.getProperty(BUILD_SECURITY_FILES) == "true"
-          jmx = Tempfile.new("sec")
-          jmx.puts("#{@config.getProperty(RMI_USER)}        readwrite \\
-  create javax.management.monitor.*,javax.management.timer.* \\
-  unregister")
-          jmx.close()
-          
-          password_store = Tempfile.new("sec")
-          password_store.close()
-          File.unlink(password_store.path())
-          
-          ca_pem = Tempfile.new("sec")
-          ca_pem.close()
-          pem = Tempfile.new("sec")
-          pem.close()
-          p12 = Tempfile.new("sec")
-          p12.close()
-          cer = Tempfile.new("sec")
-          cer.close()
-          jks = Tempfile.new("sec")
-          jks.close()
-          File.unlink(jks.path())
-          ts = Tempfile.new("sec")
-          ts.close()
-          File.unlink(ts.path())
-          conn_jks = Tempfile.new("sec")
-          conn_jks.close()
-          File.unlink(conn_jks.path())
-          conn_ts = Tempfile.new("sec")
-          conn_ts.close()
-          File.unlink(conn_ts.path())
-          
-          ssl_ca = File.open(@config.getProperty(SSL_CA))
-          ssl_ca.close()
-          ssl_key = File.open(@config.getProperty(SSL_KEY))
-          ssl_key.close()
-          ssl_cert = File.open(@config.getProperty(SSL_CERT))
-          ssl_cert.close()
-          
-          jks_pass = @config.getProperty(JAVA_KEYSTORE_PASSWORD)
-          ts_pass = @config.getProperty(JAVA_TRUSTSTORE_PASSWORD)
-          conn_jks_pass = @config.getProperty(JAVA_CONNECTOR_KEYSTORE_PASSWORD)
-          conn_ts_pass = @config.getProperty(JAVA_CONNECTOR_TRUSTSTORE_PASSWORD)
-
-          cmd_result("openssl x509 -in #{ssl_ca.path()} -out #{ca_pem.path()} -outform PEM")
-          cmd_result("openssl x509 -in #{ssl_cert.path()} -out #{pem.path()} -outform PEM")
-          cmd_result("openssl pkcs12 -export -inkey #{ssl_key.path()} -in #{pem.path()} -CAfile #{ca_pem.path()} -out #{p12.path()} -passout pass:temp")
-
-          # Build tungsten_keystore.jks
-          cmd_result("keytool -importkeystore -srckeystore #{p12.path()} -srcstoretype PKCS12 -destkeystore #{jks.path()} -srcstorepass temp -deststorepass #{jks_pass} -noprompt")
-          #cmd_result("keytool -import -alias mysqlServerCACert -file #{ssl_ca.path()} -keystore #{jks.path()} -deststorepass #{jks_pass} -noprompt")
-          #cmd_result("keytool -export -file #{cer.path()} -keystore #{jks.path()} -storepass #{jks_pass} -noprompt")
-          
-          # Build tungsten_truststore.ts
-          cmd_result("keytool -import -alias mysqlServerCACert -file #{ca_pem.path()} -keystore #{ts.path()} -deststorepass #{ts_pass} -noprompt")
-          
-          # Build tungsten_connector_keystore.jks
-          cmd_result("keytool -importkeystore -srckeystore #{p12.path()} -srcstoretype PKCS12 -destkeystore #{conn_jks.path()} -srcstorepass temp -deststorepass #{conn_jks_pass} -noprompt")
-          cmd_result("keytool -import -alias mysqlServerCACert -file #{ca_pem.path()} -keystore #{conn_jks.path()} -deststorepass #{conn_jks_pass} -noprompt")
-          
-          # Build tungsten_connector_truststore.ts
-          #cmd_result("keytool -import -trustcacerts -file #{cer.path()} -keystore #{conn_ts.path()} -deststorepass #{conn_ts_pass} -noprompt")
-          cmd_result("keytool -import -alias mysqlServerCACert -file #{ca_pem.path()} -keystore #{conn_ts.path()} -deststorepass #{conn_ts_pass} -noprompt")
-          
-          cmd_result("#{Configurator.instance.get_base_path()}/cluster-home/bin/tpasswd -c #{@config.getProperty(RMI_USER)} #{jks_pass} -p #{password_store.path()} -e -ts #{ts.path()} -tsp #{ts_pass}")
-          cmd_result("#{Configurator.instance.get_base_path()}/cluster-home/bin/tpasswd -c #{@config.getProperty(RMI_USER)} #{jks_pass} -p #{password_store.path()} -e -ts #{ts.path()} -tsp #{ts_pass} -target rmi_jmx")
-          
-          config.include([HOSTS, config.getProperty([DEPLOYMENT_HOST])], {
-            JAVA_JMXREMOTE_ACCESS_PATH => "#{config.getProperty(TEMP_DIRECTORY)}/#{config.getProperty(CONFIG_TARGET_BASENAME)}/#{File.basename(jmx.path())}",
-            GLOBAL_JAVA_JMXREMOTE_ACCESS_PATH => jmx.path(),
-            JAVA_PASSWORDSTORE_PATH => "#{config.getProperty(TEMP_DIRECTORY)}/#{config.getProperty(CONFIG_TARGET_BASENAME)}/#{File.basename(password_store.path())}",
-            GLOBAL_JAVA_PASSWORDSTORE_PATH => password_store.path(),
-            JAVA_TRUSTSTORE_PATH => "#{config.getProperty(TEMP_DIRECTORY)}/#{config.getProperty(CONFIG_TARGET_BASENAME)}/#{File.basename(jks.path())}",
-            GLOBAL_JAVA_TRUSTSTORE_PATH => jks.path(),
-            JAVA_KEYSTORE_PATH => "#{config.getProperty(TEMP_DIRECTORY)}/#{config.getProperty(CONFIG_TARGET_BASENAME)}/#{File.basename(jks.path())}",
-            GLOBAL_JAVA_KEYSTORE_PATH => jks.path()
-          })
-          
-          if config.getProperty([CONNECTORS, config.getProperty([DEPLOYMENT_HOST])]) != nil
-            config.include([CONNECTORS, config.getProperty([DEPLOYMENT_HOST])], {
-              JAVA_CONNECTOR_TRUSTSTORE_PATH => "#{config.getProperty(TEMP_DIRECTORY)}/#{config.getProperty(CONFIG_TARGET_BASENAME)}/#{File.basename(conn_ts.path())}",
-              GLOBAL_JAVA_CONNECTOR_TRUSTSTORE_PATH => conn_ts.path(),
-              JAVA_CONNECTOR_KEYSTORE_PATH => "#{config.getProperty(TEMP_DIRECTORY)}/#{config.getProperty(CONFIG_TARGET_BASENAME)}/#{File.basename(conn_jks.path())}",
-              GLOBAL_JAVA_CONNECTOR_KEYSTORE_PATH => conn_jks.path()
-            })
-          end
-        end
-        
-        DeploymentFiles.prompts.each{
-          |p|
-          if config.getProperty(p[:global]) != nil
-            if File.file?(config.getProperty(p[:global]))
-              debug("Transfer #{File.basename(config.getProperty(p[:global]))} to #{config.getProperty(HOST)}")
-              scp_result(config.getProperty(p[:global]), config.getProperty(p[:local]), config.getProperty(HOST), config.getProperty(USERID))
-            elsif Configurator.instance.is_locked?() == false
-              error("Unable to transfer #{File.basename(config.getProperty(p[:global]))} because it does not exist or is not a complete file name")
-              return
-            end
-          end
-        }
 
         debug("Transfer host configuration file to #{@config.getProperty(HOST)}")
         config_tempfile = Tempfile.new("tcfg")
@@ -166,17 +64,17 @@ class ConfigureDeploymentHandler
         File.unlink(config_tempfile.path())
       
         if user != ssh_user
-          ssh_result("sudo -n chown -R #{user} #{validation_temp_directory}", @config.getProperty(HOST), ssh_user)
+          ssh_result("sudo chown -R #{user} #{validation_temp_directory}", @config.getProperty(HOST), ssh_user)
         
           gid = ssh_result("id -g #{ssh_user}", @config.getProperty(HOST), ssh_user)
           if gid != ""
-            ssh_result("sudo -n chgrp #{gid} #{validation_temp_directory}", @config.getProperty(HOST), ssh_user)
-            ssh_result("sudo -n chmod g+w #{validation_temp_directory}", @config.getProperty(HOST), ssh_user)
+            ssh_result("sudo chgrp #{gid} #{validation_temp_directory}", @config.getProperty(HOST), ssh_user)
+            ssh_result("sudo chmod g+w #{validation_temp_directory}", @config.getProperty(HOST), ssh_user)
           end
         end
         
         unless Configurator.instance.command.skip_prompts?()
-          command = Escape.shell_command(["#{@config.getProperty(REMOTE_PACKAGE_PATH)}/tools/tpm", "load-config", "--profile=#{get_validation_temp_directory()}/#{Configurator::TEMP_DEPLOY_HOST_CONFIG}", "--command-class=#{Configurator.instance.command.class.name}"] + Configurator.instance.get_remote_tpm_options()).to_s
+          command = Escape.shell_command(["#{@config.getProperty(REMOTE_PACKAGE_PATH)}/tools/tpm", "load-config", "--profile #{get_validation_temp_directory()}/#{Configurator::TEMP_DEPLOY_HOST_CONFIG}", "--command-class=#{Configurator.instance.command.class.name}"] + Configurator.instance.get_remote_tpm_options()).to_s
           result_dump = ssh_result(command, @config.getProperty(HOST), @config.getProperty(USERID), true)
 
           begin
@@ -257,18 +155,18 @@ class ConfigureDeploymentHandler
           user = @config.getProperty(USERID)
           ssh_user = Configurator.instance.get_ssh_user(user)
           if user != ssh_user
-            ssh_result("sudo -n chown -R #{ssh_user} #{validation_temp_directory}", @config.getProperty(HOST), ssh_user)
+            ssh_result("sudo chown -R #{ssh_user} #{validation_temp_directory}", @config.getProperty(HOST), ssh_user)
           end
 
-          cmd_result("rsync -aze 'ssh #{Configurator.instance.get_ssh_command_options()}' --delete #{Configurator.instance.get_base_path()}/ #{ssh_user}@#{@config.getProperty(HOST)}:#{@config.getProperty(REMOTE_PACKAGE_PATH)}")
+          cmd_result("rsync -aze 'ssh -p#{Configurator.instance.get_ssh_port()}' --delete #{Configurator.instance.get_base_path()}/ #{ssh_user}@#{@config.getProperty(HOST)}:#{@config.getProperty(REMOTE_PACKAGE_PATH)}")
         
           if user != ssh_user
-            ssh_result("sudo -n chown -R #{user} #{validation_temp_directory}", @config.getProperty(HOST), ssh_user)
+            ssh_result("sudo chown -R #{user} #{validation_temp_directory}", @config.getProperty(HOST), ssh_user)
 
             gid = ssh_result("id -g #{ssh_user}", @config.getProperty(HOST), ssh_user)
             if gid != ""
-              ssh_result("sudo -n chgrp #{gid} #{validation_temp_directory}", @config.getProperty(HOST), ssh_user)
-              ssh_result("sudo -n chmod g+w #{validation_temp_directory}", @config.getProperty(HOST), ssh_user)
+              ssh_result("sudo chgrp #{gid} #{validation_temp_directory}", @config.getProperty(HOST), ssh_user)
+              ssh_result("sudo chmod g+w #{validation_temp_directory}", @config.getProperty(HOST), ssh_user)
             end
           end
         end
@@ -276,14 +174,14 @@ class ConfigureDeploymentHandler
     end
   end
   
-  def deploy_config_group(config, deployment_method_class_name, deployment_method_group_id = nil)
+  def deploy_config(config, deployment_method_class_name, deployment_method_group_id = nil)
     @config.import(config)
     
     if run_locally?()
       Configurator.instance.write ""
       Configurator.instance.debug "Local deploy #{deployment_method_class_name}:#{deployment_method_group_id} methods in #{@config.getProperty(HOME_DIRECTORY)}"
       
-      result = Configurator.instance.command.get_deployment_object(config).run(deployment_method_class_name, deployment_method_group_id, @additional_properties)
+      result = Configurator.instance.command.deploy_config(config, deployment_method_class_name, deployment_method_group_id, @additional_properties)
       add_remote_result(result)
     else
       Configurator.instance.write ""
@@ -292,7 +190,7 @@ class ConfigureDeploymentHandler
       if Configurator.instance.command.use_remote_package?()
         remote_additional_properties_filename = "#{get_validation_temp_directory()}/#{ADDITIONAL_PROPERTIES_FILENAME}"
         
-        command = Escape.shell_command(["#{@config.getProperty(REMOTE_PACKAGE_PATH)}/tools/tpm", "deploy-single-config", "--profile=#{get_validation_temp_directory()}/#{Configurator::TEMP_DEPLOY_HOST_CONFIG}", "--command-class=#{Configurator.instance.command.class.name}", "--deployment-method-class=#{deployment_method_class_name}", "--run-group-id=#{deployment_method_group_id}", "--additional-properties=#{get_validation_temp_directory()}/#{ADDITIONAL_PROPERTIES_FILENAME}"] + Configurator.instance.get_remote_tpm_options()).to_s
+        command = Escape.shell_command(["#{@config.getProperty(REMOTE_PACKAGE_PATH)}/tools/tpm", "deploy-single-config", "--profile #{get_validation_temp_directory()}/#{Configurator::TEMP_DEPLOY_HOST_CONFIG}", "--command-class=#{Configurator.instance.command.class.name}", "--deployment-method-class=#{deployment_method_class_name}", "--run-group-id=#{deployment_method_group_id}", "--additional-properties=#{get_validation_temp_directory()}/#{ADDITIONAL_PROPERTIES_FILENAME}"] + Configurator.instance.get_remote_tpm_options()).to_s
       else
         remote_additional_properties_filename = "#{@config.getProperty(TEMP_DIRECTORY)}/#{ADDITIONAL_PROPERTIES_FILENAME}"
         
@@ -328,8 +226,8 @@ class ConfigureDeploymentHandler
         
         unless run_locally?()
           if Configurator.instance.command.use_remote_package?()
-            ssh_result("rm -rf #{get_validation_temp_directory()}", 
-              @config.getProperty(HOST), @config.getProperty(USERID))
+           ssh_result("rm -rf #{get_validation_temp_directory()}", 
+             @config.getProperty(HOST), @config.getProperty(USERID))
           end
           
           ssh_result("rm -f #{remote_additional_properties_filename}", @config.getProperty(HOST), @config.getProperty(USERID))
@@ -351,10 +249,10 @@ class ConfigureDeploymentHandler
   end
   
   def get_message_hostname
-    @config.getProperty(DEPLOYMENT_HOST)
+    @config.getProperty(HOST)
   end
   
   def get_message_host_key
-    @config.getProperty([DEPLOYMENT_CONFIGURATION_KEY])
+    @config.getProperty(DEPLOYMENT_HOST)
   end
 end

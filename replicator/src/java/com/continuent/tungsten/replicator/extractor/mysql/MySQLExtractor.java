@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2013 Continuent Inc.
+ * Copyright (C) 2007-2014 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -645,6 +645,9 @@ public class MySQLExtractor implements RawExtractor
                                 String.valueOf(event.getClientCollationId())));
                         savedOptions.add(new ReplOption("collation_server",
                                 String.valueOf(event.getServerCollationId())));
+                        if (event.getTimeZoneName() != null)
+                            savedOptions.add(new ReplOption("time_zone", event
+                                    .getTimeZoneName()));
 
                         if (event.getAutoIncrementIncrement() >= 0)
                             savedOptions.add(new ReplOption(
@@ -737,6 +740,9 @@ public class MySQLExtractor implements RawExtractor
                                 event.getForeignKeyChecksFlag());
                         statement.addOption("unique_checks",
                                 event.getUniqueChecksFlag());
+                        if (event.getTimeZoneName() != null)
+                            statement.addOption("time_zone",
+                                    event.getTimeZoneName());
 
                         if (event.getAutoIncrementIncrement() >= 0)
                             statement.addOption("auto_increment_increment",
@@ -947,6 +953,10 @@ public class MySQLExtractor implements RawExtractor
 
                     /* Adding statement sql_mode */
                     statement.addOption("sql_mode", event.getSqlMode());
+
+                    if (event.getTimeZoneName() != null)
+                        statement.addOption("time_zone",
+                                event.getTimeZoneName());
 
                     /* Adding character set / collation information */
                     statement.addOption("character_set_client",

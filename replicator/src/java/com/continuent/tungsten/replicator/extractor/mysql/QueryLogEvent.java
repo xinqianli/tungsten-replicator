@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2009-2013 Continuent Inc.
+ * Copyright (C) 2009-2014 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -526,8 +526,9 @@ public class QueryLogEvent extends LogEvent
                         pos++;
                         if (timeZoneLength > 0)
                         {
-                            timeZoneName = new String(buffer, pos,
-                                    timeZoneLength);
+                            timeZoneName = "'"
+                                    + new String(buffer, pos, timeZoneLength)
+                                    + "'";
                             if (logger.isDebugEnabled())
                                 logger.debug("Using time zone : "
                                         + timeZoneName);
@@ -641,6 +642,11 @@ public class QueryLogEvent extends LogEvent
     public String getUniqueChecksFlag()
     {
         return (flagUniqueChecks ? "1" : "0");
+    }
+    
+    public String getTimeZoneName()
+    {
+        return timeZoneName;
     }
 
     /**

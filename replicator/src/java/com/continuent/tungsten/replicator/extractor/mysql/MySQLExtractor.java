@@ -901,7 +901,7 @@ public class MySQLExtractor implements RawExtractor
                     TableMapLogEvent tableEvent = tableEvents.get(rowsEvent
                             .getTableId());
                     rowsEvent.processExtractedEvent(rowChangeData, tableEvent);
-                    rowChangeData.addOption("time_zone", "'GMT'");
+                    rowChangeData.addOption("time_zone", "'+00:00'");
                     dataArray.add(rowChangeData);
                     foundRowsLogEvent = true;
                 }

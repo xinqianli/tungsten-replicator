@@ -581,6 +581,10 @@ class JavaUserTimezone < ConfigurePrompt
   def required?
     false
   end
+
+  def get_default_value
+    "GMT"
+  end
 end
 
 class ReplicationAPI < ConfigurePrompt

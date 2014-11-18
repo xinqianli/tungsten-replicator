@@ -1,3 +1,0 @@
-A relative path will look for the file under the home directory.  An absolute 
-path will be used as it is given.  An error will be thrown if the file does 
-not exist.

@@ -24,6 +24,7 @@ package com.continuent.tungsten.common.sockets;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.security.GeneralSecurityException;
 
 import org.apache.log4j.Logger;
 
@@ -80,8 +81,9 @@ public class EchoClient implements Runnable
 
     /**
      * Starts the server.
+     * @throws GeneralSecurityException 
      */
-    public synchronized void start() throws IOException, ConfigurationException
+    public synchronized void start() throws IOException, ConfigurationException, GeneralSecurityException
     {
         // Configure and connect.
         logger.info("Connecting client to server: host=" + host + " port="

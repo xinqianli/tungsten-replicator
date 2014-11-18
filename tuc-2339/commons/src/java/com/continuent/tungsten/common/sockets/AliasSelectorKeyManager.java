@@ -34,6 +34,13 @@ import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.common.security.SecurityHelper;
 
+/**
+ * This class defines a AliasSelectorKeyManager
+ * This enable the SSLSocketFactory class to select a particular alias in a Keystore
+ * 
+ * @author <a href="mailto:ludovic.launer@continuent.com">Ludovic Launer</a>
+ * @version 1.0
+ */
 public class AliasSelectorKeyManager implements X509KeyManager
 {
     private static final Logger logger           = Logger.getLogger(AliasSelectorKeyManager.class);
@@ -45,43 +52,16 @@ public class AliasSelectorKeyManager implements X509KeyManager
     {
         this.sourceKeyManager = keyManager;
         this.alias = alias;
-
     }
-
+    
+    @Override
     public String chooseClientAlias(String[] keyType, Principal[] issuers,
             Socket socket)
     {
-        boolean aliasFound = false;
-
-        // Get all aliases from the key manager. If any matches with the managed
-        // alias,
-        // then return it.
-        // If the alias has not been found, return null (and let the API to
-        // handle it,
-        // causing the handshake to fail).
-
-        for (int i = 0; i < keyType.length && !aliasFound; i++)
-        {
-            String[] validAliases = sourceKeyManager.getClientAliases(
-                    keyType[i], issuers);
-            if (validAliases != null)
-            {
-                for (int j = 0; j < validAliases.length && !aliasFound; j++)
-                {
-                    if (validAliases[j].equals(alias))
-                        aliasFound = true;
-                }
-            }
-        }
-
-        if (aliasFound)
-        {
-            return alias;
-        }
-        else
-            return null;
+        return sourceKeyManager.chooseClientAlias(keyType, issuers, socket);
     }
 
+    @Override
     public String chooseServerAlias(String keyType, Principal[] issuers,
             Socket socket)
     {

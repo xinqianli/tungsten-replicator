@@ -56,6 +56,7 @@ import com.continuent.tungsten.common.jmx.DynamicMBeanHelper;
 import com.continuent.tungsten.common.jmx.JmxManager;
 import com.continuent.tungsten.common.jmx.MethodDesc;
 import com.continuent.tungsten.common.jmx.ParamDesc;
+import com.continuent.tungsten.common.security.AuthenticationInfo;
 import com.continuent.tungsten.fsm.core.Action;
 import com.continuent.tungsten.fsm.core.Entity;
 import com.continuent.tungsten.fsm.core.EntityAdapter;
@@ -187,6 +188,9 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
     private HashMap<String, Object> mbeans                  = new HashMap<String, Object>();
 
     private CountDownLatch          doneLatch               = null;
+
+    // Security information
+    private AuthenticationInfo      securityInfo      = null;
 
     /**
      * Creates a new <code>ReplicatorManager</code> object
@@ -2010,8 +2014,8 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     @MethodDesc(description = "Re-read configuration properties", usage = "configure <map of properties>")
     public void configure(
-            @ParamDesc(name = "props", description = "Optional map of properties to replace replicator.properties") Map<String, String> props)
-            throws Exception
+            @ParamDesc(name = "props", description = "Optional map of properties to replace replicator.properties")
+            Map<String, String> props) throws Exception
     {
         try
         {
@@ -2061,8 +2065,8 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     @MethodDesc(description = "Gets the current properties.", usage = "properties [<key>]")
     public Map<String, String> properties(
-            @ParamDesc(name = "key", description = "optional key of a single property") String key)
-            throws Exception
+            @ParamDesc(name = "key", description = "optional key of a single property")
+            String key) throws Exception
     {
         Map<String, String> returnProps = propertiesManager.getProperties()
                 .map();
@@ -2117,9 +2121,10 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     @MethodDesc(description = "Sets the role of the replicator.", usage = "setRole {master | slave | standby} <uri>")
     public void setRole(
-            @ParamDesc(name = "role", description = "The role that the replicator is to take, either 'master', 'slave', or 'standby'") String role,
-            @ParamDesc(name = "uri", description = "Master connection URI (required for master)") String uri)
-            throws Exception
+            @ParamDesc(name = "role", description = "The role that the replicator is to take, either 'master', 'slave', or 'standby'")
+            String role,
+            @ParamDesc(name = "uri", description = "Master connection URI (required for master)")
+            String uri) throws Exception
     {
         try
         {
@@ -2273,8 +2278,8 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     @MethodDesc(description = "Provides a list of individual components", usage = "statusList <name>")
     public List<Map<String, String>> statusList(
-            @ParamDesc(name = "name", description = "Name of the status list") String name)
-            throws Exception
+            @ParamDesc(name = "name", description = "Name of the status list")
+            String name) throws Exception
     {
         return openReplicator.statusList(name);
     }
@@ -2352,8 +2357,8 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     @MethodDesc(description = "Transitions the replicator into the online state.", usage = "online2")
     public void online2(
-            @ParamDesc(name = "controlParams", description = "Control parameters for online operation") Map<String, String> controlParams)
-            throws Exception
+            @ParamDesc(name = "controlParams", description = "Control parameters for online operation")
+            Map<String, String> controlParams) throws Exception
     {
         TungstenProperties params = new TungstenProperties(controlParams);
         GoOnlineEvent goOnlineEvent = new GoOnlineEvent(params);
@@ -2407,8 +2412,8 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     @MethodDesc(description = "Requests replicator to go offline", usage = "offlineDeferred")
     public void offlineDeferred(
-            @ParamDesc(name = "controlParams", description = "Control parameters for offline operation") Map<String, String> controlParams)
-            throws Exception
+            @ParamDesc(name = "controlParams", description = "Control parameters for offline operation")
+            Map<String, String> controlParams) throws Exception
     {
         TungstenProperties params = new TungstenProperties(controlParams);
         DeferredOfflineEvent deferredOfflineEvent = new DeferredOfflineEvent(
@@ -2433,8 +2438,8 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     @MethodDesc(description = "Synchronizes the replicator log with the database as of the returned sequence number", usage = "flush")
     public String flush(
-            @ParamDesc(name = "timeout", description = "Seconds to wait before timingout (0=infinity") long timeout)
-            throws Exception
+            @ParamDesc(name = "timeout", description = "Seconds to wait before timingout (0=infinity")
+            long timeout) throws Exception
     {
         try
         {
@@ -2470,8 +2475,8 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     @MethodDesc(description = "Kill non-replication connections", usage = "purge")
     public int purge(
-            @ParamDesc(name = "controlParams", description = "Control parameters for purge operation") Map<String, String> controlParams)
-            throws Exception
+            @ParamDesc(name = "controlParams", description = "Control parameters for purge operation")
+            Map<String, String> controlParams) throws Exception
     {
         TungstenProperties params = new TungstenProperties(controlParams);
 
@@ -2494,8 +2499,8 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     @MethodDesc(description = "Waits for replicator to achieve a particular state.", usage = "waitForState <stateName> <timeToWait>")
     public void heartbeat(
-            @ParamDesc(name = "controlParams", description = "Control parameters for heartbeat operation") Map<String, String> controlParams)
-            throws Exception
+            @ParamDesc(name = "controlParams", description = "Control parameters for heartbeat operation")
+            Map<String, String> controlParams) throws Exception
     {
         try
         {
@@ -2534,9 +2539,10 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     @MethodDesc(description = "Waits for replicator to achieve a particular state.", usage = "waitForState <stateName> <timeToWait>")
     public boolean waitForState(
-            @ParamDesc(name = "stateName", description = "Name of the state to wait for") String stateName,
-            @ParamDesc(name = "timeout", description = "The number of milliseconds to wait") long timeout)
-            throws Exception
+            @ParamDesc(name = "stateName", description = "Name of the state to wait for")
+            String stateName,
+            @ParamDesc(name = "timeout", description = "The number of milliseconds to wait")
+            long timeout) throws Exception
     {
         // Check arguments.
         State desiredState = stmap.getStateByName(stateName);
@@ -2602,9 +2608,10 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     @MethodDesc(description = "Waits for a sequence number to be applied", usage = "waitForAppliedSequenceNumber <seqno> <timeout>")
     public boolean waitForAppliedSequenceNumber(
-            @ParamDesc(name = "seqno", description = "Sequence number to wait for") String seqno,
-            @ParamDesc(name = "timeout", description = "Seconds to wait before timing out (0=infinity") long timeout)
-            throws Exception
+            @ParamDesc(name = "seqno", description = "Sequence number to wait for")
+            String seqno,
+            @ParamDesc(name = "timeout", description = "Seconds to wait before timing out (0=infinity")
+            long timeout) throws Exception
     {
         try
         {
@@ -2627,10 +2634,12 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     @MethodDesc(description = "Backs up the database", usage = "backup <backupAgent> <storageAgent> <timeout>")
     public String backup(
-            @ParamDesc(name = "backupAgentName", description = "Backup agent to use or null for default") String backupAgentName,
-            @ParamDesc(name = "storageAgentName", description = "Storage agent to use or null for default") String storageAgentName,
-            @ParamDesc(name = "timeout", description = "Seconds to wait before timing out (0=infinity") long timeout)
-            throws Exception
+            @ParamDesc(name = "backupAgentName", description = "Backup agent to use or null for default")
+            String backupAgentName,
+            @ParamDesc(name = "storageAgentName", description = "Storage agent to use or null for default")
+            String storageAgentName,
+            @ParamDesc(name = "timeout", description = "Seconds to wait before timing out (0=infinity")
+            long timeout) throws Exception
     {
         try
         {
@@ -2673,9 +2682,10 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     @MethodDesc(description = "Restores the database", usage = "restore <uri> <timeout>")
     public String restore(
-            @ParamDesc(name = "uri", description = "URI of backup to restore") String uri,
-            @ParamDesc(name = "timeout", description = "Seconds to wait before timing out (0=infinity") long timeout)
-            throws Exception
+            @ParamDesc(name = "uri", description = "URI of backup to restore")
+            String uri,
+            @ParamDesc(name = "timeout", description = "Seconds to wait before timing out (0=infinity")
+            long timeout) throws Exception
     {
         try
         {
@@ -2726,8 +2736,8 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     @MethodDesc(description = "Returns an MBean for a replicator extension", usage = "getExtensionMBean")
     public Object getExtensionMBean(
-            @ParamDesc(name = "name", description = "MBean name") String name)
-            throws Exception
+            @ParamDesc(name = "name", description = "MBean name")
+            String name) throws Exception
     {
         logger.warn("looking for MBean " + name);
         Object mbean = mbeans.get(name);
@@ -2754,9 +2764,10 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     @MethodDesc(description = "Provisions from another database", usage = "provision <replicatorUri> <timeout>")
     public boolean provision(
-            @ParamDesc(name = "replicatorUri", description = "URI of replicator from which to provision") String replicatorUri,
-            @ParamDesc(name = "timeout", description = "Seconds to wait before timing out (0=infinity") long timeout)
-            throws Exception
+            @ParamDesc(name = "replicatorUri", description = "URI of replicator from which to provision")
+            String replicatorUri,
+            @ParamDesc(name = "timeout", description = "Seconds to wait before timing out (0=infinity")
+            long timeout) throws Exception
     {
         try
         {
@@ -2781,12 +2792,16 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
 
     @MethodDesc(description = "Perform a cluster-wide consistency check", usage = "consistencyCheck <schema>[.{<table> | *}]")
     public int consistencyCheck(
-            @ParamDesc(name = "method", description = "md5") String method,
-            @ParamDesc(name = "schemaName", description = "schema to check") String schemaName,
-            @ParamDesc(name = "tableName", description = "name of table to check") String tableName,
-            @ParamDesc(name = "rowOffset", description = "row to start with") int rowOffset,
-            @ParamDesc(name = "rowLimit", description = "maximum rows to check") int rowLimit)
-            throws Exception
+            @ParamDesc(name = "method", description = "md5")
+            String method,
+            @ParamDesc(name = "schemaName", description = "schema to check")
+            String schemaName,
+            @ParamDesc(name = "tableName", description = "name of table to check")
+            String tableName,
+            @ParamDesc(name = "rowOffset", description = "row to start with")
+            int rowOffset,
+            @ParamDesc(name = "rowLimit", description = "maximum rows to check")
+            int rowLimit) throws Exception
     {
         try
         {
@@ -2812,9 +2827,10 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     @MethodDesc(description = "sends a notification to the replicator manager about state changes", usage = "signal <signal_number> <message>")
     public void signal(
-            @ParamDesc(name = "signal", description = "Signal number") int signal,
-            @ParamDesc(name = "msg", description = "additional message passed along the signal") String msg)
-            throws Exception
+            @ParamDesc(name = "signal", description = "Signal number")
+            int signal,
+            @ParamDesc(name = "msg", description = "additional message passed along the signal")
+            String msg) throws Exception
     {
         try
         {
@@ -3091,8 +3107,8 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      */
     @MethodDesc(description = "Configure properties by either rereading them or setting all properties from outside.", usage = "configure <properties>")
     public void configure(
-            @ParamDesc(name = "tp", description = "Optional properties to replace replicator.properties") TungstenProperties tp)
-            throws Exception
+            @ParamDesc(name = "tp", description = "Optional properties to replace replicator.properties")
+            TungstenProperties tp) throws Exception
     {
         /* load new configuration in */
         handleEventSynchronous(new ConfigureEvent(tp));
@@ -3150,6 +3166,12 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
         {
             propertiesManager.loadProperties();
             properties = propertiesManager.getProperties();
+            // Add Security information
+            if (this.securityInfo!=null)
+            {
+               String jsonSecurityInfo = this.securityInfo.toJSON();
+               properties.put(AuthenticationInfo.SECURITY_INFO_PROPERTY, jsonSecurityInfo);
+            }
         }
         catch (ReplicatorException e)
         {
@@ -3281,6 +3303,26 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
     public void setRmiPort(int rmiPort)
     {
         this.rmiPort = rmiPort;
+    }
+
+    /**
+     * Returns the securityInfo value.
+     * 
+     * @return Returns the securityInfo.
+     */
+    public AuthenticationInfo getSecurityInfo()
+    {
+        return securityInfo;
+    }
+
+    /**
+     * Sets the securityInfo value.
+     * 
+     * @param securityInfo The SecurityInfo to set.
+     */
+    public void setSecurityInfo(AuthenticationInfo securityInfo)
+    {
+        this.securityInfo = securityInfo;
     }
 
     public static TungstenProperties getConfigurationProperties(

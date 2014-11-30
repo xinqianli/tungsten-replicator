@@ -1042,6 +1042,7 @@ public class MySQLExtractor implements RawExtractor
                         dbmsEvent.setOptions(savedOptions);
 
                 }
+
                 if (dbmsEvent != null)
                 {
                     dbmsEvent.addMetadataOption(ReplOptionParams.SERVER_ID,
@@ -1052,6 +1053,10 @@ public class MySQLExtractor implements RawExtractor
                     if (unsafeForBlockCommit)
                         dbmsEvent.addMetadataOption(
                                 ReplOptionParams.UNSAFE_FOR_BLOCK_COMMIT, "");
+ 
+                    // MySQL event extraction is time zone-aware.
+                    dbmsEvent.addMetadataOption(
+                            ReplOptionParams.TIME_ZONE_AWARE, "true");
                     return dbmsEvent;
                 }
             }

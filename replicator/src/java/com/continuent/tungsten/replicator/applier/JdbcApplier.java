@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2013 Continuent Inc.
+ * Copyright (C) 2007-2014 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -1315,6 +1315,10 @@ public class JdbcApplier implements RawApplier
             throw new ApplierException("Failed to start new transaction", e);
         }
 
+        // Check compatibility of event in case we need to do any fixup at this
+        // point to support older log versions.
+        checkEventCompatibility(header, event);
+
         try
         {
             if (event instanceof DBMSEmptyEvent)
@@ -1548,6 +1552,16 @@ public class JdbcApplier implements RawApplier
             if (logger.isDebugEnabled())
                 logger.debug("Transaction rollback error", e);
         }
+    }
+
+    /**
+     * Perform compatibility check on event in case we need to do fix-ups due to
+     * older log versions.
+     */
+    protected void checkEventCompatibility(ReplDBMSHeader header,
+            DBMSEvent event) throws ReplicatorException
+    {
+        // Default is to do nothing.
     }
 
     private void applyDeleteFile(int fileID) throws ReplicatorException

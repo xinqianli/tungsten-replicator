@@ -103,4 +103,10 @@ public class ReplOptionParams
      * is unsafe. If not defined, it is safe for block commit.
      */
     public static final String UNSAFE_FOR_BLOCK_COMMIT = "unsafe_for_block_commit";
+
+    /**
+     * If set, the event is time zone aware, which means it marks source time
+     * zone on SQL changes and statements.
+     */
+    public static final String TIME_ZONE_AWARE         = "tz_aware";
 }

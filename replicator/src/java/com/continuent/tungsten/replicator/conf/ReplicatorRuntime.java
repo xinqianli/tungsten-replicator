@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Properties;
+import java.util.TimeZone;
 import java.util.concurrent.Future;
 
 import org.apache.log4j.Logger;
@@ -871,6 +872,7 @@ public class ReplicatorRuntime implements PluginContext
 
     /**
      * {@inheritDoc}
+     * 
      * @see com.continuent.tungsten.replicator.plugin.PluginContext#isProvisioning()
      */
     public boolean isProvisioning()
@@ -1344,5 +1346,25 @@ public class ReplicatorRuntime implements PluginContext
     public String getPipelineSource()
     {
         return this.pipelineSource;
+    }
+
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.plugin.PluginContext#getHostTimeZone()
+     */
+    public TimeZone getHostTimeZone()
+    {
+        return context.getHostTimeZone();
+    }
+
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.plugin.PluginContext#getReplicatorTimeZone()
+     */
+    public TimeZone getReplicatorTimeZone()
+    {
+        return context.getReplicatorTimeZone();
     }
 }

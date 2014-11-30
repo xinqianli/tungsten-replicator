@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
 import java.util.TreeMap;
 import java.util.Vector;
 
@@ -81,6 +82,8 @@ public class ReplicationServiceManager
 
     private String                                      managerRMIHost        = null;
     private int                                         managerRMIPort        = -1;
+    private TimeZone                                    hostTimeZone          = null;
+    private TimeZone                                    replicatorTimeZone    = null;
 
     /**
      * Creates a new <code>ReplicatorManager</code> object
@@ -125,6 +128,9 @@ public class ReplicationServiceManager
             logger.warn(msg);
             // throw new ReplicatorException(ce.getMessage(), ce);
         }
+
+        // Initialize time zone data.
+        initializeTimeZoneInfo(serviceProps);
 
         // --- Start JMX registry ----
         managerRMIPort = serviceProps.getInt(ReplicatorConf.RMI_PORT,
@@ -205,6 +211,44 @@ public class ReplicationServiceManager
         // Register ourselves as the master service manager bean.
         // JmxManager.registerMBean(this, ReplicationServiceManagerMBean.class);
         JmxManager.registerMBean(this, ReplicationServiceManager.class);
+    }
+
+    /**
+     * Initializes the JVM time zone after capturing the host time zone
+     * information. The time zone if other than GMT must be set in
+     * services.properties.
+     * 
+     * @throws ReplicatorException Thrown if time zone safety conditions are
+     *             violated
+     */
+    private void initializeTimeZoneInfo(TungstenProperties serviceProps)
+            throws ReplicatorException
+    {
+        // Time zones are important so we need to print a good message at
+        // start-up.
+        logger.info("Compatibility note: Replicator time zone is set from services.properties and defaults to GMT");
+        logger.info("Setting time zones via wrapper.conf -Duser.timezone option is deprecated");
+        logger.info("Consult system documentation before making any changes to time zone-related settings");
+
+        // Store the default time zone from the host.
+        hostTimeZone = TimeZone.getDefault();
+        logger.info("Storing host time zone: id=" + hostTimeZone.getID()
+                + " display name=" + hostTimeZone.getDisplayName());
+
+        // Fetch the global time zone from the services.properties file.
+        String replicatorTimeZoneID = serviceProps.getString(
+                ReplicatorConf.TIME_ZONE, ReplicatorConf.TIME_ZONE_DEFAULT,
+                true);
+        if (!"GMT".equals(replicatorTimeZoneID))
+        {
+            logger.warn("Overriding replicator default GMT time zone using services.properties; this is not recommended except for test/emergency purposes: time zone id="
+                    + replicatorTimeZoneID);
+        }
+        replicatorTimeZone = TimeZone.getTimeZone(replicatorTimeZoneID);
+        TimeZone.setDefault(replicatorTimeZone);
+        logger.info("Setting replicator JVM time zone: id="
+                + replicatorTimeZone.getID() + " display name="
+                + replicatorTimeZone.getDisplayName());
     }
 
     /**
@@ -707,6 +751,8 @@ public class ReplicationServiceManager
             OpenReplicatorManager orm = new OpenReplicatorManager(serviceName);
             orm.setRmiHost(managerRMIHost);
             orm.setRmiPort(managerRMIPort);
+            orm.setHostTimeZone(hostTimeZone);
+            orm.setReplicatorTimeZone(replicatorTimeZone);
             orm.advertiseInternal();
             return (OpenReplicatorManagerMBean) orm;
         }

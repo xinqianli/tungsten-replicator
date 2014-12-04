@@ -964,7 +964,7 @@ public class JdbcPrefetcher implements RawApplier
                         OneRowChange.ColumnVal value = values.get(c);
                         log += "\n"
                                 + THLManagerCtrl.formatColumn(colSpec, value,
-                                        "COL", null, false, true);
+                                        "COL", null, false, true, null);
                     }
                 }
                 // Print key values.
@@ -978,7 +978,7 @@ public class JdbcPrefetcher implements RawApplier
                         OneRowChange.ColumnVal value = values.get(k);
                         log += "\n"
                                 + THLManagerCtrl.formatColumn(colSpec, value,
-                                        "KEY", null, false, true);
+                                        "KEY", null, false, true, null);
                     }
                 }
             }

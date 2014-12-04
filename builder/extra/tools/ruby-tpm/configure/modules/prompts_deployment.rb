@@ -572,18 +572,14 @@ class JavaUserTimezone < ConfigurePrompt
   include ClusterHostPrompt
   include AdvancedPromptModule
   include MigrateFromReplicationServices
-  
+
   def initialize
     super(REPL_JAVA_USER_TIMEZONE, "Java VM Timezone (esp. for cross-site replication)",
       PV_ANY, "")
   end
-  
+ 
   def required?
     false
-  end
-
-  def get_default_value
-    "GMT"
   end
 end
 

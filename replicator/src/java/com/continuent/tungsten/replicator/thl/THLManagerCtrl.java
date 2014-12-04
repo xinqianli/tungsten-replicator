@@ -30,6 +30,7 @@ import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
@@ -70,33 +71,30 @@ import com.continuent.tungsten.replicator.thl.log.LogEventReplReader;
  */
 public class THLManagerCtrl
 {
-    private static Logger                 logger             = Logger.getLogger(THLManagerCtrl.class);
+    private static Logger         logger             = Logger.getLogger(THLManagerCtrl.class);
 
     /**
      * Default path to replicator.properties if user not specified other.
      */
-    protected static final String         defaultConfigPath  = ".."
-                                                                     + File.separator
-                                                                     + "conf"
-                                                                     + File.separator
-                                                                     + "static-default.properties";
-
-    private static final SimpleDateFormat formatter          = new SimpleDateFormat(
-                                                                     "yyyy-MM-dd HH:mm:ss");
+    protected static final String defaultConfigPath  = ".."
+                                                             + File.separator
+                                                             + "conf"
+                                                             + File.separator
+                                                             + "static-default.properties";
 
     /**
      * Maximum length of characters to print out for a BLOB. If BLOB is larger,
      * it is truncated and "<...>" is added to the end.<br/>
      * TODO: make configurable from somewhere.
      */
-    private static final int              maxBlobPrintLength = 1000;
-    protected static ArgvIterator         argvIterator       = null;
-    protected String                      configFile         = null;
-    private boolean                       doChecksum;
-    private String                        logDir;
-    private DiskLog                       diskLog;
+    private static final int      maxBlobPrintLength = 1000;
+    protected static ArgvIterator argvIterator       = null;
+    protected String              configFile         = null;
+    private boolean               doChecksum;
+    private String                logDir;
+    private DiskLog               diskLog;
 
-    protected static SQLTypes             sqlTypes           = new SQLTypes();
+    protected static SQLTypes     sqlTypes           = new SQLTypes();
 
     /**
      * Creates a new <code>THLManagerCtrl</code> object.
@@ -115,7 +113,6 @@ public class THLManagerCtrl
         TungstenProperties properties = readConfig();
         logDir = properties.getString("replicator.store.thl.log_dir");
         this.doChecksum = doChecksum;
-        formatter.setTimeZone(TimeZone.getTimeZone("GMT"));
     }
 
     /**
@@ -234,7 +231,7 @@ public class THLManagerCtrl
      */
     public static String formatColumn(OneRowChange.ColumnSpec colSpec,
             OneRowChange.ColumnVal value, String prefix, String charset,
-            boolean hex, boolean specs)
+            boolean hex, boolean specs, DateFormat dateFormatter)
     {
         String log = "  - " + prefix + "(";
         if (colSpec != null)
@@ -302,7 +299,8 @@ public class THLManagerCtrl
                         && value.getValue() instanceof Timestamp)
                 {
                     Timestamp ts = (Timestamp) value.getValue();
-                    StringBuffer date = new StringBuffer(formatter.format(ts));
+                    StringBuffer date = new StringBuffer(
+                            dateFormatter.format(ts));
                     if (ts.getNanos() > 0)
                     {
                         date.append(".");
@@ -796,6 +794,10 @@ public class THLManagerCtrl
             RowChangeData rowChange, String lastSchema, boolean pureSQL,
             int sqlIndex, String charset, boolean hex, boolean specs, long seqno)
     {
+        // This will pick up the default time zone or the time zone from
+        // -timezone option. 
+        SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+
         printOptions(stringBuilder, rowChange.getOptions(), pureSQL);
         if (!pureSQL)
             println(stringBuilder, "- SQL(" + sqlIndex + ") =");
@@ -842,7 +844,7 @@ public class THLManagerCtrl
                             OneRowChange.ColumnVal value = values.get(c);
                             println(stringBuilder,
                                     formatColumn(colSpec, value, "COL",
-                                            charset, hex, specs));
+                                            charset, hex, specs, formatter));
                         }
                     }
                     else if (columns.size() > 0)
@@ -875,7 +877,7 @@ public class THLManagerCtrl
                                 value = values.get(k);
                             println(stringBuilder,
                                     formatColumn(colSpec, value, "KEY",
-                                            charset, hex, specs));
+                                            charset, hex, specs, formatter));
                         }
                     }
                 }

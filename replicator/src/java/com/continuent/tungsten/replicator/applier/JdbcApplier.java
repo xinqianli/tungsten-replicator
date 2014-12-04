@@ -32,6 +32,7 @@ import java.sql.SQLException;
 import java.sql.SQLWarning;
 import java.sql.Statement;
 import java.sql.Types;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Hashtable;
@@ -141,6 +142,11 @@ public class JdbcApplier implements RawApplier
     private boolean                   getColumnInformationFromDB = true;
 
     private String                    initScript                 = null;
+
+    // Generic formatter for date-time values. This can safely be set without a
+    // time zone, as it will pick up the default replicator time zone.
+    protected final SimpleDateFormat  dateTimeFormatter          = new SimpleDateFormat(
+                                                                         "yyyy-MM-dd HH:mm:ss");
 
     // Setters.
 
@@ -1197,7 +1203,7 @@ public class JdbcApplier implements RawApplier
                 OneRowChange.ColumnVal value = values.get(c);
                 log.append('\n');
                 log.append(THLManagerCtrl.formatColumn(colSpec, value, "COL",
-                        "utf8", false, true));
+                        "utf8", false, true, dateTimeFormatter));
             }
         }
         // Print key values.
@@ -1210,7 +1216,7 @@ public class JdbcApplier implements RawApplier
                 OneRowChange.ColumnVal value = values.get(k);
                 log.append('\n');
                 log.append(THLManagerCtrl.formatColumn(colSpec, value, "KEY",
-                        "utf8", false, true));
+                        "utf8", false, true, dateTimeFormatter));
             }
         }
         return log.toString();

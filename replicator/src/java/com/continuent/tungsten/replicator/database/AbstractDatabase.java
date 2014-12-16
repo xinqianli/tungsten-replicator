@@ -1429,4 +1429,8 @@ public abstract class AbstractDatabase implements Database
         return false;
     }
 
+    public boolean hasMicrosecondsSupport()
+    {
+        return false;
+    }
 }

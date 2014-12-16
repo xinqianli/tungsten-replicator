@@ -397,9 +397,7 @@ public class MySQLApplier extends JdbcApplier
 
             applyUseSchema(schema);
 
-            applySetTimestamp(timestamp);
-
-            applySessionVariables(options);
+            applyVariables(timestamp, options);
 
             try
             {

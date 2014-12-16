@@ -646,4 +646,6 @@ public interface Database
             String tungstenTableType, String serviceName) throws SQLException;
 
     public boolean isSystemSchema(String schemaName);
+
+    public boolean hasMicrosecondsSupport();
 }

@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2009-2013 Continuent Inc.
+ * Copyright (C) 2009-2014 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -260,6 +260,9 @@ public class MysqlBinlog
     public static final int                     Q_CATALOG_NZ_CODE                   = 6;
     public static final int                     Q_LC_TIME_NAMES_CODE                = 7;
     public static final int                     Q_CHARSET_DATABASE_CODE             = 8;
+    public static final int                     Q_UPDATED_DB_NAMES                  = 0x0c;
+    public static final int                     Q_MICROSECONDS                      = 0x0d;
+    public static final int                     Q_MDB_MICROSECONDS                  = 0x80;
 
     /* Intvar event post-header */
     public static final int                     I_TYPE_OFFSET                       = 0;

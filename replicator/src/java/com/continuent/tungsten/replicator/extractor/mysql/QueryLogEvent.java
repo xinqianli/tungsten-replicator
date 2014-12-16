@@ -141,6 +141,13 @@ public class QueryLogEvent extends LogEvent
 
     private int                                              autoIncrementOffset    = -1;
 
+    private int                                              microseconds           = -1;
+
+    public int getMicroseconds()
+    {
+        return microseconds;
+    }
+
     public String getQuery()
     {
         return query;
@@ -563,6 +570,38 @@ public class QueryLogEvent extends LogEvent
                         // commonHeaderLength + pos);
                         pos += 2;
                         break;
+                    case MysqlBinlog.Q_UPDATED_DB_NAMES :
+                        /* 1-byte count + <count> \0 terminated string */
+                        int count = LittleEndianConversion.convert1ByteToInt(
+                                buffer, pos);
+                        pos++;
+                        for (int i = 0; i < count; i++)
+                        {
+                            StringBuffer buf = new StringBuffer();
+                            while (buffer[pos] != '\0')
+                            {
+                                buf.append((char) buffer[pos]);
+                                pos++;
+                            }
+                            if (logger.isDebugEnabled())
+                                logger.debug("Found updated DB = "
+                                        + buf.toString());
+                            pos++;
+                        }
+                        break;
+                    case MysqlBinlog.Q_MICROSECONDS :
+                    case MysqlBinlog.Q_MDB_MICROSECONDS :
+                        /*
+                         * 3 bytes unsigned int containing microseconds
+                         */
+                        microseconds = LittleEndianConversion
+                                .convert3BytesToInt(buffer, pos);
+                        if (logger.isDebugEnabled())
+                            logger.debug("Extracted MS =" + microseconds + " ("
+                                    + hexdump(buffer, pos, 3) + ")");
+                        pos += 3;
+                        break;
+
                     default :
                         if (logger.isDebugEnabled())
                             logger.debug("QueryLogEvent has unknown status variable +"

@@ -57,6 +57,11 @@ public class MySQLDatabase extends AbstractDatabase
 
     private boolean                        sessionLevelLoggingSuppressed = false;
 
+    // SET TIMESTAMP support requires to know whether the timestamp can be a
+    // double (MySQL 5.6 or later) or is a LONGLONG (older releases)
+    private static final int               MYSQL_DOUBLE                  = 8;
+    // private static final int MYSQL_LONGLONG = -5;
+
     /** A list of words that can't be used in table and column names. */
     private static final ArrayList<String> reservedWords                 = new ArrayList<String>(
                                                                                  Arrays.asList(new String[]{
@@ -102,6 +107,8 @@ public class MySQLDatabase extends AbstractDatabase
 
     private static final List<String>      SYSTEM_SCHEMAS                = Arrays.asList(new String[]{
             "mysql", "performance_schema", "information_schema"          });
+
+    private boolean                        supportsMicroseconds;
 
     public MySQLDatabase() throws SQLException
     {
@@ -206,6 +213,34 @@ public class MySQLDatabase extends AbstractDatabase
             {
                 logger.debug(e);
             }
+        }
+
+        Statement sqlStatement = null;
+        ResultSet rs = null;
+        try
+        {
+            sqlStatement = dbConn.createStatement();
+            rs = sqlStatement.executeQuery("SELECT @@timestamp");
+            supportsMicroseconds = rs.getMetaData().getColumnType(1) == MYSQL_DOUBLE;
+        }
+        finally
+        {
+            if (rs != null)
+                try
+                {
+                    rs.close();
+                }
+                catch (SQLException ignore)
+                {
+                }
+            if (sqlStatement != null)
+                try
+                {
+                    sqlStatement.close();
+                }
+                catch (SQLException ignore)
+                {
+                }
         }
 
         if (initScript != null)
@@ -862,5 +897,10 @@ public class MySQLDatabase extends AbstractDatabase
     public ArrayList<String> getReservedWords()
     {
         return reservedWords;
+    }
+
+    public boolean hasMicrosecondsSupport()
+    {
+        return supportsMicroseconds;
     }
 }

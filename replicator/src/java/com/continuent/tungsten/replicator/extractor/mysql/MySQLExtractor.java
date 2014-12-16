@@ -661,6 +661,10 @@ public class MySQLExtractor implements RawExtractor
                                             "auto_increment_offset",
                                             String.valueOf(event
                                                     .getAutoIncrementOffset())));
+                        
+                        if (event.getMicroseconds() >= 0)
+                            savedOptions.add(new ReplOption("##microseconds",
+                                    String.valueOf(event.getMicroseconds())));
 
                         continue;
                     }
@@ -752,6 +756,10 @@ public class MySQLExtractor implements RawExtractor
                         if (event.getAutoIncrementOffset() >= 0)
                             statement.addOption("auto_increment_offset", String
                                     .valueOf(event.getAutoIncrementOffset()));
+
+                        if (event.getMicroseconds() >= 0)
+                            statement.addOption("##microseconds",
+                                    String.valueOf(event.getMicroseconds()));
 
                         /* Adding statement sql_mode */
                         statement.addOption("sql_mode", event.getSqlMode());

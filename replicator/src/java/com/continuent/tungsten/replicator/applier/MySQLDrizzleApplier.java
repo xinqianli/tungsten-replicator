@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2013 Continuent Inc.
+ * Copyright (C) 2010-2014 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -114,9 +114,7 @@ public class MySQLDrizzleApplier extends MySQLApplier
 
             applyUseSchema(schema);
 
-            applySetTimestamp(timestamp);
-
-            applySessionVariables(options);
+            applyVariables(timestamp, options);
 
             // Using drizzle driver specific method to send bytes directly to
             // mysql
@@ -205,9 +203,7 @@ public class MySQLDrizzleApplier extends MySQLApplier
 
             applyUseSchema(schema);
 
-            applySetTimestamp(timestamp);
-
-            applySessionVariables(options);
+            applyVariables(timestamp, options);
 
             try
             {

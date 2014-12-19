@@ -40,7 +40,6 @@ module ClusterCommandModule
     }
     
     checks << GlobalHostAddressesCheck.new()
-    checks << GlobalMatchingPingMethodCheck.new()
     
     return checks
   end

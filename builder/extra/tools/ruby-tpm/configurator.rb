@@ -30,7 +30,7 @@ system_require 'validator'
 system_require 'properties'
 system_require 'stringio'
 system_require 'open-uri'
-system_require 'open4'
+system_require 'configure/is_tools_package'
 system_require 'configure/parameter_names'
 system_require 'configure/configure_messages'
 system_require 'configure/configure_prompt_handler'
@@ -42,6 +42,7 @@ system_require 'configure/validation_check_interface'
 system_require 'configure/configure_validation_check'
 system_require 'configure/group_validation_check'
 system_require 'configure/configure_deployment_handler'
+system_require 'configure/configure_deployment'
 system_require 'configure/configure_command'
 system_require 'configure/database_platform'
 system_require 'configure/cctrl'
@@ -119,7 +120,6 @@ DIRECT_DEPLOYMENT_HOST_ALIAS = "local"
 DEFAULT_SERVICE_NAME = "default"
 RELEASES_DIRECTORY_NAME = "releases"
 LOGS_DIRECTORY_NAME = "service_logs"
-METADATA_DIRECTORY_NAME = "metadata"
 PREPARE_RELEASE_DIRECTORY = 'install'
 CONFIG_DIRECTORY_NAME = "conf"
 DIRECTORY_LOCK_FILENAME = ".lock"
@@ -132,8 +132,6 @@ DELETE_REPLICATION_POSITION = "delete_replication_position"
 RESTART_REPLICATORS = "restart_replicators"
 RESTART_MANAGERS = "restart_managers"
 RESTART_CONNECTORS = "restart_connectors"
-RESTART_CONNECTORS_NEEDED = "restart_connectors_needed"
-RECONFIGURE_CONNECTORS_ALLOWED = "reconfigure_connectors_allowed"
 PROVISION_NEW_SLAVES = "provision_new_slaves"
 
 TPM_COMMAND_NAME = "tpm"
@@ -184,8 +182,6 @@ class Configurator
     @log = nil
     @log_cache = []
     @alive_thread = nil
-    
-    @mutex = Mutex.new
   end
   
   def cleanup(code = 0)
@@ -211,38 +207,9 @@ class Configurator
   end
 
   def run
-    # Include additional Ruby files from the source tree
-    load_include_files()
-    
-    # The get_default_filenames() files allow users to place configuration
-    # defaults in files on the system that will override any programmed
-    # default value
-    load_default_files()
-    
-    # Take the arguments provided on the command line and parse out generic
-    # options as well as options for the requested command
-    parsed_options?()
-    
-    # Hand of control to the ConfigureCommand object. After completion
-    # cleanup the process and exit with a 0 or 1
-    begin
-      if @command.run() == false
-        cleanup(1)
-      else
-        cleanup()
-      end
-    rescue IgnoreError
-      cleanup()
-    rescue => e
-      exception(e)
-      cleanup(1)
-    end
-  end
-  
-  # Each of these directories includes Ruby Classes and Modules that extend
-  # the behavior of tpm. Some of them will raise an IgnoreError exception
-  # if they should not be enabled.
-  def load_include_files
+    # Each of these directories includes Ruby Classes and Modules that extend
+    # the behavior of tpm. Some of them will raise an IgnoreError exception
+    # if they should not be enabled.
     Dir[File.dirname(__FILE__) + '/configure/modules/*.rb'].sort().each do |file| 
       begin
         require File.dirname(file) + '/' + File.basename(file, File.extname(file))
@@ -266,6 +233,30 @@ class Configurator
         require File.dirname(file) + '/' + File.basename(file, File.extname(file))
       rescue IgnoreError
       end
+    end
+    
+    # The get_default_filenames() files allow users to place configuration
+    # defaults in files on the system that will override any programmed
+    # default value
+    load_default_files()
+    
+    # Take the arguments provided on the command line and parse out generic
+    # options as well as options for the requested command
+    parsed_options?()
+    
+    # Hand of control to the ConfigureCommand object. After completion
+    # cleanup the process and exit with a 0 or 1
+    begin
+      if @command.run() == false
+        cleanup(1)
+      else
+        cleanup()
+      end
+    rescue IgnoreError
+      cleanup()
+    rescue => e
+      exception(e)
+      cleanup(1)
     end
   end
   
@@ -310,7 +301,7 @@ class Configurator
       arguments = arguments.map{|arg|
         newarg = ''
         arg.split("").each{|b| 
-          unless b.getbyte(0)<32 || b.getbyte(0)>127 then 
+          unless b.getbyte(0)<33 || b.getbyte(0)>127 then 
             newarg.concat(b) 
           end
         }
@@ -390,10 +381,9 @@ class Configurator
             unless command_class.include?(ConfigureCommand)
               raise "Command '#{command_class}' does not include ConfigureCommand"
             end
-            
+      
             @command = command_class.new(@config)
           rescue => e
-            debug(e)
             error("Unable to instantiate command: #{e.to_s()}")
             return false
           end
@@ -665,10 +655,6 @@ class Configurator
   end
   
   def write(content="", level=Logger::INFO, hostname = nil, add_prefix = true)
-    if forced?() && level == Logger::ERROR
-      level = Logger::WARN
-    end
-    
     unless content == "" || level == nil || add_prefix == false
       content = "#{get_log_level_prefix(level, hostname)}#{content}"
     end
@@ -992,7 +978,11 @@ class Configurator
   end
   
   def get_base_path
-    File.expand_path(File.dirname(__FILE__) + "/../../")
+    if is_full_tungsten_package?()
+      File.expand_path(File.dirname(__FILE__) + "/../../")
+    else
+      File.expand_path(File.dirname(__FILE__) + "/../")
+    end
   end
   
   def get_log_filename
@@ -1024,8 +1014,25 @@ class Configurator
     end
   end
   
+  def get_package_path
+    if is_full_tungsten_package?()
+      get_base_path()
+    else
+      runtime_path = File.expand_path(get_base_path() + "/.runtime/" + get_release_name())
+      if File.exists?(runtime_path)
+        return runtime_path
+      else
+        return nil
+      end
+    end
+  end
+  
   def get_ruby_prefix
-    "tools/ruby"
+    if is_full_tungsten_package?()
+      "tools/ruby"
+    else
+      "ruby"
+    end
   end
   
   def get_basename
@@ -1058,6 +1065,10 @@ class Configurator
   
   def get_lock_filename
     "#{get_base_path()}/#{DIRECTORY_LOCK_FILENAME}"
+  end
+  
+  def is_full_tungsten_package?
+    (IS_TOOLS_PACKAGE==false)
   end
   
   def get_manifest_file_path
@@ -1188,12 +1199,12 @@ class Configurator
     @command.advanced?()
   end
   
+  def is_interactive?
+    @command.interactive?()
+  end
+  
   def forced?
-    if @command
-      @command.forced?()
-    else
-      false
-    end
+    @command.forced?()
   end
   
   def is_enterprise?
@@ -1328,8 +1339,6 @@ class Configurator
       
       Object.constants.each{
         |symbol|
-        next if symbol.to_s == "Config"
-        
         @constant_map[Object.const_get(symbol)] = symbol
       }
     end
@@ -1406,54 +1415,36 @@ class Configurator
       |klass|
       extra_options << "--enable-validation-warnings=#{klass}"
     }
-    if forced?()
-      extra_options << "-f"
-    end
     
     extra_options
   end
   
   def start_alive_thread
-    if @command && @command.display_alive_thread?() == false
-      return
-    end
-    
-    self.synchronize() {
-      if @alive_thread == nil && enable_log_level?(Logger::NOTICE) && has_tty?() && @options.stream_output == false
-        @alive_thread = Thread.new{
-          Thread.current[:has_output] = false
-          while true
-            sleep 2
-            putc '.'
-            $stdout.flush()
-            Thread.current[:has_output] = true
-          end
-        }
+    if @alive_thread == nil && enable_log_level?(Logger::NOTICE) && has_tty?() && @options.stream_output == false
+      if @command && @command.display_alive_thread?() == false
+        return
       end
-    }
+      
+      @alive_thread = Thread.new{
+        Thread.current[:has_output] = false
+        while true
+          sleep 2
+          putc '.'
+          $stdout.flush()
+          Thread.current[:has_output] = true
+        end
+      }
+    end
   end
   
   def stop_alive_thread
-    self.synchronize() {
-      if @alive_thread != nil
-        if @alive_thread[:has_output] == true
-          puts "\n"
-          $stdout.flush()
-        end
-
-        begin
-          Thread.kill(@alive_thread)
-        rescue TypeError
-        end
-
-        @alive_thread = nil
+    if @alive_thread != nil
+      if @alive_thread[:has_output] == true
+        puts "\n"
+        $stdout.flush()
       end
-    }
-  end
-  
-  def synchronize(&block)
-    @mutex.synchronize do
-      block.call()
+      Thread.kill(@alive_thread)
+      @alive_thread = nil
     end
   end
 end
@@ -1494,20 +1485,16 @@ class SSHConnections
       return cmd_result(command)
     end
 
-    Configurator.instance.synchronize() {
-      unless defined?(Net::SSH)
-        begin
-          require "openssl"
-        rescue LoadError
-          Configurator.instance.error("Unable to find the Ruby openssl library")
-          Configurator.instance.error("Try installing the openssl package for your version of Ruby (libopenssl-ruby#{RUBY_VERSION[0,3]}).")
-          Configurator.instance.cleanup(1)
-        end
-        system_require 'net/ssh'
-        
-        self.init_profile_script()
+    unless defined?(Net::SSH)
+      begin
+        require "openssl"
+      rescue LoadError
+        Configurator.instance.error("Unable to find the Ruby openssl library")
+        Configurator.instance.error("Try installing the openssl package for your version of Ruby (libopenssl-ruby#{RUBY_VERSION[0,3]}).")
+        Configurator.instance.cleanup(1)
       end
-    }
+      system_require 'net/ssh'
+    end
 
     if return_object
       command = "#{command} --stream"
@@ -1525,7 +1512,7 @@ class SSHConnections
     rc = nil
     exit_signal=nil
 
-    connection_error = "Net::SSH was unable to connect to #{host} as #{ssh_user}.  Check that #{host} is online, #{ssh_user} exists and your SSH private keyfile or ssh-agent settings. Try adding --net-ssh-option=port=<SSH port number> if you are using an SSH port other than 22.  Review http://docs.continuent.com/helpwithsshandtpm for more help on diagnosing SSH problems."
+    connection_error = "Net::SSH was unable to connect to #{host} as #{ssh_user}.  Check that #{host} is online, #{ssh_user} exists and your SSH private keyfile or ssh-agent settings. Try adding --net-ssh-option=port=<SSH port number> if you are using an SSH port other than 22.  Review https://docs.continuent.com/wiki/display/TEDOC/Unable+to+use+the+tpm+command+over+SSH for more help on diagnosing SSH problems."
     begin
       Net::SSH.start(host, ssh_user, Configurator.instance.get_ssh_options()) {
         |ssh|
@@ -1533,7 +1520,6 @@ class SSHConnections
         if return_object
           log_level = nil
 
-          buf = ""
           channel = ssh.open_channel {
             |ch|
             ch.exec(". /etc/profile; #{self.init_profile_script()} export LANG=en_US; export LC_ALL=\"en_US.UTF-8\"; #{command}") {
@@ -1541,9 +1527,9 @@ class SSHConnections
 
               ch.on_data {
                 |chan,data|
-                (buf ||= '') << data
+                (@buf ||= '') << data
 
-                while line = buf.slice!(/(.*)\r?\n/)
+                while line = @buf.slice!(/(.*)\r?\n/)
                   unless line.index('RemoteResult') != nil || result != ""
                     line_log_level = Configurator.instance.get_log_level(line[0,5])
                     if line_log_level != nil
@@ -1660,56 +1646,32 @@ def ssh_result(command, host, user, return_object = false)
   SSHConnections.ssh_result(command, host, user, return_object)
 end
 
-def cmd_result(command, ignore_fail = false, hide_result = false)
-  errors = ""
-  result = ""
-  threads = []
+def cmd_result(command, ignore_fail = false)
+  begin
+    result = ""
+    errors = ""
+    rc = nil
   
-  Configurator.instance.debug("Execute `#{command}`")
-  status = Open4::popen4("export LANG=en_US; #{command}") do |pid, stdin, stdout, stderr|
-    stdin.close 
-    
-    threads << Thread.new{
-      while data = stdout.gets()
-        if data.to_s() != ""
-          result+=data
-        end
-      end
-    }
-    threads << Thread.new{
-      while edata = stderr.gets()
-        if edata.to_s() != ""
-          errors+=edata
-        end
-      end
-    }
-    
-    threads.each{|t| t.join() }
-  end
+    Configurator.instance.debug("Execute `#{command}`")
+    $stderr = StringIO.new()
+    result = `export LANG=en_US; #{command}`.chomp
+    rc = $?
+    errors = $stderr.string.chomp
+    $stderr = STDERR
   
-  result.strip!()
-  errors.strip!()
-  
-  original_errors = errors
-  rc = status.exitstatus
-  
-  if errors == ""
-    errors = "No STDERR"
-  else
-    errors = "Errors: #{errors}"
-  end
+    if errors == ""
+      errors = "No Errors"
+    else
+      errors = "Errors: #{errors}"
+    end
 
-  if hide_result == true
-    Configurator.instance.debug("RC: #{rc}, Result length: #{result.length}, #{errors}")
-  else
     Configurator.instance.debug("RC: #{rc}, Result: #{result}, #{errors}")
-  end
+    if rc != 0 && ! ignore_fail
+      raise CommandError.new(command, rc, result, errors)
+    end
   
-  if rc != 0 && ! ignore_fail
-    raise CommandError.new(command, rc, result, original_errors)
+    return result
   end
-
-  return result
 end
 
 # Find out the full executable path or return nil
@@ -1749,25 +1711,23 @@ def scp_result(local_file, remote_file, host, user)
     return FileUtils.cp(local_file, remote_file)
   end
   
-  Configurator.instance.synchronize() {
-    unless defined?(Net::SCP)
-      begin
-        require "openssl"
-      rescue LoadError
-        Configurator.instance.error("Unable to find the Ruby openssl library")
-        Configurator.instance.error("Try installing the openssl package for your version of Ruby (libopenssl-ruby#{RUBY_VERSION[0,3]}).")
-        Configurator.instance.cleanup(1)
-      end
-      system_require 'net/scp'
+  unless defined?(Net::SCP)
+    begin
+      require "openssl"
+    rescue LoadError
+      error("Unable to find the Ruby openssl library")
+      error("Try installing the openssl package for your version of Ruby (libopenssl-ruby#{RUBY_VERSION[0,3]}).")
+      cleanup(1)
     end
-  }
+    system_require 'net/scp'
+  end
   
   ssh_user = Configurator.instance.get_ssh_user(user)
   if user != ssh_user
     debug("SCP user changed to #{ssh_user}")
   end
   
-  connection_error = "Net::SCP was unable to copy #{local_file} to #{host}:#{remote_file} as #{ssh_user}.  Check that #{host} is online, #{ssh_user} exists and your SSH private keyfile or ssh-agent settings. Try adding --net-ssh-option=port=<SSH port number> if you are using an SSH port other than 22.  Review http://docs.continuent.com/helpwithsshandtpm for more help on diagnosing SSH problems."
+  connection_error = "Net::SCP was unable to copy #{local_file} to #{host}:#{remote_file} as #{ssh_user}.  Check that #{host} is online, #{ssh_user} exists and your SSH private keyfile or ssh-agent settings. Try adding --net-ssh-option=port=<SSH port number> if you are using an SSH port other than 22.  Review https://docs.continuent.com/wiki/display/TEDOC/Unable+to+use+the+tpm+command+over+SSH for more help on diagnosing SSH problems."
   Configurator.instance.debug("Copy #{local_file} to #{host}:#{remote_file} as #{ssh_user}")
   begin
     Net::SCP.start(host, ssh_user, Configurator.instance.get_ssh_options) do |scp|
@@ -1848,7 +1808,7 @@ def scp_download(remote_file, local_file, host, user)
     debug("SCP user changed to #{ssh_user}")
   end
   
-  connection_error = "Net::SCP was unable to copy to #{host}:#{remote_file} #{local_file} as #{ssh_user}.  Check that #{host} is online, #{ssh_user} exists and your SSH private keyfile or ssh-agent settings. Try adding --net-ssh-option=port=<SSH port number> if you are using an SSH port other than 22.  Review http://docs.continuent.com/helpwithsshandtpm for more help on diagnosing SSH problems."
+  connection_error = "Net::SCP was unable to copy to #{host}:#{remote_file} #{local_file} as #{ssh_user}.  Check that #{host} is online, #{ssh_user} exists and your SSH private keyfile or ssh-agent settings. Try adding --net-ssh-option=port=<SSH port number> if you are using an SSH port other than 22.  Review https://docs.continuent.com/wiki/display/TEDOC/Unable+to+use+the+tpm+command+over+SSH for more help on diagnosing SSH problems."
   Configurator.instance.debug("Copy #{host}:#{remote_file} to #{local_file} as #{ssh_user}")
   begin
     Net::SCP.download!(host, ssh_user, remote_file, local_file, Configurator.instance.get_ssh_options)
@@ -1924,7 +1884,7 @@ class CommandError < StandardError
   
   def build_message
     if errors == ""
-      errors = "No STDERR"
+      errors = "No Errors"
     else
       errors = "Errors: #{errors}"
     end
@@ -1944,7 +1904,7 @@ class RemoteCommandError < CommandError
   
   def build_message
     if errors == ""
-      errors = "No STDERR"
+      errors = "No Errors"
     else
       errors = "Errors: #{errors}"
     end

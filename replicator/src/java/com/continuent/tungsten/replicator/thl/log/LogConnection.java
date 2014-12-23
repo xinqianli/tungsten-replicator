@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2014 Continuent Inc.
+ * Copyright (C) 2010-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -24,14 +24,10 @@ package com.continuent.tungsten.replicator.thl.log;
 
 import java.io.IOException;
 import java.sql.Timestamp;
-import java.util.LinkedList;
-import java.util.Queue;
 
 import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.replicator.ReplicatorException;
-import com.continuent.tungsten.replicator.event.ReplDBMSFilteredEvent;
-import com.continuent.tungsten.replicator.event.ReplEvent;
 import com.continuent.tungsten.replicator.thl.THLEvent;
 import com.continuent.tungsten.replicator.thl.THLException;
 import com.continuent.tungsten.replicator.thl.serializer.Serializer;
@@ -67,9 +63,11 @@ public class LogConnection
     // Disk log parameters.
     private DiskLog            diskLog;
     private LogCursor          cursor;
-    private Queue<THLEvent>    pendingEvent  = new LinkedList<THLEvent>();
+    private THLEvent           pendingEvent;
     private long               pendingSeqno;
     private short              lastFragno    = -1;
+    private long               writeCount    = 0;
+    private long               readCount     = 0;
 
     // Information required for successful output.
     private boolean            doChecksum;
@@ -218,8 +216,7 @@ public class LogConnection
             cursor.release();
             cursor = null;
         }
-        pendingEvent.clear();
-        ;
+        pendingEvent = null;
         pendingSeqno = UNINITIALIZED;
 
         // Find the log file that contains our sequence number.
@@ -289,34 +286,6 @@ public class LogConnection
                     }
                     else if (seqno > lastSeqno)
                     {
-                        // See if we have a filtered event at the tail of the
-                        // log.
-                        if (previousLogRecord != null)
-                        {
-                            // This code breaks encapsulation but allows us to
-                            // find a filtered event at the end of the log. It
-                            // would be cleaner in future to pull this
-                            // information into the log record header.
-                            THLEvent trialEvent = this
-                                    .deserialize(previousLogRecord);
-                            ReplEvent replEvent = trialEvent.getReplEvent();
-                            if (replEvent instanceof ReplDBMSFilteredEvent)
-                            {
-                                ReplDBMSFilteredEvent filterEvent = (ReplDBMSFilteredEvent) replEvent;
-                                if (seqno <= filterEvent.getSeqnoEnd())
-                                {
-                                    if (logger.isDebugEnabled())
-                                    {
-                                        logger.debug("Found containing filtered event: seqno="
-                                                + seqno);
-                                    }
-                                    pendingEvent.add(trialEvent);
-                                    return true;
-                                }
-                            }
-                        }
-
-                        // No filtered event so we can just return.
                         if (logger.isDebugEnabled())
                         {
                             logger.debug("Seeking seqno past end of log: seqno="
@@ -344,20 +313,18 @@ public class LogConnection
                         if (logger.isDebugEnabled())
                             logger.debug("Found requested event (" + seqno
                                     + "/" + fragno + ")");
-                        pendingEvent.add(deserialize(logRecord));
+                        pendingEvent = deserialize(logRecord);
                         break;
                     }
                     else if (eventReader.getSeqno() > seqno
                             && previousLogRecord != null)
                     {
                         // We have filtered events, i.e., a gap in the
-                        // number sequence. Enqueue the previous and current
-                        // event.
+                        // number sequence. Return the previous event.
                         if (logger.isDebugEnabled())
                             logger.debug("Found filtered event (" + seqno + "/"
                                     + fragno + ")");
-                        pendingEvent.add(deserialize(previousLogRecord));
-                        pendingEvent.add(deserialize(logRecord));
+                        pendingEvent = deserialize(previousLogRecord);
                         break;
                     }
                     else if (eventReader.getSeqno() > seqno
@@ -399,7 +366,7 @@ public class LogConnection
                         if (logger.isDebugEnabled())
                             logger.debug("Found suspected filtered event ("
                                     + seqno + "/" + fragno + ")");
-                        pendingEvent.add(deserialize(previousLogRecord));
+                        pendingEvent = deserialize(previousLogRecord);
                     }
                     break;
                 }
@@ -412,6 +379,7 @@ public class LogConnection
                                     + logRecord.getOffset() + " record type="
                                     + recordType);
                 }
+
             }
             catch (IOException e)
             {
@@ -420,7 +388,7 @@ public class LogConnection
         }
 
         // If we have a pending event, the seek was successful.
-        return (pendingEvent.size() > 0);
+        return (pendingEvent != null);
     }
 
     // Deserialize the event we just found. This takes into consideration
@@ -513,7 +481,9 @@ public class LogConnection
             cursor.release();
             cursor = null;
         }
-        pendingEvent.clear();
+        if (pendingEvent != null)
+            pendingEvent = null;
+
     }
 
     /**
@@ -540,9 +510,11 @@ public class LogConnection
         }
 
         // If we have a pending event, just hand that back.
-        if (pendingEvent.size() > 0)
+        if (pendingEvent != null)
         {
-            THLEvent event = pendingEvent.remove();
+            THLEvent event = pendingEvent;
+            pendingEvent = null;
+            readCount++;
             return event;
         }
 
@@ -631,10 +603,9 @@ public class LogConnection
                         // Non-blocking reads just return a null.
                         if (data == null && !block)
                         {
-                            // NOTE: This makes the call non-idempotent as we
-                            // just messed up our read position. We could
-                            // reconnect to the log but so far this behavior has
-                            // caused no problems in use.
+                            // TODO: Reconnect to the log file, as we have just
+                            // messed up our position so that this call is not
+                            // idempotent.
                             return null;
                         }
 
@@ -682,7 +653,8 @@ public class LogConnection
             pendingSeqno = UNINITIALIZED;
         }
 
-        // Return the event.
+        // Increment read count and return.
+        readCount++;
         return event;
     }
 
@@ -707,6 +679,9 @@ public class LogConnection
             throws ReplicatorException, InterruptedException
     {
         assertWritable();
+
+        // TODO: Ensure that a log file is open. We should not grant connections
+        // if log is uninitialized.
 
         // Ensure that the sequence number does not go backwards. That means
         // our client is confused.
@@ -783,6 +758,7 @@ public class LogConnection
                 lastFragno = -1;
             else
                 lastFragno = event.getFragno();
+            writeCount++;
 
             // If it is time to commit, make it happen!
             if (commit)
@@ -833,8 +809,7 @@ public class LogConnection
      */
     public synchronized void rollback() throws ReplicatorException
     {
-        // Rollback is not necessary. Reopening the log will roll back
-        // incomplete transactions.
+        // TODO: Implement rollback.
         assertWritable();
     }
 

@@ -1,6 +1,6 @@
 /**
  * Tungsten: An Application Server for uni/cluster.
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,6 +22,7 @@
 
 package com.continuent.tungsten.replicator.database;
 
+import java.io.BufferedWriter;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -29,6 +30,9 @@ import java.sql.Types;
 import java.util.Iterator;
 
 import org.apache.log4j.Logger;
+
+import com.continuent.tungsten.common.csv.CsvWriter;
+import com.continuent.tungsten.common.csv.NullPolicy;
 
 /**
  * Implements DBMS-specific operations for Vertica.
@@ -63,11 +67,13 @@ public class VerticaDatabase extends PostgreSQLDatabase
     /**
      * Overload connect method to issue call to ensure default projections are
      * enabled.
+     * 
+     * @see com.continuent.tungsten.replicator.database.Database#connect(boolean)
      */
-    public synchronized void connect() throws SQLException
+    public synchronized void connect(boolean binlog) throws SQLException
     {
         // Connect first.
-        super.connect();
+        super.connect(binlog);
 
         // Issue call to define projections.
         // if (connected)
@@ -192,7 +198,7 @@ public class VerticaDatabase extends PostgreSQLDatabase
             case Types.CHAR :
             {
                 if (c.getLength() == 1)
-                    // This is a provisional hack, written to support storing
+                    // TODO: remove this dirty hack, written to support storing
                     // boolean values into "character(1)" type "last_frag" field
                     // of "trep_commit_seqno" and "history" tables.
                     return "CHAR(5)";
@@ -215,12 +221,30 @@ public class VerticaDatabase extends PostgreSQLDatabase
                 return "VARCHAR(65000)";
 
                 // Vertica does not have a true BLOB type, so we use biggest
-                // allowed varbinary.
+                // allowed varbinary. 
             case Types.BLOB :
                 return "VARBINARY(65000)";
 
             default :
                 return "UNKNOWN";
         }
+    }
+
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.database.Database#getCsvWriter(java.io.BufferedWriter)
+     */
+    public CsvWriter getCsvWriter(BufferedWriter writer)
+    {
+        CsvWriter csv = new CsvWriter(writer);
+        csv.setQuoteChar('"');
+        csv.setQuoted(true);
+        csv.setNullPolicy(NullPolicy.skip);
+        csv.setEscapedChars("\\");
+        csv.setSuppressedChars("\n");
+        csv.setEscapeChar('\\');
+        csv.setWriteHeaders(false);
+        return csv;
     }
 }

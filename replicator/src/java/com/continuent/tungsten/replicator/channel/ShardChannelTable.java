@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2011-2014 Continuent Inc.
+ * Copyright (C) 2011-2012 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -79,8 +79,7 @@ public class ShardChannelTable
     private void initialize(String schema)
     {
         channelTable = new Table(schema, TABLE_NAME);
-        shardId = new Column(SHARD_ID_COL, Types.VARCHAR, 128, true); // true =>
-                                                                      // isNotNull
+        shardId = new Column(SHARD_ID_COL, Types.VARCHAR, 128);
         channel = new Column(CHANNEL_COL, Types.INTEGER);
 
         Key shardKey = new Key(Key.Primary);
@@ -107,12 +106,8 @@ public class ShardChannelTable
         if (logger.isDebugEnabled())
             logger.debug("Initializing channel table");
 
-        // Create the table if it does not exist.
-        if (database
-                .findTable(channelTable.getSchema(), channelTable.getName()) == null)
-        {
-            database.createTable(this.channelTable, false, tableType);
-        }
+        // Replace the table.
+        database.createTable(this.channelTable, false, tableType);
 
         // Validate the channel assignments.
         int maxChannel = this.listMaxChannel(database);

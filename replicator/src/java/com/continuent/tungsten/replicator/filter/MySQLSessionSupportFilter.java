@@ -95,7 +95,7 @@ public class MySQLSessionSupportFilter implements Filter
      */
     public void configure(PluginContext context) throws ReplicatorException
     {
-        privileged = context.isPrivilegedSlave();
+        privileged = context.isPrivilegedSlaveUpdate();
         if (!privileged)
         {
             logger.warn("Database update is not privileged; MySQL temp table support using pseudo-threads is disabled");

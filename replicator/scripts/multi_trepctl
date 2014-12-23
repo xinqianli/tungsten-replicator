@@ -1,8 +1,6 @@
 #!/usr/bin/env ruby
 
 require "#{File.dirname(__FILE__)}/../../cluster-home/lib/ruby/tungsten"
-require "uri"
-require "date"
 
 class TungstenMultipleTrepctl
   include TungstenScript
@@ -17,15 +15,15 @@ class TungstenMultipleTrepctl
       })
       
       if command() == "backups"
-        backup_records = collect_backup_records_from_services(records)
-        list_records(backup_records)
-      elsif command() == "position"
-        position_records = collect_position_records_from_services(records)
-        list_records(position_records)
+        raise "The backups command has not been implemented"
+      elsif command() == "db"
+        raise "The db command has not been implemented"
       elsif command() == "masterof"
-        master_records = collect_master_records_from_services(records)
-        list_records(master_records)
+        raise "The masterof command has not been implemented"
+      elsif command() == "sql"
+        raise "The sql command has not been implemented"
       elsif command() == "run"
+        #raise "This command has not been implemented"
         records = collect_trepctl_output_from_services(records, @trepctl_command_parts.join(" "), 0)
         
         records.each{|rec|
@@ -44,21 +42,21 @@ class TungstenMultipleTrepctl
           end
         }
         
-        list_records(records)
+        # Sort records by the fields passed in on --sort-by
+        records = sort_records(records, opt(:sort_by))
+        
+        # Output the matching records
+        output_records(records, opt(:fields), opt(:format))
       elsif command() == "list"
-        list_records(records)
+        # Sort records by the fields passed in on --sort-by
+        records = sort_records(records, opt(:sort_by))
+
+        # Output the matching records
+        output_records(records, opt(:fields), opt(:format))
       end
     rescue => e
       raise e
     end
-  end
-  
-  def list_records(records)
-    # Sort records by the fields passed in on --sort-by
-    records = sort_records(records, opt(:sort_by))
-
-    # Output the matching records
-    output_records(records, opt(:fields), opt(:format))
   end
   
   # Run the command in parallel on each replication service collecting the output
@@ -86,7 +84,7 @@ class TungstenMultipleTrepctl
             results[idx].write(TU.ssh_result("#{loc[:directory]}/tungsten/tungsten-replicator/bin/trepctl -service #{rec['serviceName']} #{options.join(" ")} #{command}", loc[:host], TI.user()))
           end
         rescue Timeout::Error => te
-          results[idx].write(Marshal.dump(MessageError.new("The replicator at #{loc[:host]}:#{loc[:directory]} is taking too long to respond")))
+          results[loc_id].write(Marshal.dump(MessageError.new("The replicator at #{loc[:host]}:#{loc[:directory]} is taking too long to respond")))
         rescue RemoteCommandError => rce
           results[idx].write(Marshal.dump(rce))
         rescue CommandError => ce
@@ -115,234 +113,6 @@ class TungstenMultipleTrepctl
     }
     
     records
-  end
-  
-  # Find the master for each replication service present in records
-  def collect_master_records_from_services(records)
-    service_masters = {}
-    
-    # Compile a list of masters for each service
-    records.each{
-      |rec|
-      # Do not use records with errors
-      unless ["ONLINE", "OFFLINE:NORMAL"].include?(rec["state"])
-        next
-      end
-      
-      # If we see a record with role=="master", it overrides all other entries
-      if rec["role"] == "master"
-        service_masters[rec["serviceName"]] = rec["masterListenUri"].chomp("/") + "/"
-      else
-        if service_masters[rec["serviceName"]] == nil
-          service_masters[rec["serviceName"]] = []
-        end
-        if service_masters[rec["serviceName"]].is_a?(Array)
-          # Comment out this line if you only want to return the real master
-          service_masters[rec["serviceName"]] << rec["masterConnectUri"].chomp("/") + "/"
-        end
-      end
-    }
-    
-    # Create new output records using the compiled master information
-    master_records = []
-    service_masters.each_key{
-      |service|
-      if service_masters[service].is_a?(Array)
-        unique_masters = service_masters[service].uniq()
-        if unique_masters.size() == 1
-          uri = URI(unique_masters[0])
-        else
-          uri = URI("")
-        end
-      else
-        uri = URI(service_masters[service])
-      end
-      
-      master_records << {
-        "serviceName" => service,
-        "host" => uri.host,
-        "uri" => uri.to_s()
-      }
-    }
-    
-    master_records
-  end
-  
-  # Collect information for all available backups
-  def collect_backup_records_from_services(records)
-    pids = []
-    results = []
-    handled_locations = {}
-
-    records.each_index{
-      |idx|
-
-      # Prevent loading backups from multiple services in the same replicator
-      if handled_locations.has_key?(records[idx][:loc_id])
-        next
-      else
-        handled_locations[records[idx][:loc_id]] = true
-      end
-      
-      results[idx] = Tempfile.new('ssh')
-      pids << fork {
-        rec = records[idx]
-        loc = @trepctl_locations[rec[:loc_id]]
-        backup_records = {}
-        
-        begin
-          value_key = "repl_services.#{TU.to_identifier(rec["serviceName"])}_#{TU.to_identifier(rec["host"])}.repl_backup_directory"
-          backup_directory = JSON.parse(TU.ssh_result("#{loc[:directory]}/tungsten/tools/tpm query values #{value_key}", loc[:host], TI.user()))
-          TU.ssh_result("egrep -H \"agent|file_name|backup_date|uri\" #{backup_directory[value_key]}/store-*.properties", loc[:host], TI.user()).split("\n").each{
-            |line|
-            match = line.match(/(store-[0-9]+)\.properties:([a-zA-Z0-9_\.]+)=(.*)/)
-            if match
-              # Start a hash for this properties file with the store-#### name
-              unless backup_records.has_key?(match[1])
-                backup_records[match[1]] = {
-                  "prefix" => match[1]
-                }
-              end
-              # Include the matching value in the backup entry
-              if match[2] == "backup_date"
-                backup_records[match[1]]["backup_milliseconds"] = match[3]
-                
-                t = Time.at(match[3].to_i()/1000)
-                d = DateTime.new(t.year, t.month, t.day, t.hour, t.min, t.sec, Rational(t.gmt_offset / 3600, 24))
-                backup_records[match[1]][match[2]] = d.strftime("%Y-%m-%d %H:%M:%S")
-              else
-                backup_records[match[1]][match[2]] = match[3]
-              end
-            end
-          }
-          
-          results[idx].write(Marshal.dump(backup_records))
-        rescue RemoteCommandError => rce
-          if rce.rc == 2
-            results[idx].write(Marshal.dump({}))
-          else
-            results[idx].write(Marshal.dump(rce))
-          end
-        rescue CommandError => ce
-          if ce.rc == 2
-            results[idx].write(Marshal.dump({}))
-          else
-            results[idx].write(Marshal.dump(ce))
-          end
-        end
-      }
-    }
-    # Wait for each thread to finish   
-    pids.each{|pid| Process.waitpid(pid) }
-
-    results.each_index{
-      |idx|
-      file = results[idx]
-      if file == nil
-        next
-      end
-      
-      file.rewind()
-      results[idx] = file.read()
-
-      begin
-        records[idx][:command_output] = Marshal.load(results[idx])
-      rescue
-      end
-    }
-    
-    # Return an array of each backup record along with values from the base record
-    backup_records = []
-    records.each{
-      |rec|
-      if rec[:command_output].is_a?(CommandError)
-        TU.error(rec[:command_output].message, rec["host"])
-      elsif rec[:command_output].is_a?(StandardError)
-        TU.error(rec[:command_output].message, rec["host"])
-      elsif rec[:command_output] != nil
-        rec[:command_output].each{
-          |storage_key, backup_entry|
-          backup_entry["file_name"] = backup_entry["archive.0.file_name"]
-          backup_records << rec.merge(backup_entry)
-        }
-      end
-    }
-    
-    backup_records
-  end
-  
-  def collect_position_records_from_services(records)
-    pids = []
-    results = []
-
-    records.each_index{
-      |idx|
-      
-      results[idx] = Tempfile.new('ssh')
-      pids << fork {
-        rec = records[idx]
-        loc = @trepctl_locations[rec[:loc_id]]
-        backup_records = {}
-        
-        begin
-          position = JSON.parse(TU.ssh_result("#{loc[:directory]}/tungsten/tungsten-replicator/scripts/tungsten_get_position --service=#{rec["serviceName"]}", loc[:host], TI.user()))
-          if position == nil
-            position = {}
-          end
-          
-          results[idx].write(Marshal.dump(position))
-        rescue RemoteCommandError => rce
-          if rce.rc == 2
-            results[idx].write(Marshal.dump({}))
-          else
-            results[idx].write(Marshal.dump(rce))
-          end
-        rescue CommandError => ce
-          if ce.rc == 2
-            results[idx].write(Marshal.dump({}))
-          else
-            results[idx].write(Marshal.dump(ce))
-          end
-        end
-      }
-    }
-    # Wait for each thread to finish   
-    pids.each{|pid| Process.waitpid(pid) }
-
-    results.each_index{
-      |idx|
-      file = results[idx]
-      if file == nil
-        next
-      end
-      
-      file.rewind()
-      results[idx] = file.read()
-
-      begin
-        records[idx][:command_output] = Marshal.load(results[idx])
-      rescue
-      end
-    }
-    
-    position_records = []
-    records.each{
-      |rec|
-      if rec[:command_output].is_a?(CommandError)
-        TU.error(rec[:command_output].message, rec["host"])
-      elsif rec[:command_output].is_a?(StandardError)
-        TU.error(rec[:command_output].message, rec["host"])
-      elsif rec[:command_output] != nil
-        position_records << {
-          :loc_id => rec[:loc_id],
-          "serviceName" => rec["serviceName"],
-          "host" => rec["host"],
-          "directory" => rec["directory"],
-        }.merge(rec[:command_output])
-      end
-    }
-    
-    position_records
   end
   
   # Run the command in parallel on each trepctl location collecting the output
@@ -395,76 +165,12 @@ class TungstenMultipleTrepctl
     results
   end
   
-  def collect_services_from_trepctl(timeout = 5)
-    collect_trepctl_output_from_locations("services -full -json", timeout)
-  end
-  
-  def collect_services_from_config(timeout = 5)
-    pids = []
-    results = {}
-    
-    # Run the trepctl services -full -json command on each matching
-    # location and wait for the output
-    @trepctl_locations.each{
-      |loc_id,loc|
-      
-      results[loc_id] = Tempfile.new('ssh')
-      pids << fork {
-        options = []
-        begin
-          replication_services = nil
-          Timeout::timeout(timeout) do
-            replication_services = TU.ssh_result("egrep \"^service\.name\" #{loc[:directory]}/tungsten/tungsten-replicator/conf/static-* | awk -F= '{print $2}'", loc[:host], TI.user())
-          end
-          
-          output = []
-          replication_services.split("\n").each{
-            |svc|
-            output << {
-              "serviceName" => svc
-            }
-          }
-          results[loc_id].write(JSON.pretty_generate(output))
-        rescue Timeout::Error => te
-          results[loc_id].write(Marshal.dump(MessageError.new("The replicator at #{loc[:host]}:#{loc[:directory]} is taking too long to respond")))
-        rescue RemoteCommandError => rce
-          results[loc_id].write(Marshal.dump(rce))
-        rescue CommandError => ce
-          results[loc_id].write(Marshal.dump(ce))
-        end
-      }
-    }
-    # Wait for each thread to finish   
-    pids.each{|pid| Process.waitpid(pid) }
-    
-    results.each{
-      |loc_id, file|
-      file.rewind()
-      results[loc_id] = file.read()
-      
-      begin
-        exception = Marshal.load(results[loc_id])
-        if exception.is_a?(StandardError)
-          results[loc_id] = exception
-        end
-      rescue
-      end
-    }
-    
-    results
-  end
-  
   # Load the status for all matching replication services and return them
   # as an array
   def load_services(filters = {})
     services = []
     filters = prepare_filters(filters)
-    
-    if require_running_replicator?()
-      results = collect_services_from_trepctl()
-    else
-      results = collect_services_from_config()
-    end
+    results = collect_trepctl_output_from_locations("services -full -json")
     
     # Parse the JSON output from each return value and add matching
     # replication services to the services array
@@ -485,14 +191,14 @@ class TungstenMultipleTrepctl
       rescue JSON::ParserError => pe
         raise "Unable to parse the response from #{host}:#{dir}"
       end
-
+      
       unless host_trepctl_services.instance_of?(Array)
         raise "Unable to parse the response from #{host}:#{dir}"
       end
-    
+      
       host_trepctl_services.each{
         |svc|
-    
+      
         # Only add it to the final array if it matches the filters
         if matches_filters?(svc, filters) == true
           services << svc.merge({
@@ -719,8 +425,6 @@ class TungstenMultipleTrepctl
   
   def configure
     super()
-    allow_unparsed_arguments?(true)
-    
     description("Run the trepctl command across many file locations and hosts.<br>
 <br>
 The script will automatically find all instances of Tungsten Replicator running on the current box. It will use those locations to discover additional servers that it will attempt to contact. You may override this behavior with the --paths and --hosts options.<br>
@@ -802,18 +506,18 @@ $> multi_trepctl -- online -skip-seqno 5<br>")
     column_format("output", "block")
     
     
-    add_command(:backups, {
-      :help => "List available backups for each replication service"
-    })
-    add_command(:position, {
-      :help => "Display the status of trep_commit_seqno for each replication service"
-    })
-    add_command(:masterof, {
-      :help => "Display the master for each replication service"
-    })
-    add_command(:heartbeat, {
-      :help => "Run the heartbeat command against all matching master services"
-    })
+    #add_command(:backups, {
+    #  :help => "List available backups for each replication service"
+    #})
+    #add_command(:db, {
+    #  :help => "Display the status of trep_commit_seqno for each replication service"
+    #})
+    #add_command(:masterof, {
+    #  :help => "Display the master for each replication service"
+    #})
+    #add_command(:sql, {
+    #  :help => "Run the SQL command against the database server for each replication service"
+    #})
     add_command(:run, {
       :help => "Run the trepctl command against the database server for each replication service"
     })
@@ -852,7 +556,7 @@ $> multi_trepctl -- online -skip-seqno 5<br>")
       running_replicators = TU.cmd_result("ps -eo args | grep \"Tungsten Replicator\"").split("\n")
       running_replicators.each{
         |ps|
-        match = ps.match(/^([a-zA-Z0-9\-_\.\/]*)\/releases/)
+        match = ps.match(/^([a-zA-Z\-_\.\/]*)\/releases/)
         unless match == nil
           check_directories << {
             :directory => match[1]
@@ -920,10 +624,8 @@ $> multi_trepctl -- online -skip-seqno 5<br>")
         results[idx] = Tempfile.new('tpm')
         pids[idx] = fork {
           begin
-            if TU.test_ssh(host,TI.user())
-              present = TU.ssh_result("test -f #{dir[:directory]}/tungsten/tungsten-replicator/bin/trepctl", host, TI.user())
-              results[idx].write(Marshal.dump(dir.merge({:host => host})))
-            end
+            present = TU.ssh_result("test -f #{dir[:directory]}/tungsten/tungsten-replicator/bin/trepctl", host, TI.user())
+            results[idx].write(Marshal.dump(dir.merge({:host => host})))
           rescue RemoteCommandError
             TU.debug("Unable to find a replicator at #{host}:#{dir[:directory]}")
           rescue CommandError
@@ -957,34 +659,29 @@ $> multi_trepctl -- online -skip-seqno 5<br>")
       end
     end
     
-    if command() == "backups"
-      opt_default(:fields, "host,serviceName,backup_date,prefix,agent")
-      opt_default(:sort_by, "host,serviceName,backup_date")
-    elsif command() == "masterof"
-      opt_default(:fields, "servicename,host,uri")
-      opt_default(:sort_by, "servicename")
-    elsif command() == "position"
-      opt_default(:fields, "host,serviceName,directory,seqno,epoch_number,eventid,applied_latency")
-    elsif command() == "run"
-      opt_default(:fields, "host,serviceName,output")
+    if opt(:fields) == nil
+      if command() == "backups"
+      elsif command() == "db"
+      elsif command() == "masterof"
+      elsif command() == "sql"
+      elsif command() == "run"
+        opt(:fields, "host,serviceName,output")
+      else
+        opt(:fields, "host,serviceName,role,state,appliedLastSeqno,appliedLatency")
+      end
     end
-    opt_default(:fields, "host,serviceName,role,state,appliedLastSeqno,appliedLatency")
-    opt_default(:sort_by, opt(:fields))
     
     opt(:fields, opt(:fields).downcase())
     opt(:sort_by, opt(:sort_by).downcase())
     
-    if command() == "heartbeat"
-      @command = "run"
-      opt(:limit_roles, "master")
-      
-      @trepctl_command_parts = ["heartbeat"]
-      
-      fields = opt(:fields).split(",")
-      unless fields.include?("commandmessage") || fields.include?("output")
-        fields << "output"
-        opt(:fields, fields.join(","))
-      end
+    if command() == "backups"
+      raise "The backups command has not been implemented"
+    elsif command() == "db"
+      raise "The db command has not been implemented"
+    elsif command() == "masterof"
+      raise "The masterof command has not been implemented"
+    elsif command() == "sql"
+      raise "The sql command has not been implemented"
     elsif command() == "run"
       @trepctl_command_parts = TU.remaining_arguments() + TU.extra_arguments()
       
@@ -993,10 +690,13 @@ $> multi_trepctl -- online -skip-seqno 5<br>")
         fields << "output"
         opt(:fields, fields.join(","))
       end
+    elsif command() == "list"
     end
     
     if opt(:format) == nil
-      if command() == "db"
+      if command() == "backups"
+      elsif command() == "db"
+      elsif command() == "masterof"
       elsif command() == "sql"
       elsif command() == "run"
         opt(:format, "yaml")
@@ -1025,14 +725,6 @@ $> multi_trepctl -- online -skip-seqno 5<br>")
       @column_formats[src] = format
     end
     @column_formats[src]
-  end
-  
-  def require_running_replicator?
-    if command() == "position"
-      false
-    else
-      true
-    end
   end
   
   def require_command?

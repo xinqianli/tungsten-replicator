@@ -39,7 +39,7 @@ replicator.autoRecoveryDelayInterval=@{REPL_AUTO_RECOVERY_DELAY_INTERVAL}
 # this amount of time, reset the count of auto-recovery attempts.  This value
 # may need to be large for services that commit large blocks as apply errors
 # may take a while to show up after going online again.
-replicator.autoRecoveryResetInterval=@{REPL_AUTO_RECOVERY_RESET_INTERVAL}
+replicator.autoRecoveryResetInterval=@{REPL_AUTO_RECOVERY_DELAY_INTERVAL}
 
 # Source ID.  Identifies the replication event source.  It must be 
 # unique for each replicator node and normally is the host name.
@@ -73,7 +73,7 @@ replicator.backup.agents=@{APPLIER.REPL_DBBACKUPAGENTS}
 # Default backup agent.
 replicator.backup.default=@{REPL_BACKUP_METHOD}
 
-@{includeAll(REPL_SVC_BACKUP_CONFIG)}
+@{REPL_SVC_BACKUP_CONFIG}
 
 # List of configured storage agents.  Uncomment appropriately for your site. 
 #replicator.storage.agents=fs

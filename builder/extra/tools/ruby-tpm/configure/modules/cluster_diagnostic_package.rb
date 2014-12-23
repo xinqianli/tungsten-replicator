@@ -57,7 +57,7 @@ module ClusterDiagnosticPackage
       end
     end
   end
-  
+
   def commit
     super()
     
@@ -76,27 +76,29 @@ module ClusterDiagnosticPackage
     get_deployment_configurations().each{
       |config|
       build_topologies(config)
-      c_key = config.getProperty(DEPLOYMENT_CONFIGURATION_KEY)
+      
       h_alias = config.getProperty(DEPLOYMENT_HOST)
-
       FileUtils.mkdir_p("#{diag_dir}/#{h_alias}")
       FileUtils.mkdir_p("#{diag_dir}/#{h_alias}/os_info")
       FileUtils.mkdir_p("#{diag_dir}/#{h_alias}/conf")
-      
-      write_file("#{diag_dir}/#{h_alias}/manifest.json",@promotion_settings.getProperty([c_key, "manifest"]))
-      write_file("#{diag_dir}/#{h_alias}/tpm.txt",@promotion_settings.getProperty([c_key, "tpm_reverse"]))
-      write_file("#{diag_dir}/#{h_alias}/tpm_diff.txt",@promotion_settings.getProperty([c_key, "tpm_diff"]))
+
+      write_file("#{diag_dir}/#{h_alias}/manifest.json",@promotion_settings.getProperty([h_alias, "manifest"]))
+      write_file("#{diag_dir}/#{h_alias}/tpm.txt",@promotion_settings.getProperty([h_alias, "tpm_reverse"]))
+      write_file("#{diag_dir}/#{h_alias}/tpm_diff.txt",@promotion_settings.getProperty([h_alias, "tpm_diff"]))
 
       get_log(config,"/etc/hosts", "#{diag_dir}/#{h_alias}/os_info/etc_hosts.txt")
       get_log(config, "/etc/system-release", "#{diag_dir}/#{h_alias}/os_info/system-release.txt")
 
       #Run a lsb_release -a  if it's available in the path
       write_file("#{diag_dir}/#{h_alias}/os_info/lsb_release.txt",run_command(config,"lsb_release -a"))
-
-      if @promotion_settings.getProperty([c_key, REPLICATOR_ENABLED]) == "true"
-
       
-        write_file("#{diag_dir}/#{h_alias}/trepctl.json", @promotion_settings.getProperty([c_key, "replicator_json_status"]))
+      if @promotion_settings.getProperty([h_alias, REPLICATOR_ENABLED]) == "true"
+        if @promotion_settings.getProperty([h_alias, MANAGER_ENABLED]) == "true"
+          write_file("#{diag_dir}/#{h_alias}/cctrl.txt",@promotion_settings.getProperty([h_alias, "cctrl_status"]))
+          write_file("#{diag_dir}/#{h_alias}/cctrl_simple.txt",@promotion_settings.getProperty([h_alias, "cctrl_status_simple"]))
+        end
+
+        write_file("#{diag_dir}/#{h_alias}/trepctl.json", @promotion_settings.getProperty([h_alias, "replicator_json_status"]))
         
         out = File.open("#{diag_dir}/#{h_alias}/trepctl.txt", "w")
         config.getPropertyOr([REPL_SERVICES], {}).keys().sort().each{
@@ -104,7 +106,7 @@ module ClusterDiagnosticPackage
           if rs_alias == DEFAULTS
             next
           end
-          out.puts(@promotion_settings.getProperty([c_key, "replicator_status_#{rs_alias}"]))
+          out.puts(@promotion_settings.getProperty([h_alias, "replicator_status_#{rs_alias}"]))
         }
         out.close
       
@@ -114,24 +116,19 @@ module ClusterDiagnosticPackage
           if rs_alias == DEFAULTS
             next
           end
-          out.puts(@promotion_settings.getProperty([c_key, "thl_info_#{rs_alias}"]))
+          out.puts(@promotion_settings.getProperty([h_alias, "thl_info_#{rs_alias}"]))
         }
         out.close
 
-        out = File.open("#{diag_dir}/#{h_alias}/thl_index.txt", "w")
-        config.getPropertyOr([REPL_SERVICES], {}).keys().sort().each{
-            |rs_alias|
-          if rs_alias == DEFAULTS
-            next
-          end
-          out.puts(@promotion_settings.getProperty([c_key, "thl_index_#{rs_alias}"]))
-        }
-        out.close
-        
-        get_log(config,"#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/log/trepsvc.log","#{diag_dir}/#{h_alias}/trepsvc.log")
+        get_log(config,"#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/log/trepsvc.log","#{diag_dir}/#{h_alias}/trepsvc.log.tmp")
         get_log(config,"#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/log/xtrabackup.log", "#{diag_dir}/#{h_alias}/xtrabackup.log")
         get_log(config,"#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/log/mysqldump.log", "#{diag_dir}/#{h_alias}/mysqldump.log")
         get_log(config,"#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/log/script.log","#{diag_dir}/#{h_alias}/script.log")
+        get_log(config,"/home/#{config.getProperty(USERID)}/.cctrl_history","#{diag_dir}/#{h_alias}/cctrl_history.txt")
+        
+        if @promotion_settings.getProperty([h_alias, MANAGER_ENABLED]) == "true"
+          get_log(config,"#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-manager/log/tmsvc.log", "#{diag_dir}/#{h_alias}/tmsvc.log")
+        end
 
         #Get Replicator Static/Dynamic properties from each host
         config.getPropertyOr([REPL_SERVICES], {}).keys().sort().each{
@@ -148,15 +145,6 @@ module ClusterDiagnosticPackage
           write_file(fileName,run_command(config,command))
         }
 
-        if @promotion_settings.getProperty([c_key, MANAGER_ENABLED]) == "true"
-          get_log(config,"#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-manager/log/tmsvc.log", "#{diag_dir}/#{h_alias}/tmsvc.log")
-          write_file("#{diag_dir}/#{h_alias}/cctrl.txt",@promotion_settings.getProperty([c_key, "cctrl_status"]))
-          write_file("#{diag_dir}/#{h_alias}/cctrl_simple.txt",@promotion_settings.getProperty([c_key, "cctrl_status_simple"]))
-          write_file("#{diag_dir}/#{h_alias}/cctrl_ping.txt",@promotion_settings.getProperty([c_key, "cctrl_ping"]))
-          write_file("#{diag_dir}/#{h_alias}/cctrl_validate.txt",@promotion_settings.getProperty([c_key, "cctrl_validate"]))
-          get_log(config,"/home/#{config.getProperty(USERID)}/.cctrl_history","#{diag_dir}/#{h_alias}/cctrl_history.txt")
-        end
-
         ds=ConfigureDatabasePlatform.build([REPL_SERVICES, h_alias], config)
 
         if ds.getVendor == "mysql"
@@ -166,31 +154,29 @@ module ClusterDiagnosticPackage
           write_file("#{diag_dir}/#{h_alias}/mysql/status.txt",call_mysql(config,h_alias,ds,'show status'))
 
           #This will probably fail unless the tungsten user has access to the logfile
-          mysql_error_log = call_mysql(config,h_alias,ds,"select variable_value from information_schema.global_variables where variable_name='log_error'")
-          get_log(config, mysql_error_log,"#{diag_dir}/#{h_alias}/mysql/mysql_error.log")
-          # If it does fail we'll try another way
-          unless File.exist?("#{diag_dir}/#{h_alias}/mysql/mysql_error.log")
-            mysql_error_log_output=ssh_result("sudo -n cat #{mysql_error_log}|tail -n 1000", config.getProperty(HOST), config.getProperty(USERID))
-            write_file("#{diag_dir}/#{h_alias}/mysql/mysql_error.log", mysql_error_log_output)
-          end
+          get_log(config,
+                  call_mysql(config,h_alias,ds,"select variable_value from information_schema.global_variables where variable_name='log_error'"),
+                  "#{diag_dir}/#{h_alias}/mysql/mysql_error.log")
         end
+
       end
       
-      if @promotion_settings.getProperty([c_key, CONNECTOR_ENABLED]) == "true"
+      if @promotion_settings.getProperty([h_alias, CONNECTOR_ENABLED]) == "true"
         get_log(config,"#{config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/log/connector.log", "#{diag_dir}/#{h_alias}/connector.log" )
       end
 
+
       begin
-        df_output=ssh_result("df -hP| grep -v Filesystem", config.getProperty(HOST), config.getProperty(USERID)).split("\n")
-        out = File.open("#{diag_dir}/#{h_alias}/os_info/df.txt", "w")
-        df_output.each {|partition|
-          out.puts(partition)
-          partition_a=partition.split(" ")
-          if partition_a[4] == '100%'
-           error ("Partition #{partition_a[0]} on #{config.getProperty(HOST)} is full - Check and free disk space if required")
-          end
-        }
-        out.close
+      df_output=ssh_result("df -hP| grep -v Filesystem", config.getProperty(HOST), config.getProperty(USERID)).split("\n")
+      out = File.open("#{diag_dir}/#{h_alias}/os_info/df.txt", "w")
+      df_output.each {|partition|
+        out.puts(partition)
+        partition_a=partition.split(" ")
+        if partition_a[4] == '100%'
+         error ("Partition #{partition_a[0]} on #{config.getProperty(HOST)} is full - Check and free disk space if required")
+        end
+      }
+      out.close
       rescue CommandError => ce
         exception(ce)
       rescue MessageError => me
@@ -202,7 +188,6 @@ module ClusterDiagnosticPackage
       write_file("#{diag_dir}/#{h_alias}/os_info/free.txt",run_command(config,"free -m") )
       write_file("#{diag_dir}/#{h_alias}/os_info/java_info.txt",run_command(config,"java -version 2>&1") )
       write_file("#{diag_dir}/#{h_alias}/os_info/ruby_info.txt",run_command(config,"ruby -v") )
-      write_file("#{diag_dir}/#{h_alias}/os_info/uptime.txt",run_command(config,"uptime") )
 
     }
     
@@ -273,8 +258,6 @@ class ClusterDiagnosticCheck < ConfigureValidationCheck
         cmd_result("echo 'physical;*/*/router/RouterManager/diag' | #{cctrl_cmd} -expert", true)
         output_property("cctrl_status", cmd_result("echo 'ls -l' | #{cctrl_cmd} -expert", true))
         output_property("cctrl_status_simple", cmd_result("echo 'ls ' | #{cctrl_cmd} -expert", true))
-        output_property("cctrl_ping", cmd_result("echo 'ping ' | #{cctrl_cmd} -expert", true))
-        output_property("cctrl_validate", cmd_result("echo 'cluster validate ' | #{cctrl_cmd} -expert", true))
       end
       
       if c.svc_is_running?(c.get_svc_path("replicator", c.get_base_path()))

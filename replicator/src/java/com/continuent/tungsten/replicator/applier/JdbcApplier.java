@@ -25,6 +25,7 @@ package com.continuent.tungsten.replicator.applier;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -50,14 +51,12 @@ import com.continuent.tungsten.replicator.consistency.ConsistencyException;
 import com.continuent.tungsten.replicator.consistency.ConsistencyTable;
 import com.continuent.tungsten.replicator.database.Column;
 import com.continuent.tungsten.replicator.database.Database;
+import com.continuent.tungsten.replicator.database.DatabaseFactory;
 import com.continuent.tungsten.replicator.database.MySQLOperationMatcher;
 import com.continuent.tungsten.replicator.database.SqlOperation;
 import com.continuent.tungsten.replicator.database.SqlOperationMatcher;
 import com.continuent.tungsten.replicator.database.Table;
 import com.continuent.tungsten.replicator.database.TableMetadataCache;
-import com.continuent.tungsten.replicator.datasource.CommitSeqno;
-import com.continuent.tungsten.replicator.datasource.CommitSeqnoAccessor;
-import com.continuent.tungsten.replicator.datasource.UniversalDataSource;
 import com.continuent.tungsten.replicator.dbms.DBMSData;
 import com.continuent.tungsten.replicator.dbms.LoadDataFileDelete;
 import com.continuent.tungsten.replicator.dbms.LoadDataFileFragment;
@@ -76,6 +75,7 @@ import com.continuent.tungsten.replicator.event.ReplOption;
 import com.continuent.tungsten.replicator.event.ReplOptionParams;
 import com.continuent.tungsten.replicator.heartbeat.HeartbeatTable;
 import com.continuent.tungsten.replicator.plugin.PluginContext;
+import com.continuent.tungsten.replicator.thl.CommitSeqnoTable;
 import com.continuent.tungsten.replicator.thl.THLManagerCtrl;
 
 /**
@@ -92,18 +92,20 @@ public class JdbcApplier implements RawApplier
 
     protected int                     taskId                     = 0;
     protected ReplicatorRuntime       runtime                    = null;
-    protected String                  dataSource                 = null;
+    protected String                  driver                     = null;
+    protected String                  url                        = null;
+    protected String                  user                       = "root";
+    protected String                  password                   = "rootpass";
     protected String                  ignoreSessionVars          = null;
 
     protected String                  metadataSchema             = null;
     protected String                  consistencyTable           = null;
     protected String                  consistencySelect          = null;
+    protected Database                conn                       = null;
     protected Statement               statement                  = null;
     protected Pattern                 ignoreSessionPattern       = null;
 
-    protected Database                conn                       = null;
-    protected CommitSeqno             commitSeqno                = null;
-    protected CommitSeqnoAccessor     commitSeqnoAccessor        = null;
+    protected CommitSeqnoTable        commitSeqnoTable           = null;
     protected HeartbeatTable          heartbeatTable             = null;
 
     protected String                  lastSessionId              = "";
@@ -120,7 +122,8 @@ public class JdbcApplier implements RawApplier
 
     /**
      * Maximum length of SQL string to log in case of an error. This is needed
-     * because some statements may be very large.
+     * because some statements may be very large. TODO: make this configurable
+     * via replicator.properties
      */
     protected int                     maxSQLLogLength            = 5000;
 
@@ -136,11 +139,10 @@ public class JdbcApplier implements RawApplier
 
     // SQL parser.
     SqlOperationMatcher               sqlMatcher                 = new MySQLOperationMatcher();
+
     private boolean                   getColumnInformationFromDB = true;
 
-    // Indicates whether ROW events should be optimized (grouping inserts or
-    // deletes) -- only supported by MySQL appliers for now
-    protected boolean                 optimizeRowEvents          = false;
+    private String                    initScript                 = null;
 
     // Generic formatter for date-time values. This can safely be set without a
     // time zone, as it will pick up the default replicator time zone.
@@ -149,16 +151,6 @@ public class JdbcApplier implements RawApplier
 
     private String                    setTimestampQuery          = "";
     private boolean                   applyTS                    = false;
-
-    /**
-     * Sets the optimizeRowEvents value.
-     * 
-     * @param optimizeRowEvents The optimizeRowEvents to set.
-     */
-    public void setOptimizeRowEvents(boolean optimizeRowEvents)
-    {
-        this.optimizeRowEvents = optimizeRowEvents;
-    }
 
     /**
      * {@inheritDoc}
@@ -172,14 +164,29 @@ public class JdbcApplier implements RawApplier
             logger.debug("Set task id: id=" + taskId);
     }
 
+    public void setDriver(String driver)
+    {
+        this.driver = driver;
+    }
+
     public Database getDatabase()
     {
         return conn;
     }
 
-    public void setDataSource(String dataSource)
+    public void setUrl(String url)
     {
-        this.dataSource = dataSource;
+        this.url = url;
+    }
+
+    public void setUser(String user)
+    {
+        this.user = user;
+    }
+
+    public void setPassword(String password)
+    {
+        this.password = password;
     }
 
     public void setIgnoreSessionVars(String ignoreSessionVars)
@@ -190,6 +197,11 @@ public class JdbcApplier implements RawApplier
     public void setGetColumnMetadataFromDB(boolean getColumnInformationFromDB)
     {
         this.getColumnInformationFromDB = getColumnInformationFromDB;
+    }
+
+    public void setInitScript(String file)
+    {
+        this.initScript = file;
     }
 
     /**
@@ -423,9 +435,54 @@ public class JdbcApplier implements RawApplier
     protected int fillColumnNames(OneRowChange data) throws SQLException,
             ApplierException
     {
-        Table t;
+        Table t = tableMetadataCache.retrieve(data.getSchemaName(),
+                data.getTableName());
+        if (t == null)
+        {
+            // Not yet in cache
+            t = new Table(data.getSchemaName(), data.getTableName());
+            DatabaseMetaData meta = conn.getDatabaseMetaData();
+            ResultSet rs = null;
 
-        t = getTableMetadata(data);
+            try
+            {
+                rs = conn.getColumnsResultSet(meta, data.getSchemaName(),
+                        data.getTableName());
+                if (rs.next())
+                {
+                    do
+                    {
+                        String columnName = rs.getString("COLUMN_NAME");
+                        int columnIdx = rs.getInt("ORDINAL_POSITION");
+
+                        Column column = addColumn(rs, columnName);
+                        column.setPosition(columnIdx);
+                        t.AddColumn(column);
+                    }
+                    while (rs.next());
+                    tableMetadataCache.store(t);
+                }
+                else
+                {
+                    // Empty resultset, i.e. table not found in database : it
+                    // won't be possible to generate a correct statement for
+                    // this row update
+                    throw new ApplierException(
+                            "Table "
+                                    + data.getSchemaName()
+                                    + "."
+                                    + data.getTableName()
+                                    + " not found in database. Unable to generate a valid statement.");
+                }
+            }
+            finally
+            {
+                if (rs != null)
+                {
+                    rs.close();
+                }
+            }
+        }
 
         // Set column names.
         for (Column column : t.getAllColumns())
@@ -484,42 +541,17 @@ public class JdbcApplier implements RawApplier
     }
 
     /**
-     * Returns metadata for table concerned by the ROW event, either from the
-     * cache or by reading it from database
+     * Returns a new column definition.
      * 
-     * @param data ROW event which is being applied
-     * @return the table metadata, as a Table object
-     * @throws SQLException
-     * @throws ApplierException
+     * @param rs Metadata resultset
+     * @param columnName Name of the column to be added
+     * @return the column definition
+     * @throws SQLException if an error occurs
      */
-    protected Table getTableMetadata(OneRowChange data) throws SQLException,
-            ApplierException
+    protected Column addColumn(ResultSet rs, String columnName)
+            throws SQLException
     {
-        Table t;
-        t = tableMetadataCache.retrieve(data.getSchemaName(),
-                data.getTableName());
-        if (t == null)
-        {
-            if (logger.isDebugEnabled())
-                logger.debug("Table " + data.getSchemaName() + " "
-                        + data.getTableName() + " not found in cache");
-            // Not yet in cache
-            t = conn.findTable(data.getSchemaName(), data.getTableName(), false);
-
-            if (t == null)
-                // Empty resultset, i.e. table not found in database : it
-                // won't be possible to generate a correct statement for
-                // this row update
-                throw new ApplierException(
-                        "Table "
-                                + data.getSchemaName()
-                                + "."
-                                + data.getTableName()
-                                + " not found in database. Unable to generate a valid statement.");
-
-            tableMetadataCache.store(t);
-        }
-        return t;
+        return new Column(columnName, rs.getInt("DATA_TYPE"));
     }
 
     protected int bindColumnValues(PreparedStatement prepStatement,
@@ -699,7 +731,6 @@ public class JdbcApplier implements RawApplier
      * connection options, if needed and if possible (if the database support
      * such a feature)
      * 
-     * @param batchOptions null for RBR, list of option to batch for SBR
      * @param options
      * @return true if any option changed
      * @throws SQLException
@@ -970,8 +1001,22 @@ public class JdbcApplier implements RawApplier
     {
         PreparedStatement prepStatement = null;
 
-        getColumnInfomation(oneRowChange);
-
+        try
+        {
+            if (getColumnInformationFromDB)
+            {
+                int colCount = fillColumnNames(oneRowChange);
+                if (colCount <= 0)
+                    logger.warn("No column information found for table (perhaps table is missing?): "
+                            + oneRowChange.getSchemaName()
+                            + "."
+                            + oneRowChange.getTableName());
+            }
+        }
+        catch (SQLException e1)
+        {
+            logger.error("column name information could not be retrieved");
+        }
         StringBuffer stmt = null;
 
         ArrayList<OneRowChange.ColumnSpec> key = oneRowChange.getKeySpec();
@@ -1086,37 +1131,12 @@ public class JdbcApplier implements RawApplier
         }
     }
 
-    /**
-     * Gets column information (name, etc) from database depending on the
-     * getColumnMetadataFromDB setting
-     * 
-     * @param oneRowChange
-     * @throws ApplierException
-     */
-    protected void getColumnInfomation(OneRowChange oneRowChange)
-            throws ApplierException
-    {
-        try
-        {
-            if (getColumnInformationFromDB)
-            {
-                int colCount = fillColumnNames(oneRowChange);
-                if (colCount <= 0)
-                    logger.warn("No column information found for table (perhaps table is missing?): "
-                            + oneRowChange.getSchemaName()
-                            + "."
-                            + oneRowChange.getTableName());
-            }
-        }
-        catch (SQLException e1)
-        {
-            logger.error("column name information could not be retrieved");
-        }
-    }
-
     private String logFailedRowChangeSQL(StringBuffer stmt,
             OneRowChange oneRowChange, int row)
     {
+        // TODO: use THLManagerCtrl for logging exact failing SQL after
+        // branch thl_meta is merged into HEAD. Now this duplicates
+        // functionality.
         try
         {
             ArrayList<OneRowChange.ColumnSpec> keys = oneRowChange.getKeySpec();
@@ -1151,10 +1171,14 @@ public class JdbcApplier implements RawApplier
      * 
      * @see #maxSQLLogLength
      * @param stmt SQL template for PreparedStatement
+     * @return
      */
-    protected String logFailedRowChangeSQL(StringBuffer stmt,
+    private String logFailedRowChangeSQL(StringBuffer stmt,
             OneRowChange oneRowChange)
     {
+        // TODO: use THLManagerCtrl for logging exact failing SQL after
+        // branch thl_meta is merged into HEAD. Now this duplicates
+        // functionality.
         try
         {
             ArrayList<OneRowChange.ColumnSpec> keys = oneRowChange.getKeySpec();
@@ -1281,7 +1305,7 @@ public class JdbcApplier implements RawApplier
      */
     public void apply(DBMSEvent event, ReplDBMSHeader header, boolean doCommit,
             boolean doRollback) throws ReplicatorException,
-            ConsistencyException, InterruptedException
+            ConsistencyException
     {
         boolean transactionCommitted = false;
         boolean consistencyCheckFailure = false;
@@ -1679,16 +1703,13 @@ public class JdbcApplier implements RawApplier
     }
 
     private void updateCommitSeqno(ReplDBMSHeader header, long appliedLatency)
-            throws ReplicatorException, InterruptedException
+            throws SQLException
     {
-        if (commitSeqnoAccessor == null)
+        if (commitSeqnoTable == null)
             return;
-        else
-        {
-            if (logger.isDebugEnabled())
-                logger.debug("Updating commit seqno to " + header.getSeqno());
-            commitSeqnoAccessor.updateLastCommitSeqno(header, appliedLatency);
-        }
+        if (logger.isDebugEnabled())
+            logger.debug("Updating commit seqno to " + header.getSeqno());
+        commitSeqnoTable.updateLastCommitSeqno(taskId, header, appliedLatency);
     }
 
     /**
@@ -1696,13 +1717,19 @@ public class JdbcApplier implements RawApplier
      * 
      * @see com.continuent.tungsten.replicator.applier.RawApplier#getLastEvent()
      */
-    public ReplDBMSHeader getLastEvent() throws ReplicatorException,
-            InterruptedException
+    public ReplDBMSHeader getLastEvent() throws ReplicatorException
     {
-        if (commitSeqnoAccessor == null)
+        if (commitSeqnoTable == null)
             return null;
-        else
-            return commitSeqnoAccessor.lastCommitSeqno();
+
+        try
+        {
+            return commitSeqnoTable.lastCommitSeqno(taskId);
+        }
+        catch (SQLException e)
+        {
+            throw new ApplierException(e);
+        }
     }
 
     /**
@@ -1769,33 +1796,35 @@ public class JdbcApplier implements RawApplier
      * 
      * @see com.continuent.tungsten.replicator.plugin.ReplicatorPlugin#prepare(com.continuent.tungsten.replicator.plugin.PluginContext)
      */
-    public void prepare(PluginContext context) throws ReplicatorException,
-            InterruptedException
+    public void prepare(PluginContext context) throws ReplicatorException
     {
         try
         {
-            // Establish a connection to the data source.
-            logger.info("Connecting to data source");
-            UniversalDataSource dataSourceImpl = context
-                    .getDataSource(dataSource);
-            if (dataSourceImpl == null)
+            // Load driver if provided.
+            if (driver != null)
             {
-                throw new ReplicatorException(
-                        "Unable to locate data source: name=" + dataSource);
+                try
+                {
+                    Class.forName(driver);
+                }
+                catch (Exception e)
+                {
+                    throw new ReplicatorException("Unable to load driver: "
+                            + driver, e);
+                }
             }
 
-            // Create a connection, suppressing logging if desired.
-            conn = (Database) dataSourceImpl.getConnection();
-            if (context.isPrivilegedSlave() && !context.logReplicatorUpdates())
+            // Create the database. Note that we need to see if we have a
+            // privileged account as some slaves like Amazon RDS do not allow
+            // superuser.
+            if (!context.isPrivilegedSlaveUpdate())
             {
-                logger.info("Suppressing logging on privileged slave");
-                conn.setPrivileged(true);
-                conn.setLogged(false);
+                logger.info("Assuming non-privileged JDBC login for apply");
             }
-
-            // Create accessor that can update the trep_commit_seqno table.
-            commitSeqno = dataSourceImpl.getCommitSeqno();
-            commitSeqnoAccessor = commitSeqno.createAccessor(taskId, conn);
+            conn = DatabaseFactory.createDatabase(url, user, password,
+                    context.isPrivilegedSlaveUpdate());
+            conn.setInitScript(initScript);
+            conn.connect(false);
             statement = conn.createStatement();
 
             // Enable binlogs at session level if this is supported and we are
@@ -1831,15 +1860,25 @@ public class JdbcApplier implements RawApplier
             heartbeatTable = new HeartbeatTable(
                     context.getReplicatorSchemaName(),
                     runtime.getTungstenTableType());
+            heartbeatTable.initializeHeartbeatTable(conn);
 
-            // Fetch the last processed event.
-            lastProcessedEvent = commitSeqnoAccessor.lastCommitSeqno();
+            // Create consistency table
+            Table consistency = ConsistencyTable
+                    .getConsistencyTableDefinition(metadataSchema);
+            conn.createTable(consistency, false);
+
+            // Set up commit seqno table and fetch the last processed event.
+            commitSeqnoTable = new CommitSeqnoTable(conn,
+                    context.getReplicatorSchemaName(),
+                    runtime.getTungstenTableType(), false);
+            commitSeqnoTable.prepare(taskId);
+            lastProcessedEvent = commitSeqnoTable.lastCommitSeqno(taskId);
+
         }
         catch (SQLException e)
         {
-            String message = String
-                    .format("Unable to initialize applier: data source="
-                            + dataSource);
+            String message = String.format("Failed using url=%s, user=%s", url,
+                    user);
             throw new ReplicatorException(message, e);
         }
     }
@@ -1867,13 +1906,12 @@ public class JdbcApplier implements RawApplier
      * 
      * @see com.continuent.tungsten.replicator.plugin.ReplicatorPlugin#release(com.continuent.tungsten.replicator.plugin.PluginContext)
      */
-    public void release(PluginContext context) throws ReplicatorException,
-            InterruptedException
+    public void release(PluginContext context) throws ReplicatorException
     {
-        if (commitSeqno != null)
+        if (commitSeqnoTable != null)
         {
-            commitSeqno.release();
-            commitSeqnoAccessor = null;
+            commitSeqnoTable.release();
+            commitSeqnoTable = null;
         }
 
         currentOptions = null;

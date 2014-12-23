@@ -28,9 +28,6 @@ module TungstenScript
     # Does this script required to run against an installed Tungsten directory
     @require_installed_directory = true
     
-    # Should unparsed arguments cause an error
-    @allow_unparsed_arguments = false
-    
     # Definition of each command that this script will support
     @command_definitions = {}
     
@@ -46,9 +43,6 @@ module TungstenScript
     
     # The collected option values from the script input
     @options = {}
-    
-    # Parameters loaded from INI files to be parsed
-    @ini_parameters = []
     
     TU.debug("Begin #{$0} #{ARGV.join(' ')}")
     
@@ -66,11 +60,8 @@ module TungstenScript
         cleanup(0)
       end
       
-      # Load parameters from the available INI files
-      load_ini_files()
-      # Parse parameters loaded from the INI files and on command line
       parse_options()
-      
+    
       if @options[:autocomplete] == true
         display_autocomplete()
         cleanup(0)
@@ -142,15 +133,6 @@ module TungstenScript
     return @options[option_key]
   end
   
-  # Set the value for option_key if it has not been set
-  def opt_default(option_key, default_value)
-    if opt(option_key) == nil
-      opt(option_key, default_value)
-    end
-    
-    opt(option_key)
-  end
-  
   def add_command(command_key, definition)
     begin
       command_key = command_key.to_sym()
@@ -209,75 +191,6 @@ module TungstenScript
     end
     
     @option_definitions[option_key][:default] = default
-  end
-  
-  def load_ini_files
-    # If there is no script name then we cannot load INI files
-    if script_name().to_s() == ""
-      return
-    end
-    
-    # Calculate the INI section name to use
-    section_names = [script_name()]
-    matches = script_name().to_s().match("tungsten_(.*)")
-    if matches && matches.size() > 0
-      script_ini_file = "#{matches[1]}.ini"
-      section_names << matches[1]
-    else
-      script_ini_file = File.basename(script_name(), File.extname(script_name())) + ".ini"
-      section_names << File.basename(script_name(), File.extname(script_name()))
-    end
-    
-    load_ini_parameters("/etc/tungsten/scripts.ini", 
-      section_names)
-    
-    if script_ini_file != nil
-      load_ini_parameters("/etc/tungsten/#{script_ini_file}", 
-        ["__anonymous__"] + section_names)
-    end
-    
-    # Add these arguments to the beginging of the TungstenUtil stack
-    # When the script processes command line options it will read these 
-    # and then be overwritten by and command line options.
-    TU.remaining_arguments = @ini_parameters + TU.remaining_arguments
-  end
-  
-  # Convert the parsed INI contents into the command line argument style
-  def load_ini_parameters(file, section_name)
-    unless File.exists?(file)
-      return
-    end
-    
-    unless section_name.is_a?(Array)
-      section_name = [section_name]
-    end
-    section_name.delete_if{|n| n.to_s() == ""}
-    
-    if section_name.size() == 0
-      return
-    end
-    
-    parameters = TU.parse_ini_file(file, false)
-    section_name.each{
-      |section|
-      if section.to_s() == ""
-        next
-      end
-      
-      unless parameters.has_key?(section)
-        next
-      end
-      
-      parameters[section].each{
-        |line|
-        # Single character parameters get a single dash
-        if line.length() == 1
-          @ini_parameters << "-#{line}"
-        else
-          @ini_parameters << "--#{line}"
-        end
-      }
-    }
   end
   
   def parse_options
@@ -356,26 +269,9 @@ module TungstenScript
       end
     end
     
-    unless allow_unparsed_arguments?()
-      unless TU.remaining_arguments.size == 0
-        TU.error("Unable to parse the following arguments: #{TU.remaining_arguments.join(' ')}")
-      end
-    end
-    
     if require_command?() && @command_definitions.size() > 0 && @command == nil
       TU.error("A command was not given for this script. Valid commands are #{@command_definitions.keys().join(', ')} and must be the first argument.")
     end
-    
-    @option_definitions.each{
-      |option_key,definition|
-      
-      if definition[:required] == true
-        if opt(option_key).to_s() == ""
-          arg = definition[:on][0].split(" ")[0]
-          TU.error("Missing value for the #{arg} option")
-        end
-      end
-    }
   end
   
   def script_name
@@ -477,14 +373,6 @@ module TungstenScript
     @require_installed_directory
   end
   
-  def allow_unparsed_arguments?(v = nil)
-    if (v != nil)
-      @allow_unparsed_arguments = v
-    end
-    
-    @allow_unparsed_arguments
-  end
-  
   def require_command?
     true
   end
@@ -506,16 +394,8 @@ module TungstenScript
   end
   
   def cleanup(code = 0)
-    if code != 0
-      log_path = TU.log().path()
-      if log_path.to_s() != "" && File.exist?(log_path)
-        TU.notice("See #{script_log_path()} for more information")
-      end
-    end
-    
     TU.debug("Finish #{$0} #{ARGV.join(' ')}")
     TU.debug("RC: #{code}")
-    
     TU.exit(code)
   end
   
@@ -535,7 +415,11 @@ module TungstenScript
   end
   
   def sudo_prefix
-    TI.sudo_prefix()
+    if ENV['USER'] == "root" || TI.setting("root_command_prefix") != "true"
+      return ""
+    else
+      return "sudo -n "
+    end
   end
 end
 

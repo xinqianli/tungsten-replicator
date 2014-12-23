@@ -143,14 +143,19 @@ public class ConsistencyCheckFilter implements Filter
         {
             StatementData stmt = (StatementData) dataArray
                     .get(dataArray.size() - 1);
+            // TODO: make a better detection of update to
+            // consistency table.
 
             /**
              * Now checking if getQueryAsBytes is null instead of getQuery not
              * null. This avoids unexpected data conversion (getQuery converts
              * the byte representation if any into a string, which can lead to a
              * lot of memory usage ). <BR>
+             * if (stmt.getQuery() != null)
              */
             if (stmt.getQueryAsBytes() == null)
+                // TODO : Probably a good idea to perform a substring search,
+                // maybe in the first 200 characters as next case
                 consistencyCheck = stmt.getQuery().contains(consistencyTable);
             else
             {

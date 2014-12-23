@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2008 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -45,6 +45,7 @@ public class ConsistencyException extends ReplicatorException
     public ConsistencyException()
     {
         super();
+        // TODO Auto-generated constructor stub
     }
 
     /**
@@ -55,6 +56,7 @@ public class ConsistencyException extends ReplicatorException
     public ConsistencyException(String arg0)
     {
         super(arg0);
+        // TODO Auto-generated constructor stub
     }
 
     /**
@@ -65,6 +67,7 @@ public class ConsistencyException extends ReplicatorException
     public ConsistencyException(Throwable arg0)
     {
         super(arg0);
+        // TODO Auto-generated constructor stub
     }
 
     /**
@@ -76,6 +79,7 @@ public class ConsistencyException extends ReplicatorException
     public ConsistencyException(String arg0, Throwable arg1)
     {
         super(arg0, arg1);
+        // TODO Auto-generated constructor stub
     }
 
 }

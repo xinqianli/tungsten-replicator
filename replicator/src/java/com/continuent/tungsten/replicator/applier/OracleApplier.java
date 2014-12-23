@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2011 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -25,6 +25,7 @@ package com.continuent.tungsten.replicator.applier;
 import java.io.Writer;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
@@ -36,16 +37,59 @@ import oracle.sql.CLOB;
 
 import org.apache.log4j.Logger;
 
+import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.database.AdditionalTypes;
+import com.continuent.tungsten.replicator.database.Column;
+import com.continuent.tungsten.replicator.database.DBMS;
+import com.continuent.tungsten.replicator.database.JdbcURL;
 import com.continuent.tungsten.replicator.datatypes.MySQLUnsignedNumeric;
 import com.continuent.tungsten.replicator.datatypes.Numeric;
 import com.continuent.tungsten.replicator.dbms.OneRowChange.ColumnSpec;
 import com.continuent.tungsten.replicator.dbms.OneRowChange.ColumnVal;
 import com.continuent.tungsten.replicator.extractor.mysql.SerialBlob;
+import com.continuent.tungsten.replicator.plugin.PluginContext;
 
 public class OracleApplier extends JdbcApplier
 {
     private static Logger logger  = Logger.getLogger(OracleApplier.class);
+
+    protected String      host    = "localhost";
+    protected int         port    = 1521;
+    protected String      service = "ORCL";
+
+    public void setHost(String host)
+    {
+        this.host = host;
+    }
+
+    public void setPort(String portAsString)
+    {
+        this.port = Integer.parseInt(portAsString);
+    }
+
+    public void setService(String service)
+    {
+        this.service = service;
+    }
+
+    /**
+     * Generate URL suitable for MySQL and then delegate remaining configuration
+     * to superclass.
+     * 
+     * @see com.continuent.tungsten.replicator.plugin.ReplicatorPlugin#configure(PluginContext
+     *      context)
+     */
+    public void configure(PluginContext context) throws ReplicatorException
+    {
+        if (url == null)
+        {
+            url = JdbcURL.generate(DBMS.ORACLE, host, port, service);
+        }
+        else
+            logger.info("Property url already set; ignoring host, port, and service properties");
+
+        super.configure(context);
+    }
 
     private CLOB getCLOB(String xmlData) throws SQLException
     {
@@ -101,14 +145,13 @@ public class OracleApplier extends JdbcApplier
         {
             if (value.getValue() == null)
                 prepStatement.setObject(bindLoc, null);
-            /*
-             * prepStatement.setNull(bindLoc, type); else if (type ==
-             * Types.FLOAT) ((OraclePreparedStatement)
-             * prepStatement).setBinaryFloat( bindLoc, ((Float)
-             * value.getValue()).floatValue()); else if (type == Types.DOUBLE)
-             * ((OraclePreparedStatement) prepStatement).setBinaryDouble(
-             * bindLoc, ((Double) value.getValue()).doubleValue());
-             */
+                /*prepStatement.setNull(bindLoc, type);
+            else if (type == Types.FLOAT)
+                ((OraclePreparedStatement) prepStatement).setBinaryFloat(
+                        bindLoc, ((Float) value.getValue()).floatValue());
+            else if (type == Types.DOUBLE)
+                ((OraclePreparedStatement) prepStatement).setBinaryDouble(
+                        bindLoc, ((Double) value.getValue()).doubleValue());*/
             else if (type == AdditionalTypes.XML)
             {
                 CLOB clob = getCLOB((String) (value.getValue()));
@@ -136,6 +179,8 @@ public class OracleApplier extends JdbcApplier
               // Blob in the incoming event masked as NULL,
               // though this happens with a non-NULL value!
               // Case targeted with this: MySQL.TEXT -> Oracle.VARCHARx
+              // TODO: investigate why isn't the column of Types.BLOB as
+              // expected (related to TENT-323?).
 
                 SerialBlob blob = (SerialBlob) value.getValue();
 
@@ -143,8 +188,8 @@ public class OracleApplier extends JdbcApplier
                 {
                     // Blob in the incoming event and in Oracle table.
                     // IMPORTANT: the bellow way only fixes INSERTs.
-                    // Blobs in key lookups of DELETEs and UPDATEs is
-                    // not supported.
+                    // TODO: implement Oracle BLOB support for key lookups (i.e.
+                    // DELETE, UPDATE).
                     prepStatement.setBytes(bindLoc,
                             blob.getBytes(1, (int) blob.length()));
                     if (logger.isDebugEnabled())
@@ -188,5 +233,16 @@ public class OracleApplier extends JdbcApplier
                     + type + ") failed:");
             throw e;
         }
+    }
+
+    @Override
+    protected Column addColumn(ResultSet rs, String columnName)
+            throws SQLException
+    {
+        Column column = super.addColumn(rs, columnName);
+        int type = column.getType();
+        column.setBlob(type == Types.BLOB || type == Types.BINARY
+                || type == Types.VARBINARY || type == Types.LONGVARBINARY);
+        return column;
     }
 }

@@ -41,8 +41,7 @@ class ConfigureDeploymentHandler
           # Transfer validation code
           debug("Transfer validation tools to #{@config.getProperty(HOST)}")
           
-          ssh_result("mkdir -p #{validation_temp_directory}/#{Configurator.instance.get_basename}; ls -al #{validation_temp_directory}; ls -al #{validation_temp_directory}/#{Configurator.instance.get_basename}", @config.getProperty(HOST), ssh_user)
-          cmd_result("rsync -aze 'ssh #{Configurator.instance.get_ssh_command_options()}' --delete --exclude='tungsten-*/' --exclude='gossiprouter' --exclude='bristlecone' #{Configurator.instance.get_base_path()}/ #{ssh_user}@#{@config.getProperty(HOST)}:#{validation_temp_directory}/#{Configurator.instance.get_basename}")
+          cmd_result("rsync -aze 'ssh #{Configurator.instance.get_ssh_command_options()}' --delete --exclude='tungsten-*' --exclude='gossiprouter' --exclude='bristlecone' #{Configurator.instance.get_base_path()}/ #{ssh_user}@#{@config.getProperty(HOST)}:#{validation_temp_directory}/#{Configurator.instance.get_basename}")
           @config.setProperty(REMOTE_PACKAGE_PATH, "#{get_validation_temp_directory()}/#{Configurator.instance.get_basename()}")
         end
         
@@ -176,7 +175,7 @@ class ConfigureDeploymentHandler
         end
         
         unless Configurator.instance.command.skip_prompts?()
-          command = Escape.shell_command(["#{@config.getProperty(REMOTE_PACKAGE_PATH)}/tools/tpm", "load-config", "--profile=#{get_validation_temp_directory()}/#{Configurator::TEMP_DEPLOY_HOST_CONFIG}", "--command-class=#{Configurator.instance.command.class.name}"] + Configurator.instance.get_remote_tpm_options()).to_s
+          command = Escape.shell_command(["#{@config.getProperty(REMOTE_PACKAGE_PATH)}/tools/tpm", "load-config", "--profile #{get_validation_temp_directory()}/#{Configurator::TEMP_DEPLOY_HOST_CONFIG}", "--command-class=#{Configurator.instance.command.class.name}"] + Configurator.instance.get_remote_tpm_options()).to_s
           result_dump = ssh_result(command, @config.getProperty(HOST), @config.getProperty(USERID), true)
 
           begin
@@ -276,14 +275,14 @@ class ConfigureDeploymentHandler
     end
   end
   
-  def deploy_config_group(config, deployment_method_class_name, deployment_method_group_id = nil)
+  def deploy_config(config, deployment_method_class_name, deployment_method_group_id = nil)
     @config.import(config)
     
     if run_locally?()
       Configurator.instance.write ""
       Configurator.instance.debug "Local deploy #{deployment_method_class_name}:#{deployment_method_group_id} methods in #{@config.getProperty(HOME_DIRECTORY)}"
       
-      result = Configurator.instance.command.get_deployment_object(config).run(deployment_method_class_name, deployment_method_group_id, @additional_properties)
+      result = Configurator.instance.command.deploy_config(config, deployment_method_class_name, deployment_method_group_id, @additional_properties)
       add_remote_result(result)
     else
       Configurator.instance.write ""
@@ -292,7 +291,7 @@ class ConfigureDeploymentHandler
       if Configurator.instance.command.use_remote_package?()
         remote_additional_properties_filename = "#{get_validation_temp_directory()}/#{ADDITIONAL_PROPERTIES_FILENAME}"
         
-        command = Escape.shell_command(["#{@config.getProperty(REMOTE_PACKAGE_PATH)}/tools/tpm", "deploy-single-config", "--profile=#{get_validation_temp_directory()}/#{Configurator::TEMP_DEPLOY_HOST_CONFIG}", "--command-class=#{Configurator.instance.command.class.name}", "--deployment-method-class=#{deployment_method_class_name}", "--run-group-id=#{deployment_method_group_id}", "--additional-properties=#{get_validation_temp_directory()}/#{ADDITIONAL_PROPERTIES_FILENAME}"] + Configurator.instance.get_remote_tpm_options()).to_s
+        command = Escape.shell_command(["#{@config.getProperty(REMOTE_PACKAGE_PATH)}/tools/tpm", "deploy-single-config", "--profile #{get_validation_temp_directory()}/#{Configurator::TEMP_DEPLOY_HOST_CONFIG}", "--command-class=#{Configurator.instance.command.class.name}", "--deployment-method-class=#{deployment_method_class_name}", "--run-group-id=#{deployment_method_group_id}", "--additional-properties=#{get_validation_temp_directory()}/#{ADDITIONAL_PROPERTIES_FILENAME}"] + Configurator.instance.get_remote_tpm_options()).to_s
       else
         remote_additional_properties_filename = "#{@config.getProperty(TEMP_DIRECTORY)}/#{ADDITIONAL_PROPERTIES_FILENAME}"
         
@@ -355,6 +354,6 @@ class ConfigureDeploymentHandler
   end
   
   def get_message_host_key
-    @config.getProperty([DEPLOYMENT_CONFIGURATION_KEY])
+    @config.getProperty(DEPLOYMENT_HOST)
   end
 end

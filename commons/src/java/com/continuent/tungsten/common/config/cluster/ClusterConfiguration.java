@@ -48,21 +48,23 @@ public class ClusterConfiguration
     /**
      * Logger
      */
-    private static Logger     logger               = Logger.getLogger(ClusterConfiguration.class);
+    private static Logger                logger               = Logger.getLogger(ClusterConfiguration.class);
 
-    public static String      clusterHomeName      = null;
+    public static String                 clusterHomeName      = null;
 
-    private String            clusterName;
+    private String                       clusterName;
 
     /**
      * The source of the properties for this configuration. getClusterHome
      */
-    public TungstenProperties props                = null;
+    public TungstenProperties            props                = null;
 
-    private File              clusterConfigDir     = null;
-    private File              clusterConfigRootDir = null;
+    private File                         clusterConfigDir     = null;
+    private File                         clusterConfigRootDir = null;
 
-    private static String     configFileNameInUse  = null;
+    private String                       configFileNameInUse  = null;
+
+    private Map<String, FileInputStream> loadStreamMap        = new HashMap<String, FileInputStream>();
 
     public ClusterConfiguration(String clusterName)
     {
@@ -194,13 +196,13 @@ public class ClusterConfiguration
                         resourceFile.close();
                         resourceFile = null;
                     }
-
+                    
                     if (byteStream != null)
                     {
                         byteStream.close();
                         byteStream = null;
                     }
-
+                    
                 }
 
                 if (resourceProps.getString("name") == null)
@@ -499,7 +501,7 @@ public class ClusterConfiguration
     /**
      * Creates a new router configuration file in the correct location.
      * 
-     * @param clusterName
+     * @param clusterName TODO
      * @throws ConfigurationException
      */
     public void createRouterConfiguration(String clusterName)
@@ -521,7 +523,8 @@ public class ClusterConfiguration
         RouterConfiguration config = new RouterConfiguration(null);
         config.setClusterHome(getClusterHome());
         config.setHost(ConfigurationConstants.TR_RMI_DEFAULT_HOST);
-
+        // TODO:
+        // TUC-1749 : Always use new router gateway protocol
         ArrayList<String> al = new ArrayList<String>();
         al.add("localhost:9998");
         config.setManagerList(al);
@@ -539,7 +542,7 @@ public class ClusterConfiguration
     /**
      * Creates a default policy manager configuration in the correct location
      * 
-     * @param clusterName
+     * @param clusterName TODO
      * @throws ConfigurationException
      */
     public void createPolicyManagerConfiguration(String clusterName)
@@ -576,7 +579,7 @@ public class ClusterConfiguration
     /**
      * Creates a default data services configuration in the correct location
      * 
-     * @param clusterName
+     * @param clusterName TODO
      * @throws ConfigurationException
      */
     public void createDataServicesConfiguration(String clusterName)
@@ -649,16 +652,14 @@ public class ClusterConfiguration
     }
 
     /**
-     * Gets a cluster configuration from a file located on the classpath and
-     * returns it.
+     * Loads a cluster configuration from a file located on the classpath.
      * 
      * @param configFileName
      * @throws ConfigurationException
      */
-    public static TungstenProperties getConfiguration(String configFileName)
-            throws ConfigurationException
+    public void load(String configFileName) throws ConfigurationException
     {
-        TungstenProperties props = new TungstenProperties();
+        props = new TungstenProperties();
         InputStream is = null;
         File configFile = null;
 
@@ -735,24 +736,7 @@ public class ClusterConfiguration
             }
         }
 
-        return props;
-    }
-
-    /**
-     * Loads a cluster configuration from a file located on the classpath and
-     * applies the properties found to the current instance.
-     * 
-     * @param configFileName
-     * @throws ConfigurationException
-     */
-    public void load(String configFileName) throws ConfigurationException
-    {
-        props = getConfiguration(configFileName);
-
-        if (props != null)
-        {
-            props.applyProperties(this, true);
-        }
+        props.applyProperties(this, true);
     }
 
     static public void store(String configFileName, TungstenProperties props)

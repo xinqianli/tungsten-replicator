@@ -40,9 +40,7 @@ import org.apache.log4j.Logger;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.database.Column;
 import com.continuent.tungsten.replicator.database.Database;
-import com.continuent.tungsten.replicator.database.OracleDatabase;
-import com.continuent.tungsten.replicator.database.OracleEventId;
-import com.continuent.tungsten.replicator.datasource.UniversalDataSource;
+import com.continuent.tungsten.replicator.database.DatabaseFactory;
 import com.continuent.tungsten.replicator.dbms.DBMSData;
 import com.continuent.tungsten.replicator.dbms.OneRowChange;
 import com.continuent.tungsten.replicator.dbms.OneRowChange.ColumnSpec;
@@ -59,6 +57,10 @@ public class ParallelExtractorThread extends Thread
 {
     private static Logger                 logger     = Logger.getLogger(ParallelExtractorThread.class);
 
+    private String                        url;
+    private String                        user;
+    private String                        password;
+
     private Database                      connection = null;
     private boolean                       cancelled  = false;
     private ArrayBlockingQueue<DBMSEvent> queue;
@@ -71,28 +73,37 @@ public class ParallelExtractorThread extends Thread
 
     private String                        eventId    = null;
 
-    public ParallelExtractorThread(UniversalDataSource dataSource,
+    public ParallelExtractorThread(String url, String user, String password,
             ArrayBlockingQueue<Chunk> chunks,
             ArrayBlockingQueue<DBMSEvent> queue)
     {
+        this.user = user;
+        this.password = password;
+        this.url = url;
+
         try
         {
-            // Establish a connection to the data source.
-            logger.info("Connecting to data source");
-
-            // Create a connection.
-            connection = (Database) dataSource.getConnection();
+            connection = DatabaseFactory.createDatabase(url, user, password);
         }
-        catch (ReplicatorException e)
+        catch (SQLException e)
         {
-            logger.warn(
-                    "Error while connecting to database ("
-                            + dataSource.getName() + ")", e);
+            logger.warn("Error while connecting to database (" + url + ")", e);
         }
 
         this.queue = queue;
         this.chunks = chunks;
 
+    }
+
+    public void prepare() throws ReplicatorException
+    {
+        try
+        {
+            connection = DatabaseFactory.createDatabase(url, user, password);
+        }
+        catch (SQLException e)
+        {
+        }
     }
 
     /**
@@ -335,8 +346,10 @@ public class ParallelExtractorThread extends Thread
                                 eventSent = true;
                                 try
                                 {
-                                    DBMSEvent ev = buildDBMSEvent(dataArray);
-
+                                    DBMSEvent ev = new DBMSEvent("ora:"
+                                            + eventId, dataArray,
+                                            new Timestamp(
+                                                    System.currentTimeMillis()));
                                     ev.addMetadataOption("schema", chunk
                                             .getTable().getSchema());
                                     ev.addMetadataOption("table", chunk
@@ -366,8 +379,9 @@ public class ParallelExtractorThread extends Thread
                             try
 
                             {
-                                DBMSEvent ev = buildDBMSEvent(dataArray);
-
+                                DBMSEvent ev = new DBMSEvent("ora:" + eventId,
+                                        dataArray, new Timestamp(
+                                                System.currentTimeMillis()));
                                 ev.addMetadataOption("schema", chunk.getTable()
                                         .getSchema());
                                 ev.addMetadataOption("table", chunk.getTable()
@@ -425,32 +439,6 @@ public class ParallelExtractorThread extends Thread
             }
             // 3. Get to next available table, if any
         }
-    }
-
-    /**
-     * TODO: buildDBMSEvent definition.
-     * 
-     * @param dataArray
-     * @return
-     */
-    private DBMSEvent buildDBMSEvent(ArrayList<DBMSData> dataArray)
-    {
-        DBMSEvent ev;
-        if (connection instanceof OracleDatabase)
-        {
-            OracleEventId evId = new OracleEventId(eventId);
-
-            if (evId.isValid())
-                ev = new DBMSEvent(evId.toString(), dataArray, new Timestamp(
-                        System.currentTimeMillis()));
-            else
-                ev = new DBMSEvent("ora:" + eventId, dataArray, new Timestamp(
-                        System.currentTimeMillis()));
-        }
-        else
-            ev = new DBMSEvent(eventId, dataArray, new Timestamp(
-                    System.currentTimeMillis()));
-        return ev;
     }
 
     private int setValues(PreparedStatement pstmt, Object[] values,

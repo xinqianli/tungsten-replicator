@@ -62,6 +62,24 @@ public class MySQLDrizzleApplier extends MySQLApplier
     @Override
     public void configure(PluginContext context) throws ReplicatorException
     {
+        if (url == null)
+        {
+            StringBuffer sb = new StringBuffer();
+            sb.append("jdbc:mysql:thin://");
+            sb.append(host);
+            if (port > 0)
+            {
+                sb.append(":");
+                sb.append(port);
+            }
+            sb.append("/");
+            if (urlOptions != null)
+                sb.append(urlOptions);
+
+            url = sb.toString();
+        }
+        else if (logger.isDebugEnabled())
+            logger.debug("Property url already set; ignoring host and port properties");
         super.configure(context);
     }
 

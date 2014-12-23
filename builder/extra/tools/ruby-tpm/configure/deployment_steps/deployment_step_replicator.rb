@@ -19,9 +19,6 @@ module ConfigureDeploymentStepReplicator
     mkdir_if_absent(@config.getProperty(REPL_RELAY_LOG_DIR))
     mkdir_if_absent(@config.getProperty(REPL_LOG_DIR))
     
-    transform_service_template("tungsten-replicator/conf/services.properties",
-      "tungsten-replicator/samples/conf/sample.services.properties")
-    
     Configurator.instance.command.build_topologies(@config)
     @config.getPropertyOr(REPL_SERVICES, {}).each_key{
       |hs_alias|
@@ -48,12 +45,25 @@ module ConfigureDeploymentStepReplicator
       @config.setProperty(DEPLOYMENT_DATASERVICE, nil)
     }
     
+    write_replication_service_properties()
+    write_wrapper_conf()
+    add_service("tungsten-replicator/bin/replicator")
     add_log_file("tungsten-replicator/log/trepsvc.log")
     add_log_file("tungsten-replicator/log/xtrabackup.log")
     add_log_file("tungsten-replicator/log/mysqldump.log")
-    set_run_as_user("tungsten-replicator/bin/replicator")
-    transform_host_template("tungsten-replicator/conf/wrapper.conf",
-	    "tungsten-replicator/samples/conf/wrapper.conf")
+    set_run_as_user("#{get_deployment_basedir()}/tungsten-replicator/bin/replicator")
+  end
+  
+  def write_replication_service_properties
+    transformer = Transformer.new(
+		  "#{get_deployment_basedir()}/tungsten-replicator/samples/conf/sample.services.properties",
+			"#{get_deployment_basedir()}/tungsten-replicator/conf/services.properties", "#")
+
+    transformer.set_fixed_properties(@config.getTemplateValue(get_host_key(FIXED_PROPERTY_STRINGS)))
+	  transformer.transform_values(method(:transform_replication_dataservice_values))
+
+    transformer.output
+    watch_file(transformer.get_filename())
   end
   
   def write_replication_monitor_extension
@@ -76,7 +86,18 @@ module ConfigureDeploymentStepReplicator
     out.close
     
     info "GENERATED FILE: " + svc_properties
-    WatchFiles.watch_file(svc_properties, @config)
+    watch_file(svc_properties)
+  end
+	
+	def write_wrapper_conf
+    transformer = Transformer.new(
+      "#{get_deployment_basedir()}/tungsten-replicator/samples/conf/wrapper.conf",
+      "#{get_deployment_basedir()}/tungsten-replicator/conf/wrapper.conf", nil)
+    transformer.set_fixed_properties(@config.getProperty(get_host_key(FIXED_PROPERTY_STRINGS)))
+    transformer.transform_values(method(:transform_values))
+
+    transformer.output
+    watch_file(transformer.get_filename())
   end
   
   def get_dynamic_properties_file()

@@ -22,29 +22,34 @@
 
 package com.continuent.tungsten.replicator.applier;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLWarning;
 import java.sql.Types;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
+import java.util.List;
 import java.util.TimeZone;
 
 import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.replicator.ReplicatorException;
-import com.continuent.tungsten.replicator.database.Table;
+import com.continuent.tungsten.replicator.database.Column;
 import com.continuent.tungsten.replicator.datatypes.MySQLUnsignedNumeric;
 import com.continuent.tungsten.replicator.datatypes.Numeric;
-import com.continuent.tungsten.replicator.dbms.OneRowChange;
+import com.continuent.tungsten.replicator.dbms.LoadDataFileQuery;
 import com.continuent.tungsten.replicator.dbms.OneRowChange.ColumnSpec;
 import com.continuent.tungsten.replicator.dbms.OneRowChange.ColumnVal;
-import com.continuent.tungsten.replicator.dbms.RowChangeData;
 import com.continuent.tungsten.replicator.dbms.RowIdData;
 import com.continuent.tungsten.replicator.event.DBMSEvent;
 import com.continuent.tungsten.replicator.event.ReplDBMSHeader;
+import com.continuent.tungsten.replicator.event.ReplOption;
 import com.continuent.tungsten.replicator.event.ReplOptionParams;
 import com.continuent.tungsten.replicator.extractor.mysql.SerialBlob;
+import com.continuent.tungsten.replicator.plugin.PluginContext;
 
 /**
  * Stub applier class that automatically constructs url from MySQL-specific
@@ -56,6 +61,7 @@ import com.continuent.tungsten.replicator.extractor.mysql.SerialBlob;
 public class MySQLApplier extends JdbcApplier
 {
     private static Logger            logger                 = Logger.getLogger(MySQLApplier.class);
+
     protected String                 host                   = "localhost";
     protected int                    port                   = 3306;
     protected String                 urlOptions             = null;
@@ -125,6 +131,38 @@ public class MySQLApplier extends JdbcApplier
     public void setSupportNonTzAwareMode(boolean supportNonTzAwareMode)
     {
         this.supportNonTzAwareMode = supportNonTzAwareMode;
+    }
+
+    /**
+     * Generate URL suitable for MySQL and then delegate remaining configuration
+     * to superclass.
+     * 
+     * @see com.continuent.tungsten.replicator.plugin.ReplicatorPlugin#configure(PluginContext
+     *      context)
+     */
+    public void configure(PluginContext context) throws ReplicatorException
+    {
+        if (url == null)
+        {
+            StringBuffer sb = new StringBuffer();
+            sb.append("jdbc:mysql://");
+            sb.append(host);
+            if (port > 0)
+            {
+                sb.append(":");
+                sb.append(port);
+            }
+            sb.append("/");
+            if (context.getReplicatorSchemaName() != null)
+                sb.append(context.getReplicatorSchemaName());
+            if (urlOptions != null)
+                sb.append(urlOptions);
+
+            url = sb.toString();
+        }
+        else if (logger.isDebugEnabled())
+            logger.debug("Property url already set; ignoring host and port properties");
+        super.configure(context);
     }
 
     /**
@@ -267,6 +305,31 @@ public class MySQLApplier extends JdbcApplier
     /**
      * {@inheritDoc}
      * 
+     * @see com.continuent.tungsten.replicator.applier.JdbcApplier#addColumn(java.sql.ResultSet,
+     *      java.lang.String)
+     */
+    @Override
+    protected Column addColumn(ResultSet rs, String columnName)
+            throws SQLException
+    {
+        String typeDesc = rs.getString("TYPE_NAME").toUpperCase();
+        boolean isSigned = !typeDesc.contains("UNSIGNED");
+        int dataType = rs.getInt("DATA_TYPE");
+
+        if (logger.isDebugEnabled())
+            logger.debug("Adding column " + columnName + " (TYPE " + dataType
+                    + " - " + (isSigned ? "SIGNED" : "UNSIGNED") + ")");
+
+        Column column = new Column(columnName, dataType, false, isSigned);
+        column.setTypeDescription(typeDesc);
+        column.setLength(rs.getLong("column_size"));
+
+        return column;
+    }
+
+    /**
+     * {@inheritDoc}
+     * 
      * @see com.continuent.tungsten.replicator.applier.JdbcApplier#setObject(java.sql.PreparedStatement,
      *      int, com.continuent.tungsten.replicator.dbms.OneRowChange.ColumnVal,
      *      com.continuent.tungsten.replicator.dbms.OneRowChange.ColumnSpec)
@@ -316,6 +379,83 @@ public class MySQLApplier extends JdbcApplier
         prepStatement.setObject(bindLoc, valToInsert);
     }
 
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.applier.JdbcApplier#applyStatementData(com.continuent.tungsten.replicator.dbms.StatementData)
+     */
+    @Override
+    protected void applyLoadDataLocal(LoadDataFileQuery data, File temporaryFile)
+            throws ReplicatorException
+    {
+        try
+        {
+            int[] updateCount;
+            String schema = data.getDefaultSchema();
+            Long timestamp = data.getTimestamp();
+            List<ReplOption> options = data.getOptions();
+
+            applyUseSchema(schema);
+
+            applyVariables(timestamp, options);
+
+            try
+            {
+                updateCount = statement.executeBatch();
+            }
+            catch (SQLWarning e)
+            {
+                String msg = "While applying SQL event:\n" + data.toString()
+                        + "\nWarning: " + e.getMessage();
+                logger.warn(msg);
+                updateCount = new int[1];
+                updateCount[0] = statement.getUpdateCount();
+            }
+            statement.clearBatch();
+        }
+        catch (SQLException e)
+        {
+            logFailedStatementSQL(data.getQuery(), e);
+            throw new ApplierException(e);
+        }
+
+        try
+        {
+            FileInputStream fis = new FileInputStream(temporaryFile);
+            ((com.mysql.jdbc.Statement) statement)
+                    .setLocalInfileInputStream(fis);
+
+            int cnt = statement.executeUpdate(data.getQuery());
+
+            if (logger.isDebugEnabled())
+                logger.debug("Applied event (update count " + cnt + "): "
+                        + data.toString());
+        }
+        catch (SQLException e)
+        {
+            logFailedStatementSQL(data.getQuery(), e);
+            throw new ApplierException(e);
+        }
+        catch (FileNotFoundException e)
+        {
+            logFailedStatementSQL(data.getQuery());
+            throw new ApplierException(e);
+        }
+        finally
+        {
+            ((com.mysql.jdbc.Statement) statement)
+                    .setLocalInfileInputStream(null);
+        }
+
+        // Clean up the temp file as we may not get a delete file event.
+        if (logger.isDebugEnabled())
+        {
+            logger.debug("Deleting temp file: "
+                    + temporaryFile.getAbsolutePath());
+        }
+        temporaryFile.delete();
+    }
+
     private static final char[] hexArray = "0123456789abcdef".toCharArray();
 
     protected String hexdump(byte[] buffer)
@@ -330,199 +470,4 @@ public class MySQLApplier extends JdbcApplier
         return new String(hexChars);
     }
 
-    /**
-     * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.applier.JdbcApplier#applyOneRowChangePrepared(com.continuent.tungsten.replicator.dbms.OneRowChange)
-     */
-    @Override
-    protected void applyOneRowChangePrepared(OneRowChange oneRowChange)
-            throws ReplicatorException
-    {
-        // Optimize events is a binary for now. In future we may do so when
-        // number of rows is > min or < to max.
-        if (optimizeRowEvents)
-            if (oneRowChange.getAction() == RowChangeData.ActionType.INSERT
-                    && oneRowChange.getColumnValues().size() > 1)
-            {
-                // optimize inserts
-                getColumnInfomation(oneRowChange);
-
-                executePreparedStatement(oneRowChange,
-                        prepareOptimizedInsertStatement(oneRowChange),
-                        oneRowChange.getColumnSpec(),
-                        oneRowChange.getColumnValues());
-                return;
-            }
-            else if (oneRowChange.getAction() == RowChangeData.ActionType.DELETE
-                    && oneRowChange.getKeyValues().size() > 1)
-            {
-                getColumnInfomation(oneRowChange);
-
-                Table t = null;
-
-                try
-                {
-                    t = getTableMetadata(oneRowChange);
-                }
-                catch (SQLException e)
-                {
-                    throw new ApplierException(
-                            "Failed to retrieve table metadata from database",
-                            e);
-                }
-
-                // This can only be applied if table has a single column primary
-                // key
-                if (t.getPrimaryKey() != null
-                        && t.getPrimaryKey().getColumns() != null
-                        && t.getPrimaryKey().getColumns().size() == 1)
-                {
-                    String keyName = t.getPrimaryKey().getColumns().get(0)
-                            .getName();
-
-                    executePreparedStatement(
-                            oneRowChange,
-                            prepareOptimizedDeleteStatement(oneRowChange,
-                                    keyName), oneRowChange.getKeySpec(),
-                            oneRowChange.getKeyValues());
-                    return;
-                }
-                else if (logger.isDebugEnabled())
-                    logger.debug("Unable to optimize delete statement as no suitable primary key was found for : "
-                            + oneRowChange.getSchemaName()
-                            + "."
-                            + oneRowChange.getTableName());
-            }
-        // No optimization found, let's run the unoptimized statement form.
-        super.applyOneRowChangePrepared(oneRowChange);
-    }
-
-    /**
-     * Build prepare statement for optimized inserts : <br>
-     * INSERT INTO table1 VALUES (...) ; INSERT INTO table1 VALUES (...) ; ...
-     * would translate into<br>
-     * INSERT INTO table1 VALUES (...), (...), ...
-     * 
-     * @param oneRowChange row event being processed
-     * @return
-     */
-    private StringBuffer prepareOptimizedInsertStatement(
-            OneRowChange oneRowChange)
-    {
-        StringBuffer stmt;
-        stmt = new StringBuffer();
-        stmt.append("INSERT INTO ");
-        stmt.append(conn.getDatabaseObjectName(oneRowChange.getSchemaName())
-                + "." + conn.getDatabaseObjectName(oneRowChange.getTableName()));
-        stmt.append(" ( ");
-        printColumnSpec(stmt, oneRowChange.getColumnSpec(), null, null,
-                PrintMode.NAMES_ONLY, ", ");
-        stmt.append(") VALUES (");
-
-        boolean firstRow = true;
-        for (ArrayList<ColumnVal> oneRowValues : oneRowChange.getColumnValues())
-        {
-            if (firstRow)
-            {
-                firstRow = false;
-            }
-            else
-                stmt.append(", (");
-
-            printColumnSpec(stmt, oneRowChange.getColumnSpec(), null,
-                    oneRowValues, PrintMode.PLACE_HOLDER, " , ");
-
-            stmt.append(")");
-        }
-        return stmt;
-    }
-
-    /**
-     * Create statement for optimized delete.
-     */
-    private StringBuffer prepareOptimizedDeleteStatement(
-            OneRowChange oneRowChange, String keyName)
-    {
-        StringBuffer stmt = new StringBuffer();
-        stmt.append("DELETE FROM ");
-        stmt.append(conn.getDatabaseObjectName(oneRowChange.getSchemaName())
-                + "." + conn.getDatabaseObjectName(oneRowChange.getTableName()));
-        stmt.append(" WHERE ");
-        stmt.append(conn.getDatabaseObjectName(keyName));
-        stmt.append(" IN (");
-
-        ArrayList<ArrayList<ColumnVal>> values = oneRowChange.getKeyValues();
-        ArrayList<ColumnSpec> keySpec = oneRowChange.getKeySpec();
-
-        boolean firstRow = true;
-        for (ArrayList<ColumnVal> oneKeyValues : values)
-        {
-            if (firstRow)
-                firstRow = false;
-            else
-                stmt.append(", ");
-
-            printColumnSpec(stmt, keySpec, null, oneKeyValues,
-                    PrintMode.PLACE_HOLDER, " , ");
-        }
-        stmt.append(")");
-        return stmt;
-    }
-
-    /**
-     * Execute a single prepared statement.
-     */
-    private void executePreparedStatement(OneRowChange oneRowChange,
-            StringBuffer stmt, ArrayList<ColumnSpec> spec,
-            ArrayList<ArrayList<ColumnVal>> values) throws ApplierException
-    {
-        PreparedStatement prepStatement = null;
-        try
-        {
-            String statement = stmt.toString();
-            if (logger.isDebugEnabled())
-                logger.debug("Statement is "
-                        + statement.substring(1,
-                                Math.min(statement.length(), 500)));
-            prepStatement = conn.prepareStatement(statement);
-            int bindLoc = 1; /* Start binding at index 1 */
-
-            for (ArrayList<ColumnVal> oneRowValues : values)
-            {
-                bindLoc = bindColumnValues(prepStatement, oneRowValues,
-                        bindLoc, spec, false);
-
-            }
-
-            try
-            {
-                prepStatement.executeUpdate();
-            }
-            catch (SQLWarning e)
-            {
-                String msg = "While applying SQL event:\n" + statement
-                        + "\nWarning: " + e.getMessage();
-                logger.warn(msg);
-            }
-        }
-        catch (SQLException e)
-        {
-            ApplierException applierException = new ApplierException(e);
-            applierException.setExtraData(logFailedRowChangeSQL(stmt,
-                    oneRowChange));
-            throw applierException;
-        }
-        finally
-        {
-            if (prepStatement != null)
-                try
-                {
-                    prepStatement.close();
-                }
-                catch (SQLException e)
-                {
-                }
-        }
-    }
 }

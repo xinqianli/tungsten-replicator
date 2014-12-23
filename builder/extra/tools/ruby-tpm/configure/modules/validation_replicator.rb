@@ -258,43 +258,6 @@ class THLStorageCheck < ConfigureValidationCheck
   end
 end
 
-class THLSchemaChangeCheck < ConfigureValidationCheck
-  include ReplicationServiceValidationCheck
-  
-  def set_vars
-    @title = "THL schema change check"
-    self.extend(TungstenUpdateCheck)
-  end
-  
-  def validate
-    schema_key = get_member_key(REPL_SVC_SCHEMA).join('.')
-    begin
-      raw = cmd_result(@config.getProperty(CURRENT_RELEASE_DIRECTORY) + "/tools/tpm query values #{HOST_ENABLE_REPLICATOR} #{schema_key}")
-    rescue CommandError => ce
-      return
-    end
-    
-    begin
-      result = JSON.parse(raw)
-      if result[HOST_ENABLE_REPLICATOR] == "true"
-        if result[schema_key] != @config.getProperty(schema_key)
-          begin
-            get_applier_datasource.check_thl_schema(@config.getProperty(get_member_key(REPL_SVC_SCHEMA)))
-          rescue => e
-            error(e.message)
-          end
-        end
-      end
-    rescue JSON::ParserError
-      return
-    end
-  end
-  
-  def enabled?
-    super() && (get_topology().is_a?(ClusterTopology) == true)
-  end
-end
-
 class RowBasedBinaryLoggingCheck < ConfigureValidationCheck
   include ReplicationServiceValidationCheck
 
@@ -313,34 +276,6 @@ class RowBasedBinaryLoggingCheck < ConfigureValidationCheck
       && get_extractor_datasource().class == MySQLDatabasePlatform \
         && @config.getProperty(get_member_key(REPL_ROLE)) == REPL_ROLE_M \
           && @config.getProperty(get_member_key(ENABLE_HETEROGENOUS_MASTER))  == "true"
-  end
-end
-
-class SwappinessCheck < ConfigureValidationCheck
-  include ReplicationServiceValidationCheck
-
-  def set_vars
-    @title = "Linux Swappiness Check"
-  end
-
-  def validate
-    swappiness = cmd_result("cat /proc/sys/vm/swappiness", true)
-    reboot_swappiness = cmd_result("grep -rs '^vm.swappiness' /etc/sysctl.conf /etc/sysctl.d/*.conf | sed -E 's/[[:space:]]+//g' | cut -f2 -d'=' | tail -n1", true)
-    if reboot_swappiness.to_s() == ""
-      reboot_swappiness = 60
-    end
-    if swappiness.to_s() == ""
-      swappiness = 60
-    end
-    if reboot_swappiness.to_i() > 10 || swappiness.to_i() > 10
-      warning("Linux swappiness is currently set to #{swappiness}, on restart it will be #{reboot_swappiness}, consider setting this to 10 or under to avoid swapping.")
-    elsif reboot_swappiness.to_i() != swappiness.to_i()
-      warning("Linux swappiness will change after a restart. Current setting is #{swappiness}, on restart it will be #{reboot_swappiness}.")
-    end
-  end
-
-  def enabled?
-    super() && File.exists?("/proc/sys/vm/swappiness") && File.exists?("/etc/sysctl.conf")
   end
 end
 

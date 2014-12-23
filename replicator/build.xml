@@ -20,7 +20,7 @@
     Contributor(s): Csaba Simon, Robert Hodges
 -->
 
-<project name="tungsten_replicator" default="all" xmlns:jacoco="antlib:org.jacoco.ant">
+<project name="tungsten_replicator" default="all">
     <description>
         tungsten (continuent.org)
         Application Server for uni/cluster
@@ -51,13 +51,6 @@
     <property name="deploy.host" value="localhost"/>
     <property name="deploy.dir" value="${user.home}/tungsten"/>
 
-    <!-- Dummy entry for cases where directory does not exist. -->
-    <property name="external.lib.dir" value="lib"/>
-
-    <!-- Code Coverage properties -->
-    <property name="test.coverage.dir" location="${build.dir}/coverage"/>
-    <property name="test.coverage.file" location="${build.dir}/jacoco.exec"/>
-
     <path id="compile.classpath">
     	<path location="${common.classes.dir}"/>
 	<fileset dir="lib/">
@@ -75,12 +68,8 @@
         <path refid="compile.classpath"/>
         <path location="${classes.dir}"/>
 	<fileset dir="${project.common}/lib-test/">
-        <include name="*.jar"/>
+		<include name="*.jar"/>
 	</fileset>
-    <fileset dir="${external.lib.dir}">
-        <include name="*.jar"/>
-    </fileset>
-
     </path>
 
     <path id="javadoc.src.path">
@@ -88,10 +77,6 @@
         <path location="${java.src.dir}"/>
     </path>
 
-    <taskdef uri="antlib:org.jacoco.ant" resource="org/jacoco/ant/antlib.xml">
-        <classpath path="${project.common}/lib-test/jacocoant.jar"/>
-    </taskdef>
-	
     <target name="all" depends="clean, build-dependencies, releases"
         description="--> creates the release without running JUnit tests"/>
     <target name="allPlusJunit" depends="clean,build-dependencies,test,releases"
@@ -162,28 +147,14 @@
         </java>
     </target>
 
-	<target name="test" depends="compile-test" description="--> run unit tests">
-		<testmacro enablecoverage="false"/>
-	</target>
-			
-    <macrodef name="testmacro">
-    	<attribute name="enablecoverage" default="false"/>
-    	<sequential>
-   		<echo message="Unit Test Coverage enabled=@{enablecoverage}"/>
-        <delete dir="${test.coverage.dir}"/>
-    	<mkdir dir="${test.coverage.dir}"/>
-    	<delete dir="${test.reports}"/>
+    <target name="test" depends="compile-test" description="--> run unit tests">
+        <delete dir="${test.reports}"/>
         <mkdir dir="${test.reports}"/>
         <delete dir="${test.work}"/>
         <mkdir dir="${test.work}"/>
         <copy todir="${test.work}">
        	    <fileset dir="test/data">
 	       <include name="*bin*"/>
-	    </fileset>
-	    </copy>
-	    <copy todir="${test.work}">
-       	    <fileset dir="test/data/filter/">
-	       <include name="*"/>
 	    </fileset>
         </copy>
         <!-- Copy in drizzle test data. -->
@@ -196,7 +167,6 @@
               toFile="${test.work}/replicator.properties"/>
         <copy file="test.properties" todir="${test.work}"/>
 
-        <jacoco:coverage destfile="${test.coverage.file}" enabled="@{enablecoverage}">
         <junit printsummary="yes" haltonfailure="no" fork="yes"
           dir="${test.work}" failureproperty="tests.failed" timeout="500000">
             <jvmarg value="-Dreplicator.log.dir=." />
@@ -222,10 +192,9 @@
                 	<exclude name="**/*TestReplicatorManager.java"/>
                 	<exclude name="**/*TestOpenReplicatorManager.java"/>
                 </fileset>
+
             </batchtest>
         </junit>
-        </jacoco:coverage>
-
         <junitreport tofile="${test.reports}/TESTS-TestSuites.xml">
             <fileset dir="${test.reports}">
                 <include name="TEST-*.xml"/>
@@ -233,8 +202,7 @@
             <report format="frames" todir="${test.reports}/html"/>
         </junitreport>
     	<fail if="tests.failed" message="Not all unit tests were completed. Process aborted!"/>
-    	</sequential>
-    </macrodef>
+    </target>
 
     <target name="test-report" description="--> generate junit reports">
         <junitreport tofile="${test.reports}/TESTS-TestSuites.xml">
@@ -270,11 +238,6 @@
         <copy todir="${dist.dir}/lib">
             <fileset dir="${jars.dir}"/>
         </copy>
-        <!-- 
-        Do not copy Vertica or other non-distributable proprietary JARs into 
-        build.  Oracle JDBC driver is OK, since EULA allows distribution with 
-        applications
-        -->
         <copy todir="${dist.dir}/lib">
              <fileset dir="lib/">
              	<include name="*.jar" unless="library.compile.files"/>
@@ -282,12 +245,11 @@
              	<include name="ruby/*" />
                 <exclude name="vertica*.jar"/>
              </fileset>
-        </copy>
+         </copy>
         <mkdir dir="${dist.dir}/lib-ext"/>
         <copy todir="${dist.dir}/lib-ext">
             <fileset dir="${lib-ext.dir}">
             	<include name="*.jar"/>
-                <exclude name="vertica*.jar"/>
             </fileset>
         </copy>
     	<mkdir dir="${dist.dir}/samples"/>
@@ -385,25 +347,6 @@
           <arg value="--java_out=${java.src.dir}"/>
           <arg value="protobuf/TungstenProtobufMessage"/>
         </exec>
-    </target>
-
-    <target name="test-coverage"
-    	description="--> generate junit code coverage reports">
-    	<testmacro enablecoverage="true"/>
-        <jacoco:report>
-            <executiondata>
-                <file file="${test.coverage.file}"/>
-            </executiondata>
-            <structure name="JUnit Code Coverage Report">
-                <classfiles>
-                    <fileset dir="${classes.dir}"/>
-                </classfiles>
-                <sourcefiles encoding="UTF-8">
-                    <fileset dir="${java.src.dir}"/>
-                </sourcefiles>
-            </structure>
-            <html destdir="${test.coverage.dir}"/>
-        </jacoco:report>
     </target>
 
 </project>

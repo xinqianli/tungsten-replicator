@@ -188,9 +188,9 @@ public class TungstenProperties implements Serializable
         load(props);
 
         /*
-         * props ends up holding a reference to the InputStream. So even
-         * though the Properties instance should be eligible for collection on
-         * method exit, give GC a hand and null out the props here.
+         * props ends up holding a reference to the InputStream. So even though
+         * the Properties instance should be eligible for collection on method
+         * exit, give GC a hand and null out the props here.
          */
         props = null;
     }
@@ -1305,9 +1305,6 @@ public class TungstenProperties implements Serializable
         return null;
     }
 
-    /**
-     * Returns the value as a String or null if not found
-     */
     public String getString(String key)
     {
         return getString(key, null, false);
@@ -1340,7 +1337,14 @@ public class TungstenProperties implements Serializable
 
     public int getInt(String key, String defaultValue, boolean required)
     {
-        return Integer.parseInt(getString(key, defaultValue, required));
+        String retString = getString(key, defaultValue, required);
+
+        if (retString == null)
+        {
+            return Integer.parseInt(retString);
+        }
+
+        return Integer.parseInt(retString.trim());
     }
 
     public long getLong(String key)
@@ -1350,7 +1354,15 @@ public class TungstenProperties implements Serializable
 
     public long getLong(String key, String defaultValue, boolean required)
     {
-        return Long.parseLong(getString(key, defaultValue, required));
+
+        String retString = getString(key, defaultValue, required);
+
+        if (retString == null)
+        {
+            return Long.parseLong(retString);
+        }
+
+        return Long.parseLong(retString.trim());
     }
 
     public float getFloat(String key)
@@ -1360,7 +1372,14 @@ public class TungstenProperties implements Serializable
 
     public float getFloat(String key, String defaultValue, boolean required)
     {
-        return Float.parseFloat(getString(key, defaultValue, required));
+        String retString = getString(key, defaultValue, required);
+
+        if (retString == null)
+        {
+            return Float.parseFloat(retString);
+        }
+
+        return Float.parseFloat(retString.trim());
     }
 
     public double getDouble(String key)
@@ -1370,7 +1389,14 @@ public class TungstenProperties implements Serializable
 
     public double getDouble(String key, String defaultValue, boolean required)
     {
-        return Double.parseDouble(getString(key, defaultValue, required));
+        String retString = getString(key, defaultValue, required);
+
+        if (retString == null)
+        {
+            return Double.parseDouble(retString);
+        }
+
+        return Double.parseDouble(retString.trim());
     }
 
     public boolean getBoolean(String key)
@@ -1380,7 +1406,14 @@ public class TungstenProperties implements Serializable
 
     public boolean getBoolean(String key, String defaultValue, boolean required)
     {
-        return Boolean.parseBoolean(getString(key, defaultValue, required));
+        String retString = getString(key, defaultValue, required);
+
+        if (retString == null)
+        {
+            return Boolean.parseBoolean(retString);
+        }
+
+        return Boolean.parseBoolean(retString.trim());
     }
 
     public File getFile(String key)
@@ -1647,47 +1680,13 @@ public class TungstenProperties implements Serializable
         int propCount = 0;
         for (String key : orderedProps.keySet())
         {
-
-            Object value = orderedProps.get(key);
-
-            // Skip processing null values...
-            if (value == null)
-            {
-                continue;
-            }
-
             if (++propCount > 1)
                 builder.append("\n");
 
-            builder.append("  ").append(key).append("=");
-
-            if (value instanceof String)
-            {
-                // Strings must properly escape control characters.
-                String valueAsString = (String) value;
-                for (int i = 0; i < valueAsString.length(); i++)
-                {
-                    char c = valueAsString.charAt(i);
-                    if (Character.isISOControl(c))
-                    {
-                        // Print Unicode escape sequence.
-                        int cAsInt = c;
-                        String escapedValue = String.format("\\u%04x", cAsInt);
-                        builder.append(escapedValue);
-                    }
-                    else
-                    {
-                        // Otherwise just print the character representation.
-                        builder.append(c);
-                    }
-                }
-            }
-            else
-            {
-                builder.append(value.toString());
-            }
-
+            builder.append("  ").append(key).append("=")
+                    .append(orderedProps.get(key));
         }
+
         builder.append("\n}");
 
         return builder.toString();
@@ -1944,7 +1943,7 @@ public class TungstenProperties implements Serializable
     }
 
     /**
-     * Generate a comma-delimited string of list items.
+     * TODO: listToString definition.
      */
     static public String listToString(List<String> list)
     {
@@ -1991,7 +1990,7 @@ public class TungstenProperties implements Serializable
 
     /**
      * Load values from a Properties instance. Current values are replaced only
-     * if they are in the source map.
+     * if they are in the source map. Properties with null values are ignored.
      */
     public void add(Properties props)
     {
@@ -1999,17 +1998,23 @@ public class TungstenProperties implements Serializable
         while (keys.hasMoreElements())
         {
             String key = (String) keys.nextElement();
-            String value = props.getProperty(key).toString();
-            if (properties.get(key) != null)
-            {
-                if (logger.isDebugEnabled())
-                {
-                    logger.debug(String.format("Replacing %s=%s with %s=%s",
-                            key, properties.get(key), key, value));
-                }
-            }
+            Object propValue = props.getProperty(key);
 
-            properties.put(key, value);
+            if (propValue != null)
+            {
+
+                if (properties.get(key) != null)
+                {
+                    if (logger.isDebugEnabled())
+                    {
+                        logger.debug(String.format(
+                                "Replacing %s=%s with %s=%s", key,
+                                properties.get(key), key, propValue.toString()));
+                    }
+                }
+
+                properties.put(key, propValue.toString());
+            }
         }
     }
 

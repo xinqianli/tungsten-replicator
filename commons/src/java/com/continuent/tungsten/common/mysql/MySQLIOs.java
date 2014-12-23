@@ -45,9 +45,7 @@ import org.apache.log4j.Logger;
 import com.continuent.tungsten.common.cluster.resource.ResourceState;
 import com.continuent.tungsten.common.config.TungstenProperties;
 import com.continuent.tungsten.common.config.cluster.ConfigurationException;
-import com.continuent.tungsten.common.config.cluster.DataServerConditionMapping;
-import com.continuent.tungsten.common.config.cluster.DataServerConditionMappingConfiguration;
-import com.continuent.tungsten.common.utils.CLUtils;
+import com.continuent.tungsten.common.config.cluster.QueryStatusToResourceStateConfiguration;
 
 /**
  * Utility class to retrieve the input and output streams of a JDBC Connection
@@ -60,18 +58,18 @@ import com.continuent.tungsten.common.utils.CLUtils;
  */
 public class MySQLIOs
 {
-    public final static String                             TSR_CONNECTION_SIMPLE_CLASSNAME   = "TSRConnection";
-    public final static String                             TSR_CONNECTION_FULL_CLASSNAME     = "com.continuent.tungsten.router.jdbc.TSRConnection";
-    public final static String                             C3P0_CONNECTION_CLASSNAME         = "NewProxyConnection";
-    public final static String                             C3P0_INNER_CONNECTION_VARNAME     = "inner";
-    public final static String                             BONECP_CONNECTION_CLASSNAME       = "ConnectionHandle";
-    public final static String                             BONECP_INNER_CONNECTION_VARNAME   = "connection";
-    public final static String                             MYSQL_CONNECTION_CLASSNAME_PREFIX = "com.mysql.jdbc";
-    public final static String                             MYSQL_CONNECTION_CLASSNAME        = MYSQL_CONNECTION_CLASSNAME_PREFIX
+    private final static String                            TSR_CONNECTION_SIMPLE_CLASSNAME   = "TSRConnection";
+    private final static String                            TSR_CONNECTION_FULL_CLASSNAME     = "com.continuent.tungsten.router.jdbc.TSRConnection";
+    private final static String                            C3P0_CONNECTION_CLASSNAME         = "NewProxyConnection";
+    private final static String                            C3P0_INNER_CONNECTION_VARNAME     = "inner";
+    private final static String                            BONECP_CONNECTION_CLASSNAME       = "ConnectionHandle";
+    private final static String                            BONECP_INNER_CONNECTION_VARNAME   = "connection";
+    private final static String                            MYSQL_CONNECTION_CLASSNAME_PREFIX = "com.mysql.jdbc";
+    private final static String                            MYSQL_CONNECTION_CLASSNAME        = MYSQL_CONNECTION_CLASSNAME_PREFIX
                                                                                                      + ".ConnectionImpl";
-    public final static String                             MYSQL_CONNECTION_CLASSNAME_5_0    = MYSQL_CONNECTION_CLASSNAME_PREFIX
+    private final static String                            MYSQL_CONNECTION_CLASSNAME_5_0    = MYSQL_CONNECTION_CLASSNAME_PREFIX
                                                                                                      + ".Connection";
-    public final static String                             DRIZZLE_CONNECTION_CLASSNAME      = "org.drizzle.jdbc.DrizzleConnection";
+    private final static String                            DRIZZLE_CONNECTION_CLASSNAME      = "org.drizzle.jdbc.DrizzleConnection";
     private static final Logger                            logger                            = Logger.getLogger(MySQLIOs.class);
 
     /** Where we will read data sent by the MySQL server */
@@ -94,14 +92,11 @@ public class MySQLIOs
     public static final String                             SOCKET_PHASE_READ                 = "reading from";
     public static final String                             SOCKET_PHASE_WRITE                = "writing to";
 
-    public static boolean                                  testConditionEnabled              = false;
-    public static ExecuteQueryStatus                       testCondition                     = ExecuteQueryStatus.UNDEFINED;
-
-    private static DataServerConditionMappingConfiguration stateMapConfig                    = null;
+    private static QueryStatusToResourceStateConfiguration stateMapConfig                    = null;
 
     public enum ExecuteQueryStatus
     {
-        UNDEFINED, OK, TOO_MANY_CONNECTIONS, OPEN_FILE_LIMIT_ERROR, SOCKET_NO_IO, SOCKET_CONNECT_TIMEOUT, SEND_QUERY_TIMEOUT, QUERY_RESULTS_TIMEOUT, QUERY_EXEC_TIMEOUT, LOGIN_RESPONSE_TIMEOUT, QUERY_TOO_LARGE, QUERY_RESULT_FAILED, QUERY_EXECUTION_FAILED, SOCKET_IO_ERROR, MYSQL_ERROR, UNEXPECTED_EXCEPTION, MYSQL_PREMATURE_EOF, HOST_IS_DOWN, NO_ROUTE_TO_HOST, UNKNOWN_HOST, UNTRAPPED_CONDITION
+        OK, TOO_MANY_CONNECTIONS, OPEN_FILE_LIMIT_ERROR, SOCKET_NO_IO, SOCKET_CONNECT_TIMEOUT, SEND_QUERY_TIMEOUT, QUERY_RESULTS_TIMEOUT, QUERY_EXEC_TIMEOUT, LOGIN_RESPONSE_TIMEOUT, QUERY_TOO_LARGE, QUERY_RESULT_FAILED, QUERY_EXECUTION_FAILED, SOCKET_IO_ERROR, MYSQL_ERROR, UNEXPECTED_EXCEPTION, MYSQL_PREMATURE_EOF, HOST_IS_DOWN, NO_ROUTE_TO_HOST, UNKNOWN_HOST, UNTRAPPED_CONDITION
     }
 
     public MySQLIOs()
@@ -170,7 +165,10 @@ public class MySQLIOs
             // variable
             else if (className.equals(DRIZZLE_CONNECTION_CLASSNAME))
             {
-                Object protocolObj = getDrizzleConnectionProtocolObject(realConnection);
+                Class<?> implClazz = realConnection.getClass();
+                Field protocolField = implClazz.getDeclaredField("protocol");
+                protocolField.setAccessible(true);
+                Object protocolObj = protocolField.get(realConnection);
                 return new MySQLIOs(
                         getDrizzleConnectionInputStream(protocolObj),
                         (BufferedOutputStream) getDrizzleConnectionOutputStream(protocolObj));
@@ -190,16 +188,6 @@ public class MySQLIOs
             logger.error("Couldn't get connection IOs", e);
             throw new IOException(e.getLocalizedMessage());
         }
-    }
-
-    private static Object getDrizzleConnectionProtocolObject(
-            Object realConnection) throws NoSuchFieldException,
-            IllegalAccessException
-    {
-        Class<?> implClazz = realConnection.getClass();
-        Field protocolField = implClazz.getDeclaredField("protocol");
-        protocolField.setAccessible(true);
-        return protocolField.get(realConnection);
     }
 
     private static Object getMySQLConnectionIOField(Object realConnection)
@@ -442,7 +430,9 @@ public class MySQLIOs
 
     /**
      * Every connection to a MySQL server has a server side ID, called
-     * connection ID or server thread ID. This function aims to get this ID
+     * connection ID or server thread ID. This function allows getting this ID,
+     * currently only on a MySQL driver connection<br>
+     * TODO: implement Drizzle version
      * 
      * @param connection the (connected) connection to get ID from
      * @return the server thread ID of the given connection as a long
@@ -473,14 +463,6 @@ public class MySQLIOs
                     return 0;
                 }
                 return (Long) getFieldFromMysqlIO(ioObj, "threadId");
-            }
-            else if (className.startsWith(DRIZZLE_CONNECTION_CLASSNAME))
-            {
-                Object protocolObj = getDrizzleConnectionProtocolObject(realConnection);
-                Field writerField = protocolObj.getClass().getDeclaredField(
-                        "serverThreadId");
-                writerField.setAccessible(true);
-                return (Long) writerField.get(protocolObj);
             }
         }
         catch (Exception e)
@@ -577,24 +559,15 @@ public class MySQLIOs
                 return false;
             }
 
-            DataServerConditionMapping mapping = DataServerConditionMappingConfiguration
-                    .getConditionMapping((ExecuteQueryStatus) statusObj);
-
-            if (mapping != null)
-            {
-                return mapping.getState() == ResourceState.ONLINE;
-            }
-            else
-            {
-                logger.error("No condition mapping present. Returning 'false'");
-            }
+            return (MySQLIOs
+                    .getStateFromQueryStatus((ExecuteQueryStatus) statusObj) != ResourceState.STOPPED);
 
         }
         catch (Exception err)
         {
-            logger.error("Got unexpected exception. Returning false: " + err);
+            logger.error("Got unexpected exception. Returning true: " + err);
         }
-        return false;
+        return true;
     }
 
     public static void checkStateMapping()
@@ -611,6 +584,9 @@ public class MySQLIOs
                     c.getLocalizedMessage()));
             logger.info("MONITOR WILL USE DEFAULT STATE MAPPING:");
         }
+
+        logger.info("\n" + MySQLIOs.showStateMapping() + "\n");
+
     }
 
     /**
@@ -635,13 +611,6 @@ public class MySQLIOs
             int port, String user, String password, String db, String query,
             int timeoutMsecs)
     {
-
-        if (testConditionEnabled
-                && testCondition != ExecuteQueryStatus.UNDEFINED)
-        {
-            return testConditionWithResults();
-        }
-
         String statusMessage = null;
         int mysqlErrno = -1;
 
@@ -1209,22 +1178,6 @@ public class MySQLIOs
     }
 
     /**
-     * Utility method that will allow us to simulate a wide variety of
-     * conditions being passed up from monitoring into rules etc.
-     * 
-     * @return
-     */
-    private TungstenProperties testConditionWithResults()
-    {
-        TungstenProperties retProps = new TungstenProperties();
-        retProps.setObject(STATUS_KEY, testCondition);
-        retProps.setString(STATUS_MESSAGE_KEY, String.format(
-                "Test vector enabled. Returning condition=%s", testCondition));
-        CLUtils.println(retProps.toNameValuePairs());
-        return retProps;
-    }
-
-    /**
      * Do a MySQL specific encryption of the given password<br>
      * Algorithm is: <br>
      * stage1_hash = SHA1(password)<br>
@@ -1355,17 +1308,118 @@ public class MySQLIOs
         return String.format("%s\n%s", status.toString(), statusMessage);
     }
 
-    public static DataServerConditionMapping getConditionMappingFromQueryStatus(
+    /**
+     * Returns the ResourceState that maps to the status of the query execution.
+     * 
+     * @param status
+     */
+    public static ResourceState getStateFromQueryStatus(
             ExecuteQueryStatus status)
     {
-        return DataServerConditionMappingConfiguration
-                .getConditionMapping(status);
+        if (stateMapConfig != null)
+        {
+            try
+            {
+                return QueryStatusToResourceStateConfiguration
+                        .getMappedState(status);
+            }
+            catch (ConfigurationException c)
+            {
+                if (logger.isDebugEnabled())
+                {
+                    logger.debug(String.format("%s\nUsing default mapping.\n"
+                            + "Check the file at %s and correct any issues.",
+                            c.getLocalizedMessage(),
+                            stateMapConfig.getConfigFileNameInUse()));
+                }
+            }
+        }
+
+        switch (status)
+        {
+            case OK :
+                return ResourceState.ONLINE;
+
+            case SOCKET_CONNECT_TIMEOUT :
+            case LOGIN_RESPONSE_TIMEOUT :
+            case QUERY_EXEC_TIMEOUT :
+            case QUERY_RESULTS_TIMEOUT :
+            case SEND_QUERY_TIMEOUT :
+                return ResourceState.TIMEOUT;
+
+            case SOCKET_IO_ERROR :
+                return ResourceState.STOPPED;
+
+            case HOST_IS_DOWN :
+            case NO_ROUTE_TO_HOST :
+            case QUERY_TOO_LARGE :
+            case OPEN_FILE_LIMIT_ERROR :
+            case SOCKET_NO_IO :
+            case QUERY_RESULT_FAILED :
+            case QUERY_EXECUTION_FAILED :
+            case MYSQL_ERROR :
+            case UNEXPECTED_EXCEPTION :
+            case MYSQL_PREMATURE_EOF :
+            case UNTRAPPED_CONDITION :
+            case TOO_MANY_CONNECTIONS :
+            case UNKNOWN_HOST :
+            default :
+                return ResourceState.SUSPECT;
+        }
     }
 
     public static void loadStateMappingConfiguration()
             throws ConfigurationException
     {
-        stateMapConfig = DataServerConditionMappingConfiguration.getInstance();
+        stateMapConfig = QueryStatusToResourceStateConfiguration.getInstance();
+    }
+
+    public static String showStateMapping()
+    {
+        StringBuilder builder = new StringBuilder();
+
+        ResourceState mappedState = null;
+
+        for (ExecuteQueryStatus status : ExecuteQueryStatus.values())
+        {
+
+            try
+            {
+                mappedState = QueryStatusToResourceStateConfiguration
+                        .getMappedState(status);
+
+                if (mappedState != null)
+                {
+                    builder.append(String.format("OVERRIDE: %s = %s\n", status,
+                            mappedState));
+
+                    continue;
+                }
+            }
+            catch (ConfigurationException c)
+            {
+                if (logger.isDebugEnabled())
+                {
+                    if (stateMapConfig != null)
+                    {
+                        logger.debug("Exception using default mapping."
+                                + " Check the file at "
+                                + stateMapConfig.getConfigFileNameInUse()
+                                + " and correct any issues.");
+                    }
+                    else
+                    {
+                        logger.debug("Default config for " + status + " = "
+                                + mappedState + " is invalid");
+                    }
+                }
+            }
+
+            builder.append(String.format(" DEFAULT: %s = %s\n", status,
+                    getStateFromQueryStatus(status)));
+        }
+
+        return builder.toString();
     }
 
     private static TungstenProperties logAndReturnProperties(
@@ -1377,48 +1431,5 @@ public class MySQLIOs
         }
 
         return props;
-    }
-
-    public static boolean isTestConditionEnabled()
-    {
-        return testConditionEnabled;
-    }
-
-    public static void setTestConditionEnabled(boolean testConditionEnabled)
-    {
-        if (testConditionEnabled != MySQLIOs.testConditionEnabled)
-        {
-            CLUtils.println(String.format("TEST CONDITION=%s, enabled=%s",
-                    testCondition, testConditionEnabled));
-        }
-        MySQLIOs.testConditionEnabled = testConditionEnabled;
-    }
-
-    public static ExecuteQueryStatus getTestCondition()
-    {
-        return testCondition;
-    }
-
-    public static void setTestCondition(ExecuteQueryStatus testCondition)
-    {
-        if (testCondition != MySQLIOs.testCondition)
-        {
-            CLUtils.println(String.format(
-                    "TEST CONDITION %s => %s, enabled=%s",
-                    MySQLIOs.testCondition, testCondition,
-                    MySQLIOs.testConditionEnabled));
-        }
-        MySQLIOs.testCondition = testCondition;
-    }
-
-    public static void clearTestCondition()
-    {
-        MySQLIOs.setTestCondition(ExecuteQueryStatus.UNDEFINED);
-        setTestConditionEnabled(false);
-    }
-
-    public static DataServerConditionMappingConfiguration getStateMapConfig()
-    {
-        return stateMapConfig;
     }
 }

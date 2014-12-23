@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -68,6 +68,7 @@ import com.continuent.tungsten.replicator.database.DatabaseFactory;
 import com.continuent.tungsten.replicator.database.Table;
 import com.continuent.tungsten.replicator.event.ReplDBMSHeader;
 import com.continuent.tungsten.replicator.extractor.Extractor;
+import com.continuent.tungsten.replicator.extractor.ExtractorException;
 import com.continuent.tungsten.replicator.heartbeat.HeartbeatTable;
 import com.continuent.tungsten.replicator.management.OpenReplicatorContext;
 import com.continuent.tungsten.replicator.management.OpenReplicatorPlugin;
@@ -169,6 +170,7 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
         int id = -1;
 
         // Ensure we have a runtime. This is null if we are offline.
+        // TODO: This command should execute in a state machine.
         ReplicatorRuntime ourRuntime = runtime;
         if (ourRuntime == null)
         {
@@ -191,7 +193,7 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
                         .createDatabase(url, user, password, true);
                 // this is about the only place where we want logging the
                 // queries
-                conn.connect();
+                conn.connect(true);
             }
             catch (Exception e)
             {
@@ -361,7 +363,7 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
                             runtime.getJdbcUrl(null), runtime.getJdbcUser(),
                             runtime.getJdbcPassword(),
                             runtime.getReplicatorSchemaName(),
-                            runtime.getTungstenTableType(), runtime);
+                            runtime.getTungstenTableType());
                     shardManager.advertiseInternal();
                 }
                 catch (Exception e)
@@ -960,7 +962,7 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
                         statusProps.setString(Replicator.CURRENT_EVENT_ID,
                                 currentEventId);
                 }
-                catch (ReplicatorException e)
+                catch (ExtractorException e)
                 {
                     statusProps.setString(Replicator.CURRENT_EVENT_ID, "ERROR");
                     if (logger.isDebugEnabled())
@@ -1013,10 +1015,10 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
                 statusProps.setDouble(Replicator.APPLIED_LATENCY,
                         pipeline.getApplyLatency());
                 Timestamp commitTime = lastEvent.getExtractedTstamp();
+                double relativeLatency = ((System.currentTimeMillis() - commitTime
+                        .getTime()) / 1000.0);
                 if (commitTime != null)
                 {
-                    double relativeLatency = ((System.currentTimeMillis() - commitTime
-                            .getTime()) / 1000.0);
                     statusProps.setDouble(Replicator.RELATIVE_LATENCY,
                             relativeLatency);
                 }
@@ -1208,11 +1210,6 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
                     props.put("blockCommitRowCount",
                             new Integer(stage.getBlockCommitRowCount())
                                     .toString());
-                    double intervalSecs = (double) stage
-                            .getBlockCommitInterval().longValue() / 1000.0;
-                    props.put("blockCommitInterval",
-                            new Double(intervalSecs).toString() + "s");
-                    props.put("blockCommitPolicy", stage.getBlockCommitPolicy());
 
                     // Add stage components.
                     props.put("applier.name", stage.getApplierSpec().getName());
@@ -1294,11 +1291,23 @@ public class TungstenPlugin extends NotificationBroadcasterSupport
             props.put("matched", matchString.toString());
             statusList.add(props);
         }
+
+        /*
+         * // Turn the list of matches into a string. StringBuffer matchString =
+         * new StringBuffer("["); for (int i = 0; i < matched.length; i++) { if
+         * (i > 0) matchString.append(",");
+         * matchString.append("[").append(i).append(":").append(matched[i])
+         * .append("]"); } matchString.append("]"); return
+         * this.getClass().getSimpleName() + " predicate=" +
+         * predicate.toString() + " done=" + done + " cancelled=" + cancelled +
+         * " matched=" + matchString.toString();
+         */
     }
 
     public void provision(String uri) throws Exception
     {
-        // Currently unused. 
+        // TODO Auto-generated method stub
+
     }
 
     public ReplicatorCapabilities getCapabilities() throws Exception

@@ -40,6 +40,34 @@ class Clusters < GroupConfigurePrompt
       self.add_prompt(klass.new())
     }
   end
+  
+  def get_new_alias_prompt
+    TemporaryPrompt.new("What dataservice would you like to configure?  Enter nothing to stop entering #{@plural}.")
+  end
+  
+  def add_alias(new_alias)
+    super(new_alias)
+    @config.setProperty([get_name(), new_alias, DATASERVICENAME], new_alias)
+  end
+  
+  def after_new_members
+    each_member{
+      |ds_alias|
+      dataservice_members = @config.getPropertyOr([get_name(), ds_alias, DATASERVICE_MEMBERS], "").split(",")
+      dataservice_connectors = @config.getPropertyOr([get_name(), ds_alias, DATASERVICE_CONNECTORS], "").split(",")
+      
+      dataservice_members.each{
+        |member|
+        @config.setDefault([HOSTS, to_identifier(member), DEPLOYMENT_DATASERVICE], ds_alias)
+        @config.setDefault([HOSTS, to_identifier(member), HOST], member)
+      }
+      dataservice_connectors.each{
+        |member|
+        @config.setDefault([HOSTS, to_identifier(member), DEPLOYMENT_DATASERVICE], ds_alias)
+        @config.setDefault([HOSTS, to_identifier(member), HOST], member)
+      }
+    }
+  end
 end
 
 module ClusterPrompt
@@ -390,10 +418,7 @@ class ClusterMasterHost < ConfigurePrompt
   end
   
   def required?
-    # This value is required if this is a replicator host and --master-thl-host isn't given
-    rs_alias = to_identifier("#{get_member()}_#{@config.getProperty([DEPLOYMENT_HOST])}")
-    super() && (@config.getProperty(HOST_ENABLE_REPLICATOR) == "true") &&
-      (@config.getProperty([REPL_SERVICES, rs_alias, REPL_MASTERHOST]) == nil)
+    super() && (@config.getProperty(HOST_ENABLE_REPLICATOR) == "true")
   end
   
   def build_command_line_argument(member, v, public_argument = false)
@@ -498,11 +523,11 @@ class ClusterWitnesses < ConfigurePrompt
     end
   end
   
-  def get_template_value
+  def get_template_value(transform_values_method)
     if @config.getProperty(get_member_key(ENABLE_ACTIVE_WITNESSES)) == "true"
       return ""
     else
-      super()
+      super(transform_values_method)
     end
   end
 end

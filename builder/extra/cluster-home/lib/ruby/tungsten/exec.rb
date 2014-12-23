@@ -85,7 +85,7 @@ class TungstenUtil
     original_errors = errors
     rc = status.exitstatus
     if errors == ""
-      errors = "No STDERR"
+      errors = "No Errors"
     else
       errors = "Errors: #{errors}"
     end
@@ -157,7 +157,7 @@ class TungstenUtil
     original_errors = errors
     rc = status.exitstatus
     if errors == ""
-      errors = "No STDERR"
+      errors = "No Errors"
     else
       errors = "Errors: #{errors}"
     end
@@ -220,7 +220,7 @@ class TungstenUtil
     original_errors = errors
     rc = status.exitstatus
     if errors == ""
-      errors = "No STDERR"
+      errors = "No Errors"
     else
       errors = "Errors: #{errors}"
     end
@@ -304,7 +304,7 @@ class TungstenUtil
     rc = nil
     exit_signal=nil
 
-    connection_error = "Net::SSH was unable to connect to #{host} as #{ssh_user}.  Check that #{host} is online, #{ssh_user} exists and your SSH private keyfile or ssh-agent settings. Try adding --net-ssh-option=port=<SSH port number> if you are using an SSH port other than 22.  Review http://docs.continuent.com/helpwithsshandtpm for more help on diagnosing SSH problems."
+    connection_error = "Net::SSH was unable to connect to #{host} as #{ssh_user}.  Check that #{host} is online, #{ssh_user} exists and your SSH private keyfile or ssh-agent settings. Try adding --net-ssh-option=port=<SSH port number> if you are using an SSH port other than 22.  Review https://docs.continuent.com/wiki/display/TEDOC/Unable+to+use+the+tpm+command+over+SSH for more help on diagnosing SSH problems."
     begin
       Net::SSH.start(host, ssh_user, get_ssh_options()) {
         |ssh|

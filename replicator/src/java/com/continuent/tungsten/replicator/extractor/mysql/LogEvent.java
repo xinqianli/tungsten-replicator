@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2009-2014 Continuent Inc.
+ * Copyright (C) 2009-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -81,14 +81,35 @@ public abstract class LogEvent
                 return;
             }
 
-            // Get initial log position.
+            /* 4.0 or newer */
             logPos = (int) LittleEndianConversion.convert4BytesToLong(buffer,
                     MysqlBinlog.LOG_POS_OFFSET);
+            /*
+             * If the log is 4.0 (so here it can only be a 4.0 relay log read by
+             * the SQL thread or a 4.0 master binlog read by the I/O thread),
+             * log_pos is the beginning of the event: we transform it into the
+             * end of the event, which is more useful. But how do you know that
+             * the log is 4.0: you know it if description_event is version 3and
+             * you are not reading a Format_desc (remember that mysqlbinlog
+             * starts by assuming that 5.0 logs are in 4.0 format, until it
+             * finds a Format_desc).
+             */
 
             if ((descriptionEvent.binlogVersion == 3)
                     && (buffer[MysqlBinlog.EVENT_TYPE_OFFSET] < MysqlBinlog.FORMAT_DESCRIPTION_EVENT)
                     && (logPos > 0))
             {
+                /*
+                 * If log_pos=0, don't change it. log_pos==0 is a marker to mean
+                 * "don't change rli->group_master_log_pos" (see
+                 * inc_group_relay_log_pos()). As it is unreal log_pos, adding
+                 * the event len's is nonsense. For example, a fake Rotate event
+                 * should not have its log_pos (which is 0) changed or it will
+                 * modify Exec_master_log_pos in SHOW SLAVE STATUS, displaying a
+                 * nonsense value of (a non-zero offset which does not exist in
+                 * the master's binlog, so which will cause problems if the user
+                 * uses this value in CHANGE MASTER).
+                 */
                 logPos += LittleEndianConversion.convert4BytesToLong(buffer,
                         MysqlBinlog.EVENT_LEN_OFFSET);
             }
@@ -97,19 +118,41 @@ public abstract class LogEvent
 
             flags = LittleEndianConversion.convert2BytesToInt(buffer,
                     MysqlBinlog.FLAGS_OFFSET);
-
-            // See if we have a thread-specific event.
+            /*
+             * TODO LOG_EVENT_THREAD_SPECIFIC_F = 0x4 (New in 4.1.0) Used only
+             * by mysqlbinlog (not by the replication code at all) to be able to
+             * deal properly with temporary tables. mysqlbinlog displays events
+             * from the binary log in printable format, so that you can feed the
+             * output into mysql (the command-line interpreter), to achieve
+             * incremental backup recovery.
+             */
+            threadSpecificEvent = ((flags & MysqlBinlog.LOG_EVENT_THREAD_SPECIFIC_F) == MysqlBinlog.LOG_EVENT_THREAD_SPECIFIC_F);
             if (logger.isDebugEnabled())
                 logger.debug("Event is thread-specific = "
                         + threadSpecificEvent);
 
-            // See if we have an event that is just a header.
             if ((buffer[MysqlBinlog.EVENT_TYPE_OFFSET] == MysqlBinlog.FORMAT_DESCRIPTION_EVENT)
                     || (buffer[MysqlBinlog.EVENT_TYPE_OFFSET] == MysqlBinlog.ROTATE_EVENT))
             {
-                // If so, return.
+                /*
+                 * These events always have a header which stops here (i.e.
+                 * their header is FROZEN).
+                 */
+                /*
+                 * Initialization to zero of all other Log_event members as
+                 * they're not specified. Currently there are no such members;
+                 * in the future there will be an event UID (but
+                 * Format_description and Rotate don't need this UID, as they
+                 * are not propagated through --log-slave-updates (remember the
+                 * UID is used to not play a query twice when you have two
+                 * masters which are slaves of a 3rd master). Then we are done.
+                 */
                 return;
             }
+            /*
+             * otherwise, go on with reading the header from buffer (nothing for
+             * now)
+             */
         }
         catch (IOException e)
         {
@@ -144,151 +187,129 @@ public abstract class LogEvent
     {
         LogEvent event = null;
 
-        int eventType;
-        try
+        switch (buffer[MysqlBinlog.EVENT_TYPE_OFFSET])
         {
-            eventType = LittleEndianConversion.convert1ByteToInt(buffer,
-                    MysqlBinlog.EVENT_TYPE_OFFSET);
-
-            switch (eventType)
-            {
-                case MysqlBinlog.QUERY_EVENT :
-                    event = new QueryLogEvent(buffer, eventLength,
-                            descriptionEvent, parseStatements,
-                            useBytesForString, currentPosition);
-                    break;
-                case MysqlBinlog.LOAD_EVENT :
-                    logger.warn("Skipping unsupported LOAD_EVENT");
-                    break;
-                case MysqlBinlog.NEW_LOAD_EVENT :
-                    logger.warn("Skipping unsupported NEW_LOAD_EVENT");
-                    break;
-                case MysqlBinlog.ROTATE_EVENT :
-                    event = new RotateLogEvent(buffer, eventLength,
-                            descriptionEvent, currentPosition);
-                    break;
-                case MysqlBinlog.SLAVE_EVENT : /*
-                                                * can never happen (unused
-                                                * event)
-                                                */
-                    logger.warn("Skipping unsupported SLAVE_EVENT");
-                    break;
-                case MysqlBinlog.CREATE_FILE_EVENT :
-                    logger.warn("Skipping unsupported CREATE_FILE_EVENT");
-                    break;
-                case MysqlBinlog.APPEND_BLOCK_EVENT :
-                    if (logger.isDebugEnabled())
-                        logger.debug("reading APPEND_BLOCK_EVENT");
-                    event = new AppendBlockLogEvent(buffer, eventLength,
-                            descriptionEvent, currentPosition);
-                    break;
-                case MysqlBinlog.DELETE_FILE_EVENT :
-                    if (logger.isDebugEnabled())
-                        logger.debug("reading DELETE_FILE_EVENT");
-                    event = new DeleteFileLogEvent(buffer, eventLength,
-                            descriptionEvent, currentPosition);
-                    break;
-                case MysqlBinlog.EXEC_LOAD_EVENT :
-                    logger.warn("Skipping unsupported EXEC_LOAD_EVENT");
-                    break;
-                case MysqlBinlog.START_EVENT_V3 :
-                    /* this is sent only by MySQL <=4.x */
-                    logger.warn("Skipping unsupported START_EVENT_V3");
-                    break;
-                case MysqlBinlog.STOP_EVENT :
-                    event = new StopLogEvent(buffer, eventLength,
-                            descriptionEvent, currentPosition);
-                    break;
-                case MysqlBinlog.INTVAR_EVENT :
-                    if (logger.isDebugEnabled())
-                        logger.debug("extracting INTVAR_EVENT");
-                    event = new IntvarLogEvent(buffer, eventLength,
-                            descriptionEvent, currentPosition);
-                    break;
-                case MysqlBinlog.XID_EVENT :
-                    event = new XidLogEvent(buffer, eventLength,
-                            descriptionEvent, currentPosition);
-                    break;
-                case MysqlBinlog.RAND_EVENT :
-                    event = new RandLogEvent(buffer, eventLength,
-                            descriptionEvent, currentPosition);
-                    break;
-                case MysqlBinlog.USER_VAR_EVENT :
-                    event = new UserVarLogEvent(buffer, eventLength,
-                            descriptionEvent, currentPosition);
-                    break;
-                case MysqlBinlog.FORMAT_DESCRIPTION_EVENT :
-                    event = new FormatDescriptionLogEvent(buffer, eventLength,
-                            descriptionEvent, currentPosition);
-                    break;
-                case MysqlBinlog.PRE_GA_WRITE_ROWS_EVENT :
-                    logger.warn("Skipping unsupported PRE_GA_WRITE_ROWS_EVENT");
-                    break;
-                case MysqlBinlog.PRE_GA_UPDATE_ROWS_EVENT :
-                    logger.warn("Skipping unsupported PRE_GA_UPDATE_ROWS_EVENT");
-                    break;
-                case MysqlBinlog.PRE_GA_DELETE_ROWS_EVENT :
-                    logger.warn("Skipping unsupported PRE_GA_DELETE_ROWS_EVENT");
-                    break;
-                case MysqlBinlog.WRITE_ROWS_EVENT :
-                case MysqlBinlog.NEW_WRITE_ROWS_EVENT :
-                    if (logger.isDebugEnabled())
-                        logger.debug("reading WRITE_ROWS_EVENT");
-                    event = new WriteRowsLogEvent(buffer, eventLength,
-                            descriptionEvent, useBytesForString,
-                            currentPosition);
-                    break;
-                case MysqlBinlog.UPDATE_ROWS_EVENT :
-                case MysqlBinlog.NEW_UPDATE_ROWS_EVENT :
-                    if (logger.isDebugEnabled())
-                        logger.debug("reading UPDATE_ROWS_EVENT");
-                    event = new UpdateRowsLogEvent(buffer, eventLength,
-                            descriptionEvent, useBytesForString,
-                            currentPosition);
-                    break;
-                case MysqlBinlog.DELETE_ROWS_EVENT :
-                case MysqlBinlog.NEW_DELETE_ROWS_EVENT :
-                    if (logger.isDebugEnabled())
-                        logger.debug("reading DELETE_ROWS_EVENT");
-                    event = new DeleteRowsLogEvent(buffer, eventLength,
-                            descriptionEvent, useBytesForString,
-                            currentPosition);
-                    break;
-                case MysqlBinlog.TABLE_MAP_EVENT :
-                    if (logger.isDebugEnabled())
-                        logger.debug("reading TABLE_MAP_EVENT");
-                    event = new TableMapLogEvent(buffer, eventLength,
-                            descriptionEvent, currentPosition);
-                    break;
-                case MysqlBinlog.BEGIN_LOAD_QUERY_EVENT :
-                    if (logger.isDebugEnabled())
-                        logger.debug("reading BEGIN_LOAD_QUERY_EVENT");
-                    event = new BeginLoadQueryLogEvent(buffer, eventLength,
-                            descriptionEvent, currentPosition);
-                    break;
-                case MysqlBinlog.EXECUTE_LOAD_QUERY_EVENT :
-                    if (logger.isDebugEnabled())
-                        logger.debug("reading EXECUTE_LOAD_QUERY_EVENT");
-                    event = new ExecuteLoadQueryLogEvent(buffer, eventLength,
-                            descriptionEvent, parseStatements, currentPosition);
-                    break;
-                case MysqlBinlog.INCIDENT_EVENT :
-                    logger.warn("Skipping unsupported INCIDENT_EVENT");
-                    break;
-                case MysqlBinlog.GTID_EVENT :
-                    event = new MariaDBGTIDEvent(buffer, eventLength,
-                            descriptionEvent, currentPosition);
-                    break;
-                default :
-                    logger.warn("Skipping unrecognized binlog event type "
-                            + eventType);
-            }
-
+            case MysqlBinlog.QUERY_EVENT :
+                event = new QueryLogEvent(buffer, eventLength,
+                        descriptionEvent, parseStatements, useBytesForString,
+                        currentPosition);
+                break;
+            case MysqlBinlog.LOAD_EVENT :
+                logger.warn("Skipping unsupported LOAD_EVENT");
+                break;
+            case MysqlBinlog.NEW_LOAD_EVENT :
+                logger.warn("Skipping unsupported NEW_LOAD_EVENT");
+                break;
+            case MysqlBinlog.ROTATE_EVENT :
+                event = new RotateLogEvent(buffer, eventLength,
+                        descriptionEvent, currentPosition);
+                break;
+            case MysqlBinlog.SLAVE_EVENT : /* can never happen (unused event) */
+                logger.warn("Skipping unsupported SLAVE_EVENT");
+                break;
+            case MysqlBinlog.CREATE_FILE_EVENT :
+                logger.warn("Skipping unsupported CREATE_FILE_EVENT");
+                break;
+            case MysqlBinlog.APPEND_BLOCK_EVENT :
+                if (logger.isDebugEnabled())
+                    logger.debug("reading APPEND_BLOCK_EVENT");
+                event = new AppendBlockLogEvent(buffer, eventLength,
+                        descriptionEvent, currentPosition);
+                break;
+            case MysqlBinlog.DELETE_FILE_EVENT :
+                if (logger.isDebugEnabled())
+                    logger.debug("reading DELETE_FILE_EVENT");
+                event = new DeleteFileLogEvent(buffer, eventLength,
+                        descriptionEvent, currentPosition);
+                break;
+            case MysqlBinlog.EXEC_LOAD_EVENT :
+                logger.warn("Skipping unsupported EXEC_LOAD_EVENT");
+                break;
+            case MysqlBinlog.START_EVENT_V3 :
+                /* this is sent only by MySQL <=4.x */
+                logger.warn("Skipping unsupported START_EVENT_V3");
+                break;
+            case MysqlBinlog.STOP_EVENT :
+                event = new StopLogEvent(buffer, eventLength, descriptionEvent,
+                        currentPosition);
+                break;
+            case MysqlBinlog.INTVAR_EVENT :
+                if (logger.isDebugEnabled())
+                    logger.debug("extracting INTVAR_EVENT");
+                event = new IntvarLogEvent(buffer, eventLength,
+                        descriptionEvent, currentPosition);
+                break;
+            case MysqlBinlog.XID_EVENT :
+                event = new XidLogEvent(buffer, eventLength, descriptionEvent,
+                        currentPosition);
+                break;
+            case MysqlBinlog.RAND_EVENT :
+                event = new RandLogEvent(buffer, eventLength, descriptionEvent,
+                        currentPosition);
+                break;
+            case MysqlBinlog.USER_VAR_EVENT :
+                event = new UserVarLogEvent(buffer, eventLength,
+                        descriptionEvent, currentPosition);
+                break;
+            case MysqlBinlog.FORMAT_DESCRIPTION_EVENT :
+                event = new FormatDescriptionLogEvent(buffer, eventLength,
+                        descriptionEvent, currentPosition);
+                break;
+            case MysqlBinlog.PRE_GA_WRITE_ROWS_EVENT :
+                logger.warn("Skipping unsupported PRE_GA_WRITE_ROWS_EVENT");
+                break;
+            case MysqlBinlog.PRE_GA_UPDATE_ROWS_EVENT :
+                logger.warn("Skipping unsupported PRE_GA_UPDATE_ROWS_EVENT");
+                break;
+            case MysqlBinlog.PRE_GA_DELETE_ROWS_EVENT :
+                logger.warn("Skipping unsupported PRE_GA_DELETE_ROWS_EVENT");
+                break;
+            case MysqlBinlog.WRITE_ROWS_EVENT :
+            case MysqlBinlog.NEW_WRITE_ROWS_EVENT :
+                if (logger.isDebugEnabled())
+                    logger.debug("reading WRITE_ROWS_EVENT");
+                event = new WriteRowsLogEvent(buffer, eventLength,
+                        descriptionEvent, useBytesForString, currentPosition);
+                break;
+            case MysqlBinlog.UPDATE_ROWS_EVENT :
+            case MysqlBinlog.NEW_UPDATE_ROWS_EVENT :
+                if (logger.isDebugEnabled())
+                    logger.debug("reading UPDATE_ROWS_EVENT");
+                event = new UpdateRowsLogEvent(buffer, eventLength,
+                        descriptionEvent, useBytesForString, currentPosition);
+                break;
+            case MysqlBinlog.DELETE_ROWS_EVENT :
+            case MysqlBinlog.NEW_DELETE_ROWS_EVENT :
+                if (logger.isDebugEnabled())
+                    logger.debug("reading DELETE_ROWS_EVENT");
+                event = new DeleteRowsLogEvent(buffer, eventLength,
+                        descriptionEvent, useBytesForString, currentPosition);
+                break;
+            case MysqlBinlog.TABLE_MAP_EVENT :
+                if (logger.isDebugEnabled())
+                    logger.debug("reading TABLE_MAP_EVENT");
+                event = new TableMapLogEvent(buffer, eventLength,
+                        descriptionEvent, currentPosition);
+                break;
+            case MysqlBinlog.BEGIN_LOAD_QUERY_EVENT :
+                if (logger.isDebugEnabled())
+                    logger.debug("reading BEGIN_LOAD_QUERY_EVENT");
+                event = new BeginLoadQueryLogEvent(buffer, eventLength,
+                        descriptionEvent, currentPosition);
+                break;
+            case MysqlBinlog.EXECUTE_LOAD_QUERY_EVENT :
+                if (logger.isDebugEnabled())
+                    logger.debug("reading EXECUTE_LOAD_QUERY_EVENT");
+                event = new ExecuteLoadQueryLogEvent(buffer, eventLength,
+                        descriptionEvent, parseStatements, currentPosition);
+                break;
+            case MysqlBinlog.INCIDENT_EVENT :
+                logger.warn("Skipping unsupported INCIDENT_EVENT");
+                break;
+            default :
+                logger.warn("Skipping unrecognized binlog event type "
+                        + buffer[MysqlBinlog.EVENT_TYPE_OFFSET]);
         }
-        catch (IOException e1)
-        {
-        }
-
         return event;
     }
 
@@ -351,13 +372,23 @@ public abstract class LogEvent
                 while (!found)
                 {
                     tempPos = tempPosition.toString();
-                    eventLength = extractEventHeader(runtime, tempPosition,
-                            tmpHeader);
+                    readDataFromBinlog(runtime, tempPosition, tmpHeader, 0,
+                            tmpHeader.length, 60);
+
+                    // Extract event length
+                    eventLength = (int) LittleEndianConversion
+                            .convert4BytesToLong(tmpHeader,
+                                    MysqlBinlog.EVENT_LEN_OFFSET)
+                            - tmpHeader.length;
 
                     if (tmpHeader[MysqlBinlog.EVENT_TYPE_OFFSET] == MysqlBinlog.EXECUTE_LOAD_QUERY_EVENT)
                     {
-                        fullEvent = extractFullEvent(runtime, eventLength,
-                                tempPosition, tmpHeader);
+                        fullEvent = new byte[tmpHeader.length + eventLength];
+                        readDataFromBinlog(runtime, tempPosition, fullEvent,
+                                tmpHeader.length, eventLength, 120);
+
+                        System.arraycopy(tmpHeader, 0, fullEvent, 0,
+                                tmpHeader.length);
 
                         LogEvent tempEvent = readLogEvent(parseStatements,
                                 tempPos, fullEvent, fullEvent.length,
@@ -381,8 +412,14 @@ public abstract class LogEvent
                     }
                     else if (tmpHeader[MysqlBinlog.EVENT_TYPE_OFFSET] == MysqlBinlog.ROTATE_EVENT)
                     {
-                        fullEvent = extractFullEvent(runtime, eventLength,
-                                tempPosition, tmpHeader);
+                        // Found a log rotate event : this can happen with
+                        // MyISAM table for example.
+                        fullEvent = new byte[tmpHeader.length + eventLength];
+                        readDataFromBinlog(runtime, tempPosition, fullEvent,
+                                tmpHeader.length, eventLength, 120);
+
+                        System.arraycopy(tmpHeader, 0, fullEvent, 0,
+                                tmpHeader.length);
 
                         LogEvent tempEvent = readLogEvent(parseStatements,
                                 tempPos, fullEvent, fullEvent.length,
@@ -414,17 +451,6 @@ public abstract class LogEvent
                 tempPosition.close();
             }
 
-            if (event instanceof BeginLoadQueryLogEvent
-                    || event instanceof AppendBlockLogEvent)
-            {
-                LoadDataInfileEvent currentEvent = (LoadDataInfileEvent) event;
-                currentEvent
-                        .setNextEventCanBeAppended(checkNextEventIsPartOfSameLDI(
-                                runtime, position, descriptionEvent,
-                                parseStatements, useBytesForString,
-                                currentEvent.getFileID()));
-            }
-
             return event;
         }
         catch (EOFException e)
@@ -436,170 +462,6 @@ public abstract class LogEvent
         {
             throw new MySQLExtractException("binlog read error", e);
         }
-    }
-
-    /**
-     * Check whether next binlog event is part of the same Load Data Infile
-     * command (identified by file ID).
-     * 
-     * @param runtime Replicator runtime
-     * @param position Position of current event
-     * @param descriptionEvent Description event to be used to extract the next
-     *            event
-     * @param parseStatements
-     * @param useBytesForString
-     * @param fileId The file ID of current event
-     * @return true if next event is part of the same load data infile command,
-     *         false otherwise
-     * @throws ReplicatorException
-     * @throws InterruptedException
-     * @throws IOException
-     * @throws ExtractorException
-     */
-    private static boolean checkNextEventIsPartOfSameLDI(
-            ReplicatorRuntime runtime, BinlogReader position,
-            FormatDescriptionLogEvent descriptionEvent,
-            boolean parseStatements, boolean useBytesForString, int fileID)
-            throws ReplicatorException, InterruptedException, IOException,
-            ExtractorException
-    {
-        byte[] fullEvent;
-        int eventLength;
-
-        // Spawn a new data input stream
-        BinlogReader tempPosition = position.clone();
-        tempPosition.setEventID(position.getEventID() + 1);
-        tempPosition.open();
-
-        if (logger.isDebugEnabled())
-            logger.debug("Reading from " + tempPosition);
-
-        boolean found = false;
-        byte[] tmpHeader = new byte[descriptionEvent.commonHeaderLength];
-
-        try
-        {
-            String tempPos;
-            while (!found)
-            {
-                tempPos = tempPosition.toString();
-                eventLength = extractEventHeader(runtime, tempPosition,
-                        tmpHeader);
-
-                if (tmpHeader[MysqlBinlog.EVENT_TYPE_OFFSET] == MysqlBinlog.EXECUTE_LOAD_QUERY_EVENT
-                        || tmpHeader[MysqlBinlog.EVENT_TYPE_OFFSET] == MysqlBinlog.DELETE_FILE_EVENT
-                        || tmpHeader[MysqlBinlog.EVENT_TYPE_OFFSET] == MysqlBinlog.APPEND_BLOCK_EVENT)
-                {
-                    // Next event is of the correct type... does it match
-                    // the file ID?
-                    found = true;
-                    fullEvent = extractFullEvent(runtime, eventLength,
-                            tempPosition, tmpHeader);
-
-                    LogEvent tempEvent = readLogEvent(parseStatements, tempPos,
-                            fullEvent, fullEvent.length, descriptionEvent,
-                            useBytesForString);
-
-                    if (tempEvent instanceof LoadDataInfileEvent)
-                    {
-                        LoadDataInfileEvent nextEvent = (LoadDataInfileEvent) tempEvent;
-
-                        if (nextEvent.getFileID() == fileID)
-                        {
-                            return true;
-                        }
-                    }
-
-                }
-                else if (tmpHeader[MysqlBinlog.EVENT_TYPE_OFFSET] == MysqlBinlog.ROTATE_EVENT)
-                {
-                    fullEvent = extractFullEvent(runtime, eventLength,
-                            tempPosition, tmpHeader);
-
-                    LogEvent tempEvent = readLogEvent(parseStatements, tempPos,
-                            fullEvent, fullEvent.length, descriptionEvent,
-                            useBytesForString);
-
-                    if (tempEvent instanceof RotateLogEvent)
-                    { // It's real so we need to rotate the log.
-                        tempPosition.close();
-                        tempPosition.setFileName(((RotateLogEvent) tempEvent)
-                                .getNewBinlogFilename());
-                        tempPosition.open();
-                    }
-                    else
-                        throw new ExtractorException(
-                                "Failed to extract RotateLogEvent"
-                                        + tempPosition);
-                }
-                else if (tmpHeader[MysqlBinlog.EVENT_TYPE_OFFSET] == MysqlBinlog.FORMAT_DESCRIPTION_EVENT)
-                {
-                    long skip = 0;
-                    while (skip != eventLength)
-                    {
-                        skip += tempPosition.skip(eventLength - skip);
-                    }
-                }
-                else
-                    return false;
-            }
-        }
-        finally
-        {
-            // Release the file handler
-            tempPosition.close();
-        }
-        return false;
-    }
-
-    /**
-     * Read a full event from the binlog into a byte array
-     * 
-     * @param runtime Replicator runtime
-     * @param eventLength Length of the event to be read
-     * @param tempPosition Current position in the binlog. It matches the
-     *            beginning of the event to be read
-     * @param tmpHeader Header of the event to be read
-     * @return The byte array read from the binlog
-     * @throws IOException
-     * @throws ReplicatorException
-     * @throws InterruptedException
-     */
-    private static byte[] extractFullEvent(ReplicatorRuntime runtime,
-            int eventLength, BinlogReader tempPosition, byte[] tmpHeader)
-            throws IOException, ReplicatorException, InterruptedException
-    {
-        byte[] fullEvent;
-        fullEvent = new byte[tmpHeader.length + eventLength];
-        readDataFromBinlog(runtime, tempPosition, fullEvent, tmpHeader.length,
-                eventLength, 120);
-
-        System.arraycopy(tmpHeader, 0, fullEvent, 0, tmpHeader.length);
-        return fullEvent;
-    }
-
-    /**
-     * Extract the event header from the binlog file at the given position.
-     * 
-     * @param runtime Replicator runtime
-     * @param position Position from the binlog where to read from
-     * @param header the extracted header
-     * @return the full length, as read from the header
-     * @throws IOException
-     * @throws ReplicatorException
-     * @throws InterruptedException
-     */
-    private static int extractEventHeader(ReplicatorRuntime runtime,
-            BinlogReader position, byte[] header) throws IOException,
-            ReplicatorException, InterruptedException
-    {
-        int eventLength;
-        readDataFromBinlog(runtime, position, header, 0, header.length, 60);
-
-        // Extract event length
-        eventLength = (int) LittleEndianConversion.convert4BytesToLong(header,
-                MysqlBinlog.EVENT_LEN_OFFSET) - header.length;
-        return eventLength;
     }
 
     /**

@@ -93,6 +93,7 @@ public class StringChunk extends AbstractChunk implements Chunk
     @Override
     public String getFrom()
     {
+        // TODO Auto-generated method stub
         return min;
     }
 
@@ -104,6 +105,7 @@ public class StringChunk extends AbstractChunk implements Chunk
     @Override
     public Object getTo()
     {
+        // TODO Auto-generated method stub
         return max;
     }
 
@@ -146,7 +148,7 @@ public class StringChunk extends AbstractChunk implements Chunk
 
     protected String getOrderByClause()
     {
-        return " ORDER BY "
+        return "ORDER BY "
                 + getTable().getPrimaryKey().getColumns().get(0).getName();
     }
 

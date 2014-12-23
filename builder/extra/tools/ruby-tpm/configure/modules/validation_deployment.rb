@@ -33,6 +33,7 @@ class OpensslLibraryCheck < ConfigureValidationCheck
     @title = "OpenSSL Library Check"
     @description = "Look for the Ruby OpenSSL library needed to connecto to remote hosts"
     @fatal_on_error = true
+    @weight = -10
   end
   
   def validate
@@ -58,6 +59,7 @@ class SSHLoginCheck < ConfigureValidationCheck
     @description = "Ensure that the configuration host can login to each member of the dataservice via SSH"
     @properties << USERID
     @fatal_on_error = true
+    @weight = -5
   end
   
   def validate
@@ -143,7 +145,7 @@ class WriteableTempDirectoryCheck < ConfigureValidationCheck
     end
   
     # Check to see if the tmp directory is executable
-    noexec = ssh_result("echo  'echo 0' > #{validation_temp_directory}/check.sh;chmod +x #{validation_temp_directory}/check.sh; #{validation_temp_directory}/check.sh; rm -f #{validation_temp_directory}/check.sh", @config.getProperty(HOST), user)   
+    noexec = ssh_result("echo  'echo 0' > #{validation_temp_directory}/check.sh;chmod +x #{validation_temp_directory}/check.sh; #{validation_temp_directory}/check.sh", @config.getProperty(HOST), user)   
     unless noexec == "0"
       error "Unable to execute scripts on #{validation_temp_directory} is noexec set?"
     else
@@ -217,56 +219,39 @@ class InstallationScriptCheck < ConfigureValidationCheck
   end
 end
 
-class ConfigurationStorageDirectoryCheck < ConfigureValidationCheck
-  include ClusterHostCheck
-  include LocalValidationCheck
-  
-  def set_vars
-    @title = "Check that $REPLICATOR_PROFILES is defined if $CONTINUENT_PROFILES is"
-  end
-  
-  def validate
-    if Configurator.instance.is_enterprise?()
-      return
-    end
-    
-    if ENV.has_key?("CONTINUENT_PROFILES")
-      unless ENV.has_key?("REPLICATOR_PROFILES")
-        warning("You have defined $CONTINUENT_PROFILES but not $REPLICATOR_PROFILES. This may cause problems if you are working with Continuent Tungsten and Tungsten Replicator on the same staging server. This will not cause any issues if you are only using Tungsten Replicator.")
-      else
-        if ENV["CONTINUENT_PROFILES"] == ENV["REPLICATOR_PROFILES"]
-          error("You have set $CONTINUENT_PROFILES and $REPLICATOR_PROFILES to #{ENV["CONTINUENT_PROFILES"]}. The values for these environment variables must be different.")
-        end
-      end
-    end
-  end
-end
-
-class MatchingHomeDirectoryCheck < ConfigureValidationCheck
+class HomeDirectoryCheck < ConfigureValidationCheck
   include ClusterHostCheck
   
   def set_vars
-    @title = "Home directory matches current directory"
+    @title = "home directory"
     @properties << HOME_DIRECTORY
-    @fatal_on_error = true
   end
   
   def validate
-    debug "Checking #{@config.getProperty(HOME_DIRECTORY)} matches the current running directory"
-    
-    unless File.exists?("#{@config.getProperty(HOME_DIRECTORY)}/tungsten")
-      error("You are running from a configured directory but the new configuration does not update the current directory.")
-    else
-      unless File.readlink("#{@config.getProperty(HOME_DIRECTORY)}/tungsten") == Configurator.instance.get_base_path()
-        error("You are running from a configured directory but the new configuration does not update the current directory.")
+    debug "Checking #{@config.getProperty(HOME_DIRECTORY)} is the same as $CONTINUENT_ROOT"
+    if ENV['CONTINUENT_ROOT'] != nil
+      unless ENV['CONTINUENT_ROOT'].to_s() == @config.getProperty(HOME_DIRECTORY).to_s()
+        unless File.identical?(ENV['CONTINUENT_ROOT'].to_s(), @config.getProperty(HOME_DIRECTORY).to_s())
+          root_tpm = "#{ENV['CONTINUENT_ROOT'].to_s()}/tungsten/tools/tpm"
+          if File.exist?(root_tpm)
+            root_manifest = JSON.parse(cmd_result("#{root_tpm} query manifest"))
+            if root_manifest["product"] != Configurator.instance.get_release_details()["product"]
+              return
+            end
+          end
+          
+          error("The setting for home-directory (#{@config.getProperty(HOME_DIRECTORY)}) is different to the Environment Variable CONTINUENT_ROOT (#{ENV['CONTINUENT_ROOT']})")
+          help("Remove the environment variable CONTINUENT_ROOT to continue")
+        end
       end
     end
   end
   
   def enabled?
-    super() && (@config.getProperty(HOME_DIRECTORY) != nil) && Configurator.instance.is_locked?()
+    super() && @config.getProperty(HOME_DIRECTORY) != nil
   end
 end
+
 
 class WriteableHomeDirectoryCheck < ConfigureValidationCheck
   include ClusterHostCheck
@@ -318,6 +303,32 @@ class WriteableHomeDirectoryCheck < ConfigureValidationCheck
   
   def enabled?
     @config.getProperty(HOME_DIRECTORY) != nil
+  end
+end
+
+class DeploymentPackageCheck < ConfigureValidationCheck
+  include ClusterHostCheck
+  include LocalValidationCheck
+  
+  def set_vars
+    @title = "Deployment package"
+  end
+  
+  def validate
+    uri = URI::parse(@config.getProperty(GLOBAL_DEPLOY_PACKAGE_URI))
+    if uri.scheme == "file" && (uri.host == nil || uri.host == "localhost")
+      debug("Send deployment package to #{@config.getProperty(HOST)}")
+      user = @config.getProperty(USERID)
+      ssh_user = Configurator.instance.get_ssh_user(user)
+      cmd_result("rsync -Caze ssh --delete #{uri.path} #{ssh_user}@#{@config.getProperty(HOST)}:#{@config.getProperty(TEMP_DIRECTORY)}")
+      if user != ssh_user
+        ssh_result("chown -R #{user} #{@config.getProperty(TEMP_DIRECTORY)}/#{File.basename(uri.path)}", @config.getProperty(HOST), ssh_user)
+      end
+    end
+  end
+  
+  def enabled?
+    @config.getProperty(DEPLOY_PACKAGE_URI) && !(Configurator.instance.is_localhost?(@config.getProperty(HOST)))
   end
 end
 
@@ -551,6 +562,28 @@ class HostnameCheck < ConfigureValidationCheck
   end
 end
 
+class PackageDownloadCheck < ConfigureValidationCheck
+  include ClusterHostCheck
+  
+  def set_vars
+    @title = "Package download check"
+  end
+  
+  def validate
+    if @config.getProperty(DEPLOY_PACKAGE_URI) != nil
+      uri = URI::parse(@config.getProperty(DEPLOY_PACKAGE_URI))
+      if uri.scheme == "http" || uri.scheme == "https"
+        success_lines_count = cmd_result("curl -I -s -k #{@config.getProperty(DEPLOY_PACKAGE_URI)} | grep HTTP | grep 200 | wc -l")
+        if success_lines_count.to_i() == 1
+          info("The package download link is accessible")
+        else
+          error("The package download link is not accessible")
+        end
+      end
+    end
+  end
+end
+
 class InstallServicesCheck < ConfigureValidationCheck
   include ClusterHostCheck
   
@@ -583,7 +616,7 @@ class ConfiguredDirectoryCheck < ConfigureValidationCheck
   
   def validate
     if File.exists?(@config.getProperty(DIRECTORY_LOCK_FILE))
-      error("This directory has already been configured.  Try using `tools/tpm update` to make changes.")
+      error("This directory has already been configured.  Try using tools/update to make changes.")
       help("If you are installing from a previously used directory, download a fresh copy and try again.")
     end
   end
@@ -703,7 +736,7 @@ class TargetDirectoryDoesNotExist < ConfigureValidationCheck
     target = @config.getProperty(TARGET_DIRECTORY)
     if File.exist?(target)
       error("There is already a directory at #{target}")
-      help("Use the `tools/tpm update` script to modify an existing installation")
+      help("Use the tools/update script to modify an existing installation")
     end
   end
   
@@ -915,34 +948,7 @@ class RestartComponentsCheck < ConfigureValidationCheck
         output_property(RESTART_REPLICATORS, false)
         output_property(RESTART_MANAGERS, false)
         output_property(RESTART_CONNECTORS, false)
-        output_property(RECONFIGURE_CONNECTORS_ALLOWED, true)
         
-        # Check the .changedfiles file to see what components need to be restarted
-        changedfiles = @config.getProperty(PREPARE_DIRECTORY) + "/.changedfiles"
-        if File.exists?(changedfiles)
-          {
-            "^tungsten-replicator" => RESTART_REPLICATORS,
-            "^tungsten-manager" => RESTART_MANAGERS,
-            "^cluster-home" => RESTART_MANAGERS,
-            "^tungsten-connector" => RESTART_CONNECTORS,
-            "router" => RESTART_CONNECTORS
-          }.each{
-            |pattern,component|
-            begin
-              lines = cmd_result("egrep \"#{pattern}\" #{changedfiles} | wc -l").to_i()
-              if lines > 0
-                unless get_output_property(component) == true
-                  Configurator.instance.debug("Found #{lines} files that match #{pattern}. Setting #{component} to true.")
-                  output_property(component, true)
-                end
-              end
-            rescue CommandError
-              Configurator.instance.debug("Unable to compare #{changedfiles} with '#{pattern}'")
-            end
-          }
-        end
-        
-        # Check the changed values to see what components need to be restarted
         updated_keys.each{
           |k|
           p = @config.getPromptHandler().find_prompt(k.split('.'))
@@ -959,28 +965,17 @@ class RestartComponentsCheck < ConfigureValidationCheck
           unless get_output_property(RESTART_CONNECTORS) == true
             output_property(RESTART_CONNECTORS, p.require_connector_restart?())
           end
-          unless get_output_property(RECONFIGURE_CONNECTORS_ALLOWED) == false
-            output_property(RECONFIGURE_CONNECTORS_ALLOWED, p.allow_connector_reconfigure?())
-          end
         }
-        
-        if get_output_property(RESTART_CONNECTORS) == true
-          output_property(RESTART_CONNECTORS_NEEDED, true)
-        end
       else
         output_property(RESTART_REPLICATORS, true)
         output_property(RESTART_MANAGERS, true)
         output_property(RESTART_CONNECTORS, true)
-        output_property(RESTART_CONNECTORS_NEEDED, true)
-        output_property(RECONFIGURE_CONNECTORS_ALLOWED, false)
       end
     else
       # No effect since there isn't an existing directory
       output_property(RESTART_REPLICATORS, nil)
       output_property(RESTART_MANAGERS, nil)
       output_property(RESTART_CONNECTORS, nil)
-      output_property(RESTART_CONNECTORS_NEEDED, nil)
-      output_property(RECONFIGURE_CONNECTORS_ALLOWED, nil)
     end
   end
 end
@@ -1213,9 +1208,7 @@ class HostsFileCheck < ConfigureValidationCheck
         
         return_addresses = {}
         return_addresses[ds_alias] = {}
-        members = @config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_MEMBERS], "").split(",")
-
-        members.each{
+        @config.getPropertyOr([DATASERVICES, ds_alias, DATASERVICE_MEMBERS], "").split(",").each{
           |h_alias|
           h_name = @config.getProperty([HOSTS, h_alias, HOST])
           # grep (case-insensitive) (whole word) hostname | grep (does not begin with #)
@@ -1236,9 +1229,7 @@ class HostsFileCheck < ConfigureValidationCheck
               help("Eliminate any loopback addresses associated with #{h_name} from /etc/hosts")
             else
               line_parts = line.split(/\s/)
-              if members.include?(@config.getProperty(HOST))
-                return_addresses[ds_alias][h_alias] = line_parts[0]
-              end
+              return_addresses[ds_alias][h_alias] = line_parts[0]
             end
           else
             error("There are multiple entries for #{h_name} in the /etc/hosts file")
@@ -1312,31 +1303,6 @@ class GlobalHostAddressesCheck < ConfigureValidationCheck
         }
       end
     }
-  end
-end
-
-class GlobalMatchingPingMethodCheck < ConfigureValidationCheck
-  include PostValidationCheck
-  
-  def set_vars
-    @title = "Matching manager ping method check"
-  end
-  
-  def validate
-    ping_methods = []
-    
-    Configurator.instance.command.get_deployment_configurations().each {
-      |cfg|
-      if cfg.getProperty(HOST_ENABLE_MANAGER) == "true"
-        ping_methods << cfg.getProperty(MGR_PING_METHOD)
-      end
-    }
-    
-    ping_methods.uniq!()
-    
-    if ping_methods.size() > 1
-      error("There are multiple ping methods (#{ping_methods.join(',')}) being used. Specify a ping method with the --mgr-ping-method option.")
-    end
   end
 end
 
@@ -1447,10 +1413,7 @@ class EncryptionKeystoreCheck < ConfigureValidationCheck
       end
     }
     
-    if @config.getProperty(HOST_ENABLE_CONNECTOR) == "true" && (
-        @config.getProperty(ENABLE_CONNECTOR_SERVER_SSL) == "true" ||
-        @config.getProperty(ENABLE_CONNECTOR_CLIENT_SSL) == "true"
-      )
+    if @config.getProperty(HOST_ENABLE_CONNECTOR) == "true" && @config.getProperty(ENABLE_CONNECTOR_SSL) == "true"
       connector_ssl_enabled = true
     else
       connector_ssl_enabled = false

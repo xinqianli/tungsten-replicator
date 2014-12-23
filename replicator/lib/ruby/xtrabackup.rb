@@ -372,7 +372,7 @@ class TungstenXtrabackupScript < TungstenBackupScript
         set_mysql_defaults_value("datadir=#{@options[:mysqldatadir]}")
       end
     end
-
+    
     if @options[:action] == ACTION_BACKUP
       # Read innodb_log_file_size from the my.cnf file
       @options[:innodb_log_file_size] = get_mysql_option("innodb_log_file_size")
@@ -408,6 +408,7 @@ class TungstenXtrabackupScript < TungstenBackupScript
         TU.info "The configuration file at #{@options[:my_cnf]} does not define a innodb_log_file_size value - this can cause problems with xtrabackup."
       end
     end            
+        
     
     @options[:mysqlibdatadir] = get_mysql_option("innodb_data_home_dir")
     @options[:mysqliblogdir] = get_mysql_option("innodb_log_group_home_dir")

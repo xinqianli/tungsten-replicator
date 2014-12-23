@@ -30,15 +30,11 @@ import java.math.BigInteger;
 import java.net.SocketTimeoutException;
 import java.sql.Date;
 import java.sql.Time;
-import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
 
-import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
-
-import com.continuent.tungsten.common.io.WrappedInputStream;
 
 /**
  * A MySQL packet with helper functions to ease the reading and writting of
@@ -243,14 +239,6 @@ public class MySQLPacket
             packetData[2] = (byte) packetLen3;
             packetData[3] = (byte) packetNumber;
 
-            // See if we can trust the availability from this stream.
-            boolean deterministicAvailability = true;
-            if (in instanceof WrappedInputStream)
-            {
-                deterministicAvailability = ((WrappedInputStream) in)
-                        .isDeterministic();
-            }
-
             // read() returns the number of actual bytes read, which might be
             // less that the desired length this loop ensures that the whole
             // packet is read
@@ -260,7 +248,7 @@ public class MySQLPacket
                 // Issue 281. Wait until at least one byte is available to avoid
                 // a possible out of data condition when reading from the
                 // network.
-                if (deterministicAvailability && in.available() == 0)
+                if (in.available() == 0)
                 {
                     long readStartTime = System.currentTimeMillis();
                     long delay = -1;
@@ -348,12 +336,6 @@ public class MySQLPacket
     public byte[] getByteBuffer()
     {
         return byteBuffer;
-    }
-
-    public void setByteBuffer(byte[] newByteBuffer)
-    {
-        this.byteBuffer = newByteBuffer;
-        this.dataLength = newByteBuffer.length - HEADER_LENGTH;
     }
 
     /**
@@ -523,28 +505,6 @@ public class MySQLPacket
         // 2bytes - status flags
         // So the data is never larger than 5 bytes
         return this.byteBuffer[4] == (byte) 0xFE && this.getDataLength() <= 5;
-    }
-    
-    /**
-     * Whether or not this packet has the SERVER_STATUS_IN_TRANS flag. See:
-     * http://dev.mysql.com/doc/internals/en/status-flags.html
-     * 
-     * @return true if it has. flase otherwise
-     */
-    public boolean isSERVER_STATUS_IN_TRANS()
-    {
-        return this.isServerFlagSet(MySQLConstants.SERVER_STATUS_IN_TRANS);
-    }
-
-    /**
-     * Whether or not this packet has the SERVER_STATUS_AUTOCOMMIT flag. See:
-     * http://dev.mysql.com/doc/internals/en/status-flags.html
-     * 
-     * @return true if it has. flase otherwise
-     */
-    public boolean isSERVER_STATUS_AUTOCOMMIT()
-    {
-        return this.isServerFlagSet(MySQLConstants.SERVER_STATUS_AUTOCOMMIT);
     }
 
     /**
@@ -1001,6 +961,14 @@ public class MySQLPacket
                 // seconds) => %1000
                 millis += mil % 1000;
             }
+            // TODO: as jdbc time cannot handle hours over 24, we ignore it =>
+            // document this fact
+            // if (hour > 838) {
+            // hour = 838;
+            // min = 59;
+            // sec = 59;
+            // }
+            // millis += day * 24 * 60 * 60 * 1000;
         }
         return new Time(neg ? -millis : millis);
     }
@@ -1262,6 +1230,7 @@ public class MySQLPacket
      */
     public void putFloat(float f)
     {
+        // TODO: test me
         putInt32(Float.floatToIntBits(f));
     }
 
@@ -1270,6 +1239,7 @@ public class MySQLPacket
      */
     public void putDouble(double d)
     {
+        // TODO: test me
         putLong(Double.doubleToLongBits(d));
     }
 
@@ -1320,6 +1290,7 @@ public class MySQLPacket
         putByte((byte) minutes);
         putByte((byte) seconds);
 
+        // TODO: millis - millis%1000 ?
         return millis - millis % 1000;
     }
 
@@ -1403,7 +1374,7 @@ public class MySQLPacket
     {
         int len = this.position - HEADER_LENGTH;
 
-        // handle packets bigger than 16 MB
+        // TODO handle packets bigger than 16 MB
         // for now only we return an error message
         if (len >= 256 * 256 * 256)
         {
@@ -1546,6 +1517,7 @@ public class MySQLPacket
     }
 
     /**
+     * 
      * Close inputstream if we have one.
      * 
      * @throws IOException
@@ -1565,45 +1537,6 @@ public class MySQLPacket
         }
     }
 
-    /**
-     * Print debug information on status received from the server
-     */
-    public void printServerStatus()
-    {
-        String statusMessageString = "";
-        if (this.isServerFlagSet(MySQLConstants.SERVER_STATUS_IN_TRANS))
-            statusMessageString = statusMessageString
-                    + "SERVER_STATUS_IN_TRANS | ";
-
-        if (this.isServerFlagSet(MySQLConstants.SERVER_STATUS_AUTOCOMMIT))
-            statusMessageString = statusMessageString
-                    + "SERVER_STATUS_AUTOCOMMIT | ";
-
-        if (this.isServerFlagSet(MySQLConstants.SERVER_MORE_RESULTS_EXISTS))
-            statusMessageString = statusMessageString
-                    + "SERVER_MORE_RESULTS_EXISTS | ";
-
-        if (this.isServerFlagSet(MySQLConstants.SERVER_QUERY_NO_GOOD_INDEX_USED))
-            statusMessageString = statusMessageString
-                    + "SERVER_QUERY_NO_GOOD_INDEX_USED | ";
-
-        if (this.isServerFlagSet(MySQLConstants.SERVER_QUERY_NO_INDEX_USED))
-            statusMessageString = statusMessageString
-                    + "SERVER_QUERY_NO_INDEX_USED | ";
-
-        if (this.isServerFlagSet(MySQLConstants.SERVER_STATUS_CURSOR_EXISTS))
-            statusMessageString = statusMessageString
-                    + "SERVER_STATUS_CURSOR_EXISTS | ";
-
-        if (this.isServerFlagSet(MySQLConstants.SERVER_STATUS_LAST_ROW_SENT))
-            statusMessageString = statusMessageString
-                    + "SERVER_STATUS_LAST_ROW_SENT | ";
-
-        statusMessageString = StringUtils.removeEnd(statusMessageString, "| ");
-        logger.debug(MessageFormat.format("Server Status= {0}",
-                statusMessageString));
-    }
-    
     @Override
     public String toString()
     {

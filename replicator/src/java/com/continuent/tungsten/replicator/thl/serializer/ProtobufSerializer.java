@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2014 Continuent Inc.
+ * Copyright (C) 2010-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -798,7 +798,6 @@ public class ProtobufSerializer implements Serializer
                 valueBuilder.setType(Type.BLOB);
                 break;
             case Types.CHAR :
-            case Types.NCHAR :
             case Types.VARCHAR :
             case Types.NVARCHAR :
                 if (value instanceof String)
@@ -933,6 +932,12 @@ public class ProtobufSerializer implements Serializer
         return data;
     }
 
+    /**
+     * TODO: deserializeColumnValue definition.
+     * 
+     * @param columnVal
+     * @return
+     */
     private Serializable deserializeColumnValue(ProtobufColumnVal columnVal)
     {
         switch (columnVal.getType())
@@ -1099,7 +1104,7 @@ public class ProtobufSerializer implements Serializer
         if (statement.hasQuery())
             statementData.setQuery(statement.getQuery());
         else if (statement.hasQueryBytes())
-            statementData.setQuery(statement.getQueryAsBytes().toByteArray());
+            statementData.setQuery(statement.getQueryBytes().toByteArray());
         else
             logger.warn("Logged statement did not contain any query");
 

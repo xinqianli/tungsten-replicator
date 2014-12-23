@@ -37,13 +37,12 @@ public class NoChunk extends AbstractChunk implements Chunk
 {
 
     private Table        table;
-    private List<String> columns = null;
+    private List<String> columns;
 
     public NoChunk(Table table, String[] columns)
     {
         this.table = table;
-        if (columns != null)
-            this.columns = Arrays.asList(columns);
+        this.columns = Arrays.asList(columns);
     }
 
     /**
@@ -65,6 +64,7 @@ public class NoChunk extends AbstractChunk implements Chunk
     @Override
     public List<String> getColumns()
     {
+        // TODO Auto-generated method stub
         return columns;
     }
 

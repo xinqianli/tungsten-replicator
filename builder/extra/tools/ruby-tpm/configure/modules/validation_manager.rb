@@ -120,12 +120,8 @@ class PingSyntaxCheck < ConfigureValidationCheck
     end
     
     begin
-      Timeout::timeout(5) do
-        cmd = Escape.shell_command(cmd_array).to_s
-        cmd_result(cmd)
-      end
-    rescue Timeout::Error
-      error("It is taking longer than 5 seconds to ping localhost")
+      cmd = Escape.shell_command(cmd_array).to_s
+      cmd_result(cmd)
     rescue CommandError
       error("Unable to run the ping utility with '#{cmd}'")
     end
@@ -142,7 +138,7 @@ class ManagerListenerAddressCheck < ConfigureValidationCheck
   def validate
     addr = @config.getProperty(get_member_key(MGR_LISTEN_ADDRESS))
     if addr.to_s() == ""
-      error("Unable to determine the manager listening IP address for interface #{@config.getProperty(get_member_key(MGR_LISTEN_INTERFACE))}")
+      error("Unable to determine the listening address for the manager")
     end
   end
 end
@@ -156,22 +152,11 @@ class ManagerWitnessNeededCheck < ConfigureValidationCheck
   
   def validate
     witnesses = @config.getProperty(DATASERVICE_WITNESSES).to_s()
-    members_count = @config.getProperty(DATASERVICE_REPLICATION_MEMBERS).to_s().split(",").size()
-
-    if members_count == 1
-      # Single member
-      if witnesses != ""
-        warning("A witness should not be configured for single member dataservices.")
-      end
-    elsif (members_count % 2) == 0
-      # Is even
+    repl_members = @config.getProperty(DATASERVICE_REPLICATION_MEMBERS)
+    
+    if repl_members.to_s().split(",").size() < 3
       if witnesses == ""
-        error("This dataservice is configured with an even number of replication members and no witnesses. Update the configuration with an active witness for the highest stability. Visit http://docs.continuent.com/ct/host-types for more information.")
-      end
-    else
-      # Is odd
-      if witnesses != ""
-        warning("This dataservice is configured with an odd number of replication members and a witness. Update the configuration without a witness for the highest stability. Visit http://docs.continuent.com/ct/host-types for more information.")
+        error("This dataservice is configured with less than 3 members and no witnesses. Update the configuration with an active witness for the highest stability. Visit http://docs.continuent.com/ct/host-types for more information.")
       end
     end
     
@@ -258,29 +243,6 @@ class ManagerWitnessAvailableCheck < ConfigureValidationCheck
   end
 end
 
-class ManagerActiveWitnessConversionCheck < ConfigureValidationCheck
-  include ManagerCheck
-  
-  def set_vars
-    @title = "Active witness is not a current replicator check"
-  end
-  
-  def validate
-    current_release_directory = @config.getProperty(CURRENT_RELEASE_DIRECTORY)
-    if File.exists?(current_release_directory)
-      # Check if replicator is in cluster-home/bin/startall
-      is_replicator = cmd_result("cat #{current_release_directory}/cluster-home/bin/startall | grep tungsten-replicator | wc -l")
-      if is_replicator == "1"
-        error("The active witness \"#{@config.getProperty(HOST)}\" is already running as a replicator. If you proceed it will no longer be available as a datasource. Specify an active witness that is not already running a replicator.")
-      end
-    end
-  end
-  
-  def enabled?
-    super() && (@config.getProperty(MGR_IS_WITNESS).to_s() == "true")
-  end
-end
-
 class ManagerHeapThresholdCheck < ConfigureValidationCheck
   include ManagerCheck
   
@@ -296,62 +258,6 @@ class ManagerHeapThresholdCheck < ConfigureValidationCheck
       error("The value for --mgr-heap-threshold must be greater than zero")
     elsif threshold.to_i() >= mem.to_i()
       error("The value for --mgr-heap-threshold must be less than --mgr-java-mem-size")
-    end
-  end
-end
-
-class ManagerPingMethodCheck < ConfigureValidationCheck
-  include ManagerCheck
-  
-  def set_vars
-    @title = "Manager ping method check"
-  end
-  
-  def validate
-    method = @config.getProperty(get_member_key(MGR_PING_METHOD))
-    # Generate a list of nodes that the manager may attempt to ping
-    hosts = @config.getProperty(get_dataservice_key(DATASERVICE_MEMBERS)).split(",")
-    if @config.getProperty(get_dataservice_key(ENABLE_ACTIVE_WITNESSES)) == "true"
-      hosts = hosts + @config.getProperty(get_dataservice_key(DATASERVICE_WITNESSES)).split(",")
-    end
-    hosts = hosts.uniq()
-    
-    case method
-    when "ping"
-      hosts.each{
-        |h|
-        begin
-          Timeout.timeout(2) {
-            ping_result = cmd_result("ping -c1 #{h} 2>/dev/null >/dev/null ; echo $?", true)
-            if ping_result.to_i != 0
-              error("Unable to contact #{h} via ICMP Ping")
-            end
-          }
-        rescue Timeout::Error
-          error("Unable to contact #{h} via ICMP Ping")
-        rescue
-          error("Unable to contact #{h} via ICMP Ping")
-        end
-      }
-    when "echo"
-      tping = "#{Configurator.instance.get_base_path()}/cluster-home/bin/tping"
-      hosts.each{
-        |h|
-        begin
-          Timeout.timeout(2) {
-            echo_result = cmd_result("#{tping} #{h} 7 2000 2>/dev/null >/dev/null ; echo $?", true)
-            if echo_result.to_i != 0
-              error("Unable to contact #{h} via TCP Echo")
-            end
-          }
-        rescue Timeout::Error
-          error("Unable to contact #{h} via TCP Echo")
-        rescue
-          error("Unable to contact #{h} via TCP Echo")
-        end
-      }
-    else
-      error("The '#{method}' ping method is not supported")
     end
   end
 end

@@ -1,6 +1,6 @@
 /**
  * Tungsten: An Application Server for uni/cluster.
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2010 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,6 +22,7 @@
 
 package com.continuent.tungsten.replicator.database;
 
+import java.io.BufferedWriter;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -32,6 +33,7 @@ import java.util.Iterator;
 
 import org.apache.log4j.Logger;
 
+import com.continuent.tungsten.common.csv.CsvWriter;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.dbms.OneRowChange;
 
@@ -70,10 +72,9 @@ public class GreenplumDatabase extends AbstractDatabase
             case Types.CHAR :
             {
                 if (c.getLength() == 1)
-                    // This is a hack written to support storing
+                    // TODO: remove this dirty hack, written to support storing
                     // boolean values into "character(1)" type "last_frag" field
-                    // of "trep_commit_seqno" and "history" tables.  We do not have
-                    // any current Greenplum implementation so this will do for now. 
+                    // of "trep_commit_seqno" and "history" tables.
                     return "BOOLEAN";
                 else
                     return "CHAR(" + c.getLength() + ")";
@@ -99,20 +100,6 @@ public class GreenplumDatabase extends AbstractDatabase
         }
     }
 
-    @Override
-    protected Column addColumn(ResultSet rs) throws SQLException
-    {
-        // Generic initialization.
-        Column column = super.addColumn(rs);
-
-        // Greenplum specifics.
-        int type = column.getType();
-        column.setBlob(type == Types.BLOB || type == Types.BINARY
-                || type == Types.VARBINARY || type == Types.LONGVARBINARY);
-        
-        return column;
-    }
-
     /**
      * Connect to a PostgreSQL database. {@inheritDoc}
      * 
@@ -120,7 +107,19 @@ public class GreenplumDatabase extends AbstractDatabase
      */
     public void connect() throws SQLException
     {
-        super.connect();
+        connect(false);
+    }
+
+    /**
+     * Connect to a PostgreSQL database. {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.database.AbstractDatabase#connect(boolean)
+     */
+    public void connect(boolean binlog) throws SQLException
+    {
+        // Use superclass method to avoid missing things like loading the
+        // driver class.
+        super.connect(binlog);
     }
 
     public boolean supportsReplace()
@@ -141,6 +140,8 @@ public class GreenplumDatabase extends AbstractDatabase
 
     public String getUseSchemaQuery(String schema)
     {
+        // TODO: we might want to retrieve the search_path first and then use it
+        // in the new path, i.e.: $search_path = $schema, $search_path
         return "SET search_path TO " + schema + ", \"$user\"";
     }
 
@@ -385,6 +386,7 @@ public class GreenplumDatabase extends AbstractDatabase
     protected ResultSet getTablesResultSet(DatabaseMetaData md,
             String schemaName, boolean baseTablesOnly) throws SQLException
     {
+        // TODO: Implement ability to return base tables only.
         return md.getTables(schemaName, null, null, null);
     }
 
@@ -465,7 +467,19 @@ public class GreenplumDatabase extends AbstractDatabase
     @Override
     public SqlOperationMatcher getSqlNameMatcher() throws ReplicatorException
     {
-        // Return MySQL matcher for now. 
+        // TODO: Develop matcher for Drizzle dialect.
         return new MySQLOperationMatcher();
+    }
+
+    /**
+     * {@inheritDoc}
+     * 
+     * @see com.continuent.tungsten.replicator.database.Database#getCsvWriter(java.io.BufferedWriter)
+     */
+    public CsvWriter getCsvWriter(BufferedWriter writer)
+    {
+        // Need to implement in order to support CSV.
+        throw new UnsupportedOperationException(
+                "CSV output is not supported for this database type");
     }
 }

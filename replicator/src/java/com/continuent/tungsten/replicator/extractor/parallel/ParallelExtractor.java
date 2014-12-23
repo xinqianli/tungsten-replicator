@@ -22,7 +22,6 @@
 
 package com.continuent.tungsten.replicator.extractor.parallel;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.Iterator;
@@ -33,12 +32,9 @@ import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.replicator.InSequenceNotification;
 import com.continuent.tungsten.replicator.ReplicatorException;
-import com.continuent.tungsten.replicator.database.Database;
-import com.continuent.tungsten.replicator.datasource.UniversalDataSource;
 import com.continuent.tungsten.replicator.dbms.StatementData;
 import com.continuent.tungsten.replicator.event.DBMSEmptyEvent;
 import com.continuent.tungsten.replicator.event.DBMSEvent;
-import com.continuent.tungsten.replicator.event.ReplOptionParams;
 import com.continuent.tungsten.replicator.extractor.RawExtractor;
 import com.continuent.tungsten.replicator.plugin.PluginContext;
 
@@ -50,8 +46,9 @@ public class ParallelExtractor implements RawExtractor
 {
     private static Logger                 logger                = Logger.getLogger(ParallelExtractor.class);
 
-    private String                        datasourceName;
-    private UniversalDataSource           dataSource;
+    private String                        url                   = null;
+    private String                        user                  = "root";
+    private String                        password              = "rootpass";
 
     private boolean                       addTruncateTable      = false;
     private long                          chunkSize             = -1;
@@ -96,11 +93,6 @@ public class ParallelExtractor implements RawExtractor
         this.chunkSize = chunkSize;
     }
 
-    public void setDataSource(String dataSource) throws ReplicatorException
-    {
-        this.datasourceName = dataSource;
-    }
-
     /**
      * Sets the extractChannels value.
      * 
@@ -122,6 +114,36 @@ public class ParallelExtractor implements RawExtractor
     }
 
     /**
+     * Sets the url value.
+     * 
+     * @param url The url to set.
+     */
+    public void setUrl(String url)
+    {
+        this.url = url;
+    }
+
+    /**
+     * Sets the user value.
+     * 
+     * @param user The user to set.
+     */
+    public void setUser(String user)
+    {
+        this.user = user;
+    }
+
+    /**
+     * Sets the password value.
+     * 
+     * @param password The password to set.
+     */
+    public void setPassword(String password)
+    {
+        this.password = password;
+    }
+
+    /**
      * {@inheritDoc}
      * 
      * @see com.continuent.tungsten.replicator.plugin.ReplicatorPlugin#configure(com.continuent.tungsten.replicator.plugin.PluginContext)
@@ -130,9 +152,9 @@ public class ParallelExtractor implements RawExtractor
     public void configure(PluginContext context) throws ReplicatorException,
             InterruptedException
     {
-        this.context = context;
         if (chunkDefinitionFile == null)
             logger.info("No chunk definition file provided. Scanning whole database.");
+
     }
 
     /**
@@ -144,19 +166,13 @@ public class ParallelExtractor implements RawExtractor
     @Override
     public void prepare(PluginContext context) throws ReplicatorException
     {
-        // Establish a connection to the data source.
-        this.dataSource = context.getDataSource(datasourceName);
-        if (dataSource == null)
-        {
-            throw new ReplicatorException("Unable to locate data source: name="
-                    + dataSource);
-        }
+        this.context = context;
 
         chunks = new ArrayBlockingQueue<Chunk>(5 * extractChannels);
 
         queue = new ArrayBlockingQueue<DBMSEvent>(queueSize);
 
-        chunksGeneratorThread = new ChunksGeneratorThread(dataSource,
+        chunksGeneratorThread = new ChunksGeneratorThread(user, url, password,
                 extractChannels, chunks, chunkDefinitionFile, chunkSize);
 
         tableBlocks = new Hashtable<String, Long>();
@@ -166,7 +182,7 @@ public class ParallelExtractor implements RawExtractor
         {
             // Create extractor threads
             ParallelExtractorThread extractorThread = new ParallelExtractorThread(
-                    dataSource, chunks, queue);
+                    url, user, password, chunks, queue);
             extractorThread.setName("ParallelExtractorThread-" + i);
             activeThreads++;
             threads.add(extractorThread);
@@ -192,33 +208,11 @@ public class ParallelExtractor implements RawExtractor
     @Override
     public void setLastEventId(String eventId) throws ReplicatorException
     {
-        if (eventId == null || eventId.length() == 0)
-        {
-            Database connection = null;
-            try
-            {
-                connection = (Database) dataSource.getConnection();
-                this.eventId = connection.getCurrentPosition(true);
-            }
-            catch (ReplicatorException e)
-            {
-                logger.warn(
-                        "Error while connecting to database ("
-                                + dataSource.getName() + ")", e);
-            }
-            finally
-            {
-                if (connection != null)
-                    connection.close();
-            }
-        }
-        else
-            this.eventId = eventId;
-
-        chunksGeneratorThread.setEventId(this.eventId);
+        this.eventId = eventId;
+        chunksGeneratorThread.setEventId(eventId);
         for (int i = 0; i < extractChannels; i++)
         {
-            threads.get(i).setEventId(this.eventId);
+            threads.get(i).setEventId(eventId);
         }
     }
 
@@ -281,7 +275,6 @@ public class ParallelExtractor implements RawExtractor
                     StatementData sd = new StatementData("TRUNCATE TABLE "
                             + event.getMetadataOptionValue("table"), null,
                             event.getMetadataOptionValue("schema"));
-                    sd.addOption("foreign_key_checks", "0");
                     event.getData().add(0, sd);
 
                     blk = Long
@@ -294,8 +287,6 @@ public class ParallelExtractor implements RawExtractor
             }
         }
 
-        // Event extraction is now time zone-aware.
-        event.addMetadataOption(ReplOptionParams.TIME_ZONE_AWARE, "true");
         return event;
     }
 
@@ -330,10 +321,7 @@ public class ParallelExtractor implements RawExtractor
      */
     public void setChunkDefinitionFile(String chunkDefinitionFile)
     {
-        File f = new File(chunkDefinitionFile);
-        if (f.isFile() && f.canRead())
-        {
-            this.chunkDefinitionFile = chunkDefinitionFile;
-        }
+        this.chunkDefinitionFile = chunkDefinitionFile;
     }
+
 }

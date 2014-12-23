@@ -32,7 +32,6 @@ import org.apache.log4j.Logger;
 import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.dbms.DBMSData;
 import com.continuent.tungsten.replicator.event.DBMSEvent;
-import com.continuent.tungsten.replicator.event.ReplOptionParams;
 import com.continuent.tungsten.replicator.extractor.RawExtractor;
 import com.continuent.tungsten.replicator.plugin.PluginContext;
 
@@ -43,6 +42,10 @@ import com.continuent.tungsten.replicator.plugin.PluginContext;
 public class OracleCDCReaderExtractor implements RawExtractor
 {
     private static Logger                  logger                = Logger.getLogger(OracleCDCReaderExtractor.class);
+
+    private String                         url                   = null;
+    private String                         user                  = "root";
+    private String                         password              = "rootpass";
 
     List<OracleCDCSource>                  sources;
 
@@ -69,7 +72,22 @@ public class OracleCDCReaderExtractor implements RawExtractor
     // the connection is older than the defined timeout.
     private long                           reconnectTimeout      = 60 * 60 * 1000;
 
-    private String                         dataSource;
+    private String                         serviceName;
+
+    public void setUrl(String url)
+    {
+        this.url = url;
+    }
+
+    public void setUser(String user)
+    {
+        this.user = user;
+    }
+
+    public void setPassword(String password)
+    {
+        this.password = password;
+    }
 
     /**
      * Sets the maximum sleep time : maximum time the extracting thread will
@@ -155,6 +173,14 @@ public class OracleCDCReaderExtractor implements RawExtractor
     }
 
     /**
+     * @param serviceName the serviceName to set
+     */
+    public void setServiceName(String serviceName)
+    {
+        this.serviceName = serviceName;
+    }
+
+    /**
      * {@inheritDoc}
      * 
      * @see com.continuent.tungsten.replicator.plugin.ReplicatorPlugin#configure(com.continuent.tungsten.replicator.plugin.PluginContext)
@@ -175,10 +201,9 @@ public class OracleCDCReaderExtractor implements RawExtractor
             InterruptedException
     {
         queue = new ArrayBlockingQueue<CDCMessage>(queueSize);
-        readerThread = new OracleCDCReaderThread(context, dataSource, queue,
+        readerThread = new OracleCDCReaderThread(url, user, password, queue,
                 lastSCN, minSleepTimeInSeconds, maxSleepTimeInSeconds,
-                sleepAddition, maxRowsByBlock, reconnectTimeout);
-
+                sleepAddition, maxRowsByBlock, reconnectTimeout, serviceName);
         readerThread.prepare();
     }
 
@@ -253,24 +278,13 @@ public class OracleCDCReaderExtractor implements RawExtractor
                     if (logger.isDebugEnabled())
                         logger.debug("Fragmenting");
                     // Time to fragment
-                    DBMSEvent ev = new DBMSEvent("ora:" + currentSCN, data,
-                            false, time);
-                    // Oracle event extraction is now time zone-aware.
-                    ev.addMetadataOption(ReplOptionParams.TIME_ZONE_AWARE,
-                            "true");
-                    return ev;
+                    return new DBMSEvent("ora:" + currentSCN, data, false, time);
                 }
             }
             else if (cdcMsg instanceof CDCCommitMessage)
             {
                 currentSCN = ((CDCCommitMessage) cdcMsg).getScn();
-                
-                DBMSEvent ev = new DBMSEvent("ora:" + currentSCN, data, true, time);
-                // Oracle event extraction is now time zone-aware.
-                ev.addMetadataOption(ReplOptionParams.TIME_ZONE_AWARE,
-                        "true");
-
-                return ev;
+                return new DBMSEvent("ora:" + currentSCN, data, true, time);
             }
             else if (cdcMsg instanceof CDCErrorMessage)
             {
@@ -308,11 +322,6 @@ public class OracleCDCReaderExtractor implements RawExtractor
             InterruptedException
     {
         return null;
-    }
-
-    public void setDataSource(String dataSource)
-    {
-        this.dataSource = dataSource;
     }
 
 }

@@ -8,7 +8,6 @@ class QueryCommand
   QUERY_TOPOLOGY = "topology"
   QUERY_DATASERVICES = "dataservices"
   QUERY_STAGING = "staging"
-  QUERY_EXTERNAL_CONFIGURATION = "external-configuration"
   QUERY_DEFAULT = "default"
   QUERY_VALUES = "values"
   QUERY_MODIFIED_FILES = "modified-files"
@@ -16,7 +15,7 @@ class QueryCommand
   QUERY_DEPLOYMENTS = "deployments"
   
   def allowed_subcommands
-    [QUERY_VERSION, QUERY_MANIFEST, QUERY_CONFIG, QUERY_TOPOLOGY, QUERY_DATASERVICES, QUERY_STAGING, QUERY_DEFAULT, QUERY_VALUES, QUERY_MODIFIED_FILES, QUERY_USERMAP, QUERY_DEPLOYMENTS, QUERY_EXTERNAL_CONFIGURATION]
+    [QUERY_VERSION, QUERY_MANIFEST, QUERY_CONFIG, QUERY_TOPOLOGY, QUERY_DATASERVICES, QUERY_STAGING, QUERY_DEFAULT, QUERY_VALUES, QUERY_MODIFIED_FILES, QUERY_USERMAP, QUERY_DEPLOYMENTS]
   end
   
   def allow_multiple_tpm_commands?
@@ -39,8 +38,6 @@ class QueryCommand
       output_dataservices()
     when QUERY_STAGING
       output_staging()
-    when QUERY_EXTERNAL_CONFIGURATION
-      output_external_configuration()
     when QUERY_DEFAULT
       output_defaults()
     when QUERY_VALUES
@@ -212,15 +209,12 @@ class QueryCommand
     end
   end
   
-  def output_external_configuration
-    external_type = @config.getNestedProperty([DEPLOYMENT_EXTERNAL_CONFIGURATION_TYPE])
-    external_source = @config.getNestedProperty([DEPLOYMENT_EXTERNAL_CONFIGURATION_SOURCE])
-    if external_type == "ini"
-      force_output(external_source)
-    end
-  end
-  
   def output_modified_files
+    unless Configurator.instance.is_locked?()
+      error("Unable to show modified files because this is not the installed directory. If this is the staging directory, try running tpm from an installed Tungsten directory.")
+      return
+    end
+    
     WatchFiles.show_differences(Configurator.instance.get_base_path())
   end
   

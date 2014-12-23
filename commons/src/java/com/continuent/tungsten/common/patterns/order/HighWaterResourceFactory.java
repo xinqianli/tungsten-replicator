@@ -43,6 +43,7 @@ public class HighWaterResourceFactory
     private static HighWaterResource mysqlHighWater(DataSource ds,
             Connection conn, String replicationSchemaName) throws SQLException
     {
+
         if (conn == null)
         {
             throw new SQLException("Connection is null");
@@ -57,8 +58,9 @@ public class HighWaterResourceFactory
             getMaxBinlogSize(conn);
         }
 
-        String queryToExecute = String.format("SHOW MASTER STATUS",
-                replicationSchemaName);
+        String queryToExecute = String
+                .format("SHOW MASTER STATUS;select epoch_number from %s.trep_commit_seqno",
+                        replicationSchemaName);
 
         ResultSet result = null;
         Statement stmt = conn.createStatement();
@@ -80,16 +82,52 @@ public class HighWaterResourceFactory
              */
 
             String eventId = null;
-            String binlogFile = result.getString(1);
-            int binlogOffset = result.getInt(2);
-            String binlogOffsetAsString = String.format("%0"
-                    + (binlogPositionMaxLength + 1) + "d", new Integer(
-                    binlogOffset));
+            long highWaterEpoch = -1;
 
-            eventId = String.format("%s:%s", binlogFile, binlogOffsetAsString);
+            for (int resultSetId = 0; resultSetId < 2; resultSetId++)
+            {
+                if (resultSetId == 0)
+                {
+                    String binlogFile = result.getString(1);
+                    int binlogOffset = result.getInt(2);
+                    String binlogOffsetAsString = String.format("%0"
+                            + (binlogPositionMaxLength + 1) + "d", new Integer(
+                            binlogOffset));
 
-            HighWaterResource highWater = new HighWaterResource(ds
-                    .getHighWater().getHighWaterEpoch(), eventId);
+                    eventId = String.format("%s:%s", binlogFile,
+                            binlogOffsetAsString);
+                }
+                else
+                {
+                    if (!stmt.getMoreResults())
+                    {
+                        throw new SQLException(
+                                String.format(
+                                        "Did not get a result set with the replication epoch number.\n"
+                                                + "Executed query: %s\n"
+                                                + "Be sure that the replication schema exists etc.",
+                                        queryToExecute));
+                    }
+
+                    result = stmt.getResultSet();
+
+                    if (!result.next())
+                    {
+                        throw new SQLException(
+                                String.format(
+                                        "Did not get a column set with the replication epoch number.\n"
+                                                + "Executed query: %s\n"
+                                                + "Be sure that the replication schema exists etc.",
+                                        queryToExecute));
+                    }
+
+                    result = stmt.getResultSet();
+                    highWaterEpoch = result.getLong(1);
+                }
+            }
+
+            HighWaterResource highWater = new HighWaterResource(highWaterEpoch,
+                    eventId);
 
             return highWater;
         }

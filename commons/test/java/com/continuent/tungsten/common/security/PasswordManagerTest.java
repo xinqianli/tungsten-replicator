@@ -49,6 +49,7 @@ public class PasswordManagerTest extends TestCase
     public void testCreatePasswordManager() throws ConfigurationException
     {
         // This file should load just fine
+        @SuppressWarnings("unused")
         PasswordManager pwd = new PasswordManager("sample.security.properties");
         assertTrue(true);
 
@@ -58,7 +59,7 @@ public class PasswordManagerTest extends TestCase
             pwd = new PasswordManager(
                     "sample.security.properties_DOES_NOT_EXIST");
             AuthenticationInfo authenticationInfo = pwd.getAuthenticationInfo();
-            authenticationInfo.checkAndCleanAuthenticationInfo();
+            authenticationInfo.checkAuthenticationInfo();
         }
         catch (ConfigurationException e)
         {

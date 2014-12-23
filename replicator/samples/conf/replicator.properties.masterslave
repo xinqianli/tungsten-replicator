@@ -1,6 +1,6 @@
-#####################################
-# REPLICATOR.PROPERTIES.MASTERSLAVE #
-#####################################
+#################################
+# REPLICATOR.PROPERTIES.DIRECT  #
+#################################
 #
 # This file contains properties for MySQL replication.
 #
@@ -20,12 +20,6 @@ replicator.global.db.host=@{APPLIER.REPL_DBHOST}
 replicator.global.db.port=@{APPLIER.REPL_DBPORT}
 replicator.global.db.user=@{APPLIER.REPL_DBLOGIN}
 replicator.global.db.password=@{APPLIER.REPL_DBPASSWORD}
-
-# Properties for SSL. To enable SSL set sslEnabled to true and add a URL option 
-# like the following: 
-#   useSSL=true
-replicator.global.db.sslEnabled=@{APPLIER.REPL_ENABLE_DBSSL}
-replicator.global.db.sslOptions=@{APPLIER.REPL_DBJDBCURLSSLOPTIONS}
 
 # Properties for extractors only.  This supports direct piplines.
 replicator.global.extract.db.host=@{EXTRACTOR.REPL_DBHOST}
@@ -69,7 +63,7 @@ replicator.autoRecoveryDelayInterval=@{REPL_AUTO_RECOVERY_DELAY_INTERVAL}
 # this amount of time, reset the count of auto-recovery attempts.  This value
 # may need to be large for services that commit large blocks as apply errors
 # may take a while to show up after going online again. 
-replicator.autoRecoveryResetInterval=@{REPL_AUTO_RECOVERY_RESET_INTERVAL}
+replicator.autoRecoveryResetInterval=@{REPL_AUTO_RECOVERY_DELAY_INTERVAL}
 
 # Source ID.  Identifies the replication event source.  It must be 
 # unique for each replicator node and normally is the host name.
@@ -104,19 +98,13 @@ replicator.service.comments=@{SERVICE.REPL_SVC_ENABLE_MASTER_SERVICE_COMMENTS}
 # Whether to log slave updates or not.  This is normally false but can 
 # be enabled so that updates inserted into the slave can be extracted again
 # by another replicator.  This can be useful for multi-master and some 
-# chained replication topologies.  (Note: setting to false on MySQL
-# requires a privileged login on the slave.) 
+# chained replication topologies.  
 replicator.log.slave.updates=@{LOG_SLAVE_UPDATES}
 
 # Whether slave updates have a privileged account for updates.  Certain 
 # stores such as Amazon RDS do not allow slave to have superuser privileges. 
 # If this values is false we try to apply using non-superuser capabilites. 
-replicator.privileged.slave=@{PRIVILEGED_SLAVE}
-
-# Whether master extraction operates using a privileged account.  This is 
-# helpful for Tungsten topologies in the Tungsten master reads from a 
-# locked-down instance.  
-replicator.privileged.master=@{PRIVILEGED_MASTER}
+replicator.privileged.slave.update=@{SLAVE_PRIVILEGED_UPDATES}
 
 # Name of the local replication service.  This parameter must be set when 
 # performing bi-directional replication using a remote slave.  Events 
@@ -176,6 +164,10 @@ replicator.plugin=tungsten
 # REPLICATOR PIPELINES          #
 #################################
 
+#################################
+# REPLICATOR PIPELINES          #
+#################################
+
 # Pipeline stages use block commit to commit multiple source transactions
 # simultaneously.  Block commit is controlled by the following settings on
 # stages:
@@ -183,28 +175,19 @@ replicator.plugin=tungsten
 #   reached or stage runs out of in-coming transactions
 #   blockCommitInterval -- Commit when time interval elapses *or* number of
 #   transactions for blockCommitRowCount is reached.
-#   blockCommitPolicy -- Values are strict and lax. 
-#
-# If neither block commit setting is in effect, we commit transactions
+# If neither setting is in effect, replicators commit each transaciton
 # individually.  Interval settings are milliseconds by default.  You can also
 # apply settings in seconds, minutes, hours, and days, as in 10s, 30m, 2h, 
-# or 1d respectively. 
-#
-# Strict block commit forces a commit on fragmented events, service changes
-# and events marked as unsafe for block commit.  It is default and required
-# for correct operation on RDBMS.  Lax block commit ignores these hence allows
-# consistently large blocks.  It is the best setting for data warehouse 
-# loading where updates are idempotent (e.g., Hadoop). 
+# or 1d respectively.
 
 # Generic pipelines.
-replicator.pipelines=master,slave,relay,archive
+replicator.pipelines=master,slave,relay
 
 # MASTER PIPELINE:  Two stages with an intervening queue:  extract from binlog
 # and place events in THL.
 replicator.pipeline.master=binlog-to-q,q-to-thl
 replicator.pipeline.master.stores=thl,queue
-replicator.pipeline.master.services=datasource,channel-assignment
-replicator.pipeline.master.syncTHLWithExtractor=${replicator.privileged.master}
+replicator.pipeline.master.services=channel-assignment
 
 replicator.stage.binlog-to-q=com.continuent.tungsten.replicator.pipeline.SingleThreadStageTask
 replicator.stage.binlog-to-q.extractor=dbms
@@ -221,7 +204,6 @@ replicator.stage.q-to-thl.blockCommitRowCount=${replicator.global.buffer.size}
 # extract from database and place events in THL.
 replicator.pipeline.master-provision=prov-db-to-q,prov-q-to-thl
 replicator.pipeline.master-provision.stores=thl,queue
-replicator.pipeline.master-provision.services=datasource
 
 replicator.stage.prov-db-to-q=com.continuent.tungsten.replicator.pipeline.SingleThreadStageTask
 replicator.stage.prov-db-to-q.extractor=parallel-extractor
@@ -238,7 +220,7 @@ replicator.stage.prov-q-to-thl.blockCommitRowCount=${replicator.global.buffer.si
 # extract from local THL to queue; apply from queue to DBMS.
 replicator.pipeline.slave=remote-to-thl,thl-to-q,q-to-dbms
 replicator.pipeline.slave.stores=thl,parallel-queue
-replicator.pipeline.slave.services=datasource,channel-assignment
+replicator.pipeline.slave.services=channel-assignment
 replicator.pipeline.slave.syncTHLWithExtractor=false
 
 replicator.stage.remote-to-thl=com.continuent.tungsten.replicator.pipeline.SingleThreadStageTask
@@ -249,7 +231,6 @@ replicator.stage.remote-to-thl.filters=
 replicator.stage.thl-to-q=com.continuent.tungsten.replicator.pipeline.SingleThreadStageTask
 replicator.stage.thl-to-q.extractor=thl-extractor
 replicator.stage.thl-to-q.applier=parallel-q-applier
-replicator.stage.thl-to-q.filters=
 replicator.stage.thl-to-q.blockCommitRowCount=${replicator.global.buffer.size}
 
 replicator.stage.q-to-dbms=com.continuent.tungsten.replicator.pipeline.SingleThreadStageTask
@@ -259,22 +240,14 @@ replicator.stage.q-to-dbms.filters=@{REPL_SVC_APPLIER_FILTERS}
 replicator.stage.q-to-dbms.taskCount=${replicator.global.apply.channels}
 replicator.stage.q-to-dbms.blockCommitRowCount=@{REPL_SVC_APPLIER_BLOCK_COMMIT_SIZE}
 replicator.stage.q-to-dbms.blockCommitInterval=@{REPL_SVC_APPLIER_BLOCK_COMMIT_INTERVAL}
-replicator.stage.q-to-dbms.blockCommitPolicy=strict
 
 # RELAY PIPELINE: The relay pipeline is the same as the slave at present but
 # may diverge at some point.  And this pipeline is required to support a
 # replicator with role 'relay'
 replicator.pipeline.relay=remote-to-thl,thl-to-q,q-to-dbms
 replicator.pipeline.relay.stores=thl,parallel-queue
-replicator.pipeline.relay.services=datasource,channel-assignment
+replicator.pipeline.relay.services=channel-assignment
 replicator.pipeline.relay.syncTHLWithExtractor=false
-
-# ARCHIVE PIPELINE:  three stages:  extract from remote THL to local THL;
-# extract from local THL to queue; apply from queue to DBMS.
-replicator.pipeline.archive=remote-to-thl
-replicator.pipeline.archive.stores=thl
-replicator.pipeline.archive.services=
-replicator.pipeline.archive.syncTHLWithExtractor=false
 
 #################################
 # TRANSACTION HISTORY LOG (THL) #
@@ -287,8 +260,11 @@ replicator.pipeline.archive.syncTHLWithExtractor=false
 # a single implementation. 
 replicator.store.thl=com.continuent.tungsten.replicator.thl.THL
 
-# THL implementations require database access to store metadata. 
-replicator.store.thl.dataSource=global
+# All THL implementations require database access to store metadata. 
+replicator.store.thl.url=@{APPLIER.REPL_DBTHLURL}
+replicator.store.thl.user=${replicator.global.db.user}
+replicator.store.thl.password=${replicator.global.db.password}
+@{#(APPLIER.REPL_SVC_DATASOURCE_THL_INIT_SCRIPT)}replicator.store.thl.initScript=@{APPLIER.REPL_SVC_DATASOURCE_THL_INIT_SCRIPT}
 
 # Force replicator to check if THL is in sync with database.
 # This check is enabled by default. Set the following property
@@ -390,11 +366,13 @@ replicator.store.parallel-queue.syncInterval=10000
 # EXTRACTORS #
 ##############
 
-@{include(REPL_SVC_EXTRACTOR_CONFIG)}
+@{REPL_SVC_EXTRACTOR_CONFIG}
 
 # Parallel extractor
 replicator.extractor.parallel-extractor=com.continuent.tungsten.replicator.extractor.parallel.ParallelExtractor
-replicator.extractor.parallel-extractor.dataSource=global
+replicator.extractor.parallel-extractor.user=${replicator.global.extract.db.user}
+replicator.extractor.parallel-extractor.password=${replicator.global.extract.db.password}
+replicator.extractor.parallel-extractor.url=@{EXTRACTOR.REPL_DBJDBCURL}
 
 # Path to the chunk definition file. If the file is not provided or is not
 # present, all information will be extracted.
@@ -455,7 +433,7 @@ replicator.extractor.parallel-q-extractor.storeName=parallel-queue
 # APPLIERS #
 ############
 
-@{include(REPL_SVC_APPLIER_CONFIG)}}
+@{REPL_SVC_APPLIER_CONFIG}
 
 # Durable THL applier. This applier does not auto-flush hence only makes
 # fully durable transactions visible to downstream clients.  This is the 
@@ -484,7 +462,7 @@ replicator.applier.parallel-q-applier.storeName=parallel-queue
 # FILTERS # 
 ###########
 
-@{includeAll(REPL_SVC_FILTER_CONFIG)}
+@{REPL_SVC_FILTER_CONFIG}
 
 #####################
 # PIPELINE SERVICES #
@@ -495,27 +473,9 @@ replicator.applier.parallel-q-applier.storeName=parallel-queue
 # shard.list.  The number of configured channels must be correctly configured
 # to avoid replication errors. 
 replicator.service.channel-assignment=com.continuent.tungsten.replicator.channel.ChannelAssignmentService
-replicator.service.channel-assignment.dataSource=global
+replicator.service.channel-assignment.url=@{APPLIER.REPL_DBTHLURL}
 replicator.service.channel-assignment.channels=${replicator.global.apply.channels}
 replicator.service.channel-assignment.reconnectTimeoutInSeconds=60
-
-##########################
-# DATA SOURCE MANAGEMENT #
-##########################
-
-# Data sources encapsulate connections and catalog data for DBMS types
-# ranging from relational DBMS to file systems.
-replicator.service.datasource=com.continuent.tungsten.replicator.datasource.DataSourceService
-
-# Data sources we know about. 
-replicator.datasources=global,extractor
-
-# Alias data source to allow filters and other components to refer to 
-# extractor. 
-replicator.datasource.extractor=com.continuent.tungsten.replicator.datasource.AliasDataSource
-replicator.datasource.extractor.dataSource=global
-
-@{include(REPL_SVC_APPLIER_DATASOURCE_CONFIG)}
 
 ################################
 # BACKUP/RESTORE CONFIGURATION #
@@ -527,7 +487,7 @@ replicator.backup.agents=@{APPLIER.REPL_DBBACKUPAGENTS}
 # Default backup agent.
 replicator.backup.default=@{REPL_BACKUP_METHOD}
 
-@{includeAll(REPL_SVC_BACKUP_CONFIG)}
+@{REPL_SVC_BACKUP_CONFIG}
 
 # List of configured storage agents.  Uncomment appropriately for your site. 
 replicator.storage.agents=fs
@@ -565,4 +525,6 @@ replicator.applier.consistency_policy=@{REPL_CONSISTENCY_POLICY}
 # Should consistency check be sensitive to column names and/or types? Settings
 # on a slave must be identical to master's. Values are 'true' or 'false'.
 replicator.applier.consistency_column_names=true
-replicator.applier.consistency_column_types=true
+# TUC-20:  Must disable column type checking when going from
+# Connector/J on master to drizzle on slave.
+replicator.applier.consistency_column_types=false

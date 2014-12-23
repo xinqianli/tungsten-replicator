@@ -1,4 +1,4 @@
-DEFAULTS = "__defaults__"
+DEFAULTS = "defaults"
 REPL_RMI_PORT = "repl_rmi_port"
 MGR_RMI_PORT = "mgr_rmi_port"
 HOST_ENABLE_REPLICATOR = "host_enable_replicator"
@@ -35,9 +35,9 @@ class CommandError < StandardError
   
   def build_message
     if @errors == ""
-      errors = "No STDERR"
+      errors = "No Errors"
     else
-      errors = "Errors: #{@errors}"
+      errors = "Errors: #{errors}"
     end
     
     "Failed: #{command}, RC: #{rc}, Result: #{result}, #{errors}"
@@ -55,7 +55,7 @@ class RemoteCommandError < CommandError
   
   def build_message
     if @errors == ""
-      errors = "No STDERR"
+      errors = "No Errors"
     else
       errors = "Errors: #{errors}"
     end

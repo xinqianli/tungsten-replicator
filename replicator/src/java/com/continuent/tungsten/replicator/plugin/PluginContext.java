@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2013 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -28,10 +28,8 @@ import java.util.concurrent.Future;
 
 import com.continuent.tungsten.common.config.TungstenProperties;
 import com.continuent.tungsten.fsm.event.EventDispatcher;
-import com.continuent.tungsten.replicator.ReplicatorException;
 import com.continuent.tungsten.replicator.conf.FailurePolicy;
 import com.continuent.tungsten.replicator.conf.ReplicatorMonitor;
-import com.continuent.tungsten.replicator.datasource.UniversalDataSource;
 import com.continuent.tungsten.replicator.event.ReplDBMSHeader;
 import com.continuent.tungsten.replicator.pipeline.Stage;
 import com.continuent.tungsten.replicator.service.PipelineService;
@@ -137,26 +135,6 @@ public interface PluginContext
     /** Returns a named pipeline service component. */
     public abstract PipelineService getService(String name);
 
-    /**
-     * Returns a named data source or null if it has not been specified. Here
-     * are the rules for treatment of different data sources
-     * <ol>
-     * <li>If the name is null or an empty string, the data source is
-     * unspecified and we return null</li>
-     * <li>If the matching data source is DummyDataSource, return null as if the
-     * data source were unspecified</li>
-     * <li>If the matching data source is AliasDataSource, lookup and return its
-     * source</li>
-     * <li>Return any other data source as is</li>
-     * </ol>
-     * 
-     * @param name The data source name; may be null or an empty string
-     * @return A data source or null if the data source is unspecified
-     * @throws ReplicatorException Thrown if a named data source cannot be found
-     */
-    public UniversalDataSource getDataSource(String name)
-            throws ReplicatorException;
-
     /** Returns all pipeline service components. */
     public abstract List<PipelineService> getServices();
 
@@ -189,10 +167,7 @@ public interface PluginContext
     public boolean logReplicatorUpdates();
 
     /** Returns true if the JDBC login for slave apply is a superuser. */
-    public boolean isPrivilegedSlave();
-
-    /** Returns true if the JDBC login for master extract is a superuser. */
-    public boolean isPrivilegedMaster();
+    public boolean isPrivilegedSlaveUpdate();
 
     /**
      * Return true if operating in native slave takeover mode.

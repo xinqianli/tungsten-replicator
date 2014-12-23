@@ -1,19 +1,18 @@
 module ConfigureDeploymentStepServices
   def get_methods
     [
-      ConfigureCommitmentMethod.new("set_maintenance_policy", ConfigureDeploymentStepMethod::FIRST_GROUP_ID, ConfigureDeploymentStepMethod::FIRST_STEP_WEIGHT),
-      ConfigureCommitmentMethod.new("stop_disabled_services", -1, 0),
-      ConfigureCommitmentMethod.new("stop_replication_services", -1, 1),
-      ConfigureDeploymentMethod.new("apply_config_services", 0, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT),
+      ConfigureCommitmentMethod.new("set_maintenance_policy", ConfigureDeployment::FIRST_GROUP_ID, ConfigureDeployment::FIRST_STEP_WEIGHT),
+      ConfigureCommitmentMethod.new("stop_replication_services", -1, 0),
+      ConfigureDeploymentMethod.new("apply_config_services", 0, ConfigureDeployment::FINAL_STEP_WEIGHT),
       ConfigureCommitmentMethod.new("update_metadata", 1, 0),
       ConfigureCommitmentMethod.new("deploy_services", 1, 1),
-      ConfigureCommitmentMethod.new("start_replication_services_unless_provisioning", 2, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT-1, ConfigureDeploymentStepParallelization::BY_SERVICE),
-      ConfigureCommitmentMethod.new("wait_for_manager", 2, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT, ConfigureDeploymentStepParallelization::BY_SERVICE),
-      ConfigureCommitmentMethod.new("start_connector", 4, 1, ConfigureDeploymentStepParallelization::NONE),
+      ConfigureCommitmentMethod.new("start_replication_services_unless_provisioning", 2, ConfigureDeployment::FINAL_STEP_WEIGHT-1, false),
+      ConfigureCommitmentMethod.new("wait_for_manager", 2, ConfigureDeployment::FINAL_STEP_WEIGHT, false),
+      ConfigureCommitmentMethod.new("start_connector", 4, 1, false),
       ConfigureCommitmentMethod.new("set_original_policy", 5, 0),
       ConfigureCommitmentMethod.new("provision_server", 5, 1),
-      ConfigureCommitmentMethod.new("report_services", ConfigureDeploymentStepMethod::FINAL_GROUP_ID, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT-1, ConfigureDeploymentStepParallelization::NONE),
-      ConfigureCommitmentMethod.new("check_ping", ConfigureDeploymentStepMethod::FINAL_GROUP_ID, ConfigureDeploymentStepMethod::FINAL_STEP_WEIGHT)
+      ConfigureCommitmentMethod.new("report_services", ConfigureDeployment::FINAL_GROUP_ID, ConfigureDeployment::FINAL_STEP_WEIGHT-1, false),
+      ConfigureCommitmentMethod.new("check_ping", ConfigureDeployment::FINAL_GROUP_ID, ConfigureDeployment::FINAL_STEP_WEIGHT)
     ]
   end
   module_function :get_methods
@@ -23,39 +22,35 @@ module ConfigureDeploymentStepServices
     Configurator.instance.write_header "Performing services configuration"
 
     config_wrapper()
-  end
-  
-  # Stop services that are running but have been disabled by
-  # a configuration update
-  def stop_disabled_services
-    # If this value is empty there is no previous configuration
-    if get_additional_property(ACTIVE_DIRECTORY_PATH) == nil
-      return
-    end
     
-    unless is_connector?()
-      _disable_component(get_additional_property(ACTIVE_DIRECTORY_PATH), "connector")
-    end
+    write_deployall()
+    write_undeployall()
+    write_startall()
+    write_stopall()
     
-    unless is_replicator?()
-      _disable_component(get_additional_property(ACTIVE_DIRECTORY_PATH), "replicator")
-    end
+    prepare_dir = get_deployment_basedir()
+    out = File.open(prepare_dir + "/.watchfiles", "w")
     
-    unless is_manager?()
-      _disable_component(get_additional_property(ACTIVE_DIRECTORY_PATH), "manager")
-    end
-  end
-  
-  def _disable_component(root, name)
-    cmd = "#{root}/tungsten-#{name}/bin/#{name}"
-    if Configurator.instance.svc_is_running?(cmd)
-      cmd_result(cmd + " stop", true)
-    end
-    
-    wrapper = "#{root}/tungsten-#{name}/conf/wrapper.conf"
-    if File.exist?(wrapper)
-      FileUtils.rm_f(wrapper)
-    end
+    @watchfiles.uniq().each{
+      |file|
+      
+      FileUtils.cp(file, get_original_watch_file(file))
+      if file =~ /#{prepare_dir}/
+        file_to_watch = file.sub(prepare_dir, "")
+        if file_to_watch[0, 1] == "/"
+          file_to_watch.slice!(0)
+        end 
+      else
+        file_to_watch = file
+      end
+      out.puts file_to_watch
+      
+      if @config.getProperty(PROTECT_CONFIGURATION_FILES) == "true"
+        cmd_result("chmod o-rwx #{file}")
+        cmd_result("chmod o-rwx #{get_original_watch_file(file)}")
+      end
+    }
+    out.close
   end
   
   def deploy_services
@@ -88,55 +83,15 @@ module ConfigureDeploymentStepServices
       return
     end
     
+    if get_additional_property(ACTIVE_DIRECTORY_PATH) && get_additional_property(CONNECTOR_IS_RUNNING) == "true"
+      info("Stopping the old connector")
+      info(cmd_result("#{get_additional_property(ACTIVE_DIRECTORY_PATH)}/tungsten-connector/bin/connector stop"))
+    end
+    
     if get_additional_property(ACTIVE_DIRECTORY_PATH) && get_additional_property(CONNECTOR_ENABLED) == "true"
       if get_additional_property(CONNECTOR_IS_RUNNING) == "true"
-        if get_additional_property(ACTIVE_DIRECTORY_PATH) == File.readlink(@config.getProperty(CURRENT_RELEASE_DIRECTORY))
-          if get_additional_property(RECONFIGURE_CONNECTORS_ALLOWED) == true
-            # We are updating the existing directory so `connector reconfigure` can be used
-            info("Tell the connector to update its configuration")
-            begin
-              Timeout.timeout(10) {
-                info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/bin/connector reconfigure"))
-              }
-            rescue Timeout::Error
-              # The reconfigure command took too long so we must stop and start the connector
-              begin
-                info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/bin/connector graceful-stop 30"))
-              ensure
-                sleep(1)
-                info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/bin/connector start"))
-              end
-            end
-          else
-            # Stop the connector and start it again so that the full configuration, including ports, are reloaded
-            begin
-              info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/bin/connector graceful-stop 30"))
-            ensure
-              sleep(1)
-              info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/bin/connector start"))
-            end
-          end
-        else
-          # We are switching to a new active directory. Start the new connector 
-          # so it goes into a loop trying to bind the connector port
-          info("Starting the new connector")
-          info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/bin/connector start"))
-          
-          # Attempt to use the graceful-stop command but fail back to a regular stop
-          info("Stopping the old connector")
-          begin
-            info(cmd_result("#{get_additional_property(ACTIVE_DIRECTORY_PATH)}/tungsten-connector/bin/connector graceful-stop 30"))
-          rescue CommandError => ce
-            if ce.result =~ /Usage:/
-              debug("The running version doesn't support graceful-stop")
-              # The running version of the connector doesn't support graceful-stop
-              info(cmd_result("#{get_additional_property(ACTIVE_DIRECTORY_PATH)}/tungsten-connector/bin/connector stop"))
-            else
-              # The graceful-stop command failed for another reason so we should bubble that up
-              raise ce
-            end
-          end
-        end
+        info("Starting the connector")
+        info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-connector/bin/connector start"))
       end
     elsif @config.getProperty(SVC_START) == "true"
       info("Starting the connector")
@@ -302,50 +257,6 @@ module ConfigureDeploymentStepServices
   def update_metadata
     if get_additional_property(ACTIVE_VERSION) =~ /^1.5.[0-9][\-0-9]+$/
       upgrade_from_1_5()
-    else
-      if is_replicator?() && get_additional_property(ACTIVE_DIRECTORY_PATH).to_s() != ""
-        current_data = get_additional_property(ACTIVE_DIRECTORY_PATH) + "/tungsten-replicator/data"
-        if File.exist?(current_data)
-          target_data = @config.getProperty(REPL_METADATA_DIRECTORY)
-          if File.exist?(target_data)
-            Configurator.instance.warning("Position information was found at #{current_data} and #{target_data}. The information at #{target_data} will be kept unchanged.")
-          else
-            cmd_result("mv #{current_data} #{target_data}")
-          end
-        end
-        
-        if Configurator.instance.is_enterprise?
-          @config.getProperty([REPL_SERVICES]).keys().each{
-            |rs_alias|
-            if rs_alias == DEFAULTS
-              next
-            end
-
-            begin
-              key = "repl_services.#{rs_alias}.repl_svc_schema"
-              
-              schema = @config.getProperty(key)
-              result_json = cmd_result("#{get_additional_property(ACTIVE_DIRECTORY_PATH)}/tools/tpm query values #{key}", true)
-              result = JSON.parse(result_json)
-              
-              if result[key] != schema
-                # Migrate information to the new schema
-                Configurator.instance.debug("Migrate metadata from #{result[key]} to #{schema}")
-                
-                f = Tempfile.new("tpmmigrate")
-                cmd_result("echo \"SET SESSION SQL_LOG_BIN=0;\n\" >> #{f.path()}")
-                cmd_result("echo \"CREATE SCHEMA \\`#{schema}\\`;\n\" >> #{f.path()}")
-                cmd_result("echo \"USE '#{schema}';\n\" >> #{f.path()}")
-                
-                cmd = "mysqldump --defaults-file=#{@config.getProperty([REPL_SERVICES, rs_alias, REPL_MYSQL_SERVICE_CONF])} --host=#{@config.getProperty([REPL_SERVICES, rs_alias, REPL_DBHOST])} --port=#{@config.getProperty([REPL_SERVICES, rs_alias, REPL_DBPORT])}"
-                cmd_result("#{cmd} --opt --single-transaction #{result[key]} >> #{f.path()}")
-                cmd_result("cat #{f.path()} | mysql --defaults-file=#{@config.getProperty([REPL_SERVICES, rs_alias, REPL_MYSQL_SERVICE_CONF])}")
-              end
-            rescue
-            end
-          }
-        end
-      end
     end
   end
   

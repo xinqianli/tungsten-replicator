@@ -37,7 +37,7 @@ public class ClusterConfigurationNotification
 
     /**
      * @param clusterName
-     * @param memberName
+     * @param memberName TODO
      * @param notificationSource
      * @param resourceName
      * @param resourceState

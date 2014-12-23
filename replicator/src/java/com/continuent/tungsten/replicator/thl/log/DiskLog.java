@@ -1175,7 +1175,7 @@ public class DiskLog
     private LogFile startNewLogFile(long seqno) throws ReplicatorException,
             IOException, InterruptedException
     {
-        // Open new log file and update index. 
+        // Open new log file and update index. TODO: did this get updated?
         String logFileName = getDataFileName(fileIndex);
         LogFile dataFile = new LogFile(logDir, logFileName);
         dataFile.setBufferSize(bufferSize);

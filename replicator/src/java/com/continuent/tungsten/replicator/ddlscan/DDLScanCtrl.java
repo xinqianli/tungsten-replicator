@@ -188,7 +188,7 @@ public class DDLScanCtrl
                 return false;
             }
         }
-
+        
         if (tableFile != null)
             tables = tableFileToRegex(tableFile);
 
@@ -197,8 +197,7 @@ public class DDLScanCtrl
         else
             writer = new BufferedWriter(new FileWriter(new File(outFile)));
 
-        // Summarize tables to stdout if we are going to an output file.
-        if (tables != null && outFile != null)
+        if (tables != null)
             println("tables = " + tables);
 
         scanner.scan(tables, templateOptions, writer);
@@ -217,13 +216,13 @@ public class DDLScanCtrl
 
     private String tableFileToRegex(String tableFile) throws IOException
     {
-        return tableFileToRegex(null, tableFile);
+        return tableFileToRegex(db, tableFile);
     }
 
     /**
      * Converts a new-line seperated text file containing table names into a
-     * format accepted by DDLScan:
-     * table1,table2,...,tableN
+     * format searchable by regular expression matcher:
+     * SCHEMA.TABLE,SCHEMA.TABLE,...
      * 
      * @param schema Prefix to add before each table name. If null - not added.
      * @param tableFile Table file like tungsten.tables used by Oracle
@@ -316,7 +315,7 @@ public class DDLScanCtrl
             // Command line parameters and options.
             String configFile = null;
             String service = null;
-
+            
             String templateFile = null;
             String additionalPath = null;
             String user = null;
@@ -581,7 +580,7 @@ public class DDLScanCtrl
         println("  -pass secret     - JDBC password");
         println("  -url jdbcUrl     - JDBC connection string (use single quotes to escape)");
         println("Schema scan specification:");
-        println(" [-tables regex]   - Comma-separated list of tables to find");
+        println(" [-tables regex]   - Regular expression enabled list defining tables to find");
         println(" [-tableFile file] - New-line seperated definitions file of tables to find");
         println(" [-rename file]    - Definitions file for renaming schemas, tables and columns");
         println("Global options:");

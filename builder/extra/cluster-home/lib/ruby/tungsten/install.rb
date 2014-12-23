@@ -93,7 +93,7 @@ class TungstenInstall
       end
       
       if local_services.size() == 0
-        dataservices()[0]
+        dataservices().get(0)
       else
         TU.cmd_result("egrep \"^service.name\" #{local_services[0]} | awk -F \"=\" '{print $2}'")
       end
@@ -236,26 +236,7 @@ class TungstenInstall
   def trepctl_value(service, key)
     TU.cmd_result("#{trepctl(service)} status | grep #{key} | awk -F: '{ st = index($0,\":\");print substr($0,st+1)}' | tr -d ' '")
   end
-
-  def trepctl_name_value(service, name_value, stage, key)
-    begin
-      output=JSON.parse(TU.cmd_result("#{trepctl(service)} status -name #{name_value} -json"))
-    rescue Exception => e
-      output=nil
-    end
-    stage_values=output.find{|x| x['stage']=stage}
-    stage_values[key]
-  end
-
-  def trepctl_name_all(service, name_value)
-    begin
-      output=JSON.parse(TU.cmd_result("#{trepctl(service)} status -name #{name_value} -json"))
-    rescue Exception => e
-      output=nil
-    end
-    output
-  end
-
+  
   def trepctl_property(service, key)
     properties = JSON.parse(TU.cmd_result("#{trepctl(service)} properties -filter #{key}"))
     if properties.has_key?(key)
@@ -265,12 +246,8 @@ class TungstenInstall
     end
   end
   
-  def thl(service = nil)
-    if service == nil
-      "#{tungsten_sudo_prefix()}#{@root}/#{CURRENT_RELEASE_DIRECTORY}/tungsten-replicator/bin/thl"
-    else
-      "#{tungsten_sudo_prefix()}#{@root}/#{CURRENT_RELEASE_DIRECTORY}/tungsten-replicator/bin/thl -service #{service}"
-    end
+  def thl(service)
+    "#{tungsten_sudo_prefix()}#{@root}/#{CURRENT_RELEASE_DIRECTORY}/tungsten-replicator/bin/thl -service #{service}"
   end
   
   def service_path(component)
@@ -333,134 +310,6 @@ class TungstenInstall
     else
       return "sudo -u #{self.user()} -n -i "
     end
-  end
-  
-  def sudo_prefix
-    if ENV['USER'] == "root" || setting("root_command_prefix") != "true"
-      return ""
-    else
-      return "sudo -n "
-    end
-  end
-  
-  def datasource_type(service, use_direct_extractor = false)
-    if use_direct_extractor == true
-      key = "repl_direct_datasource_type"
-    else
-      key = "repl_datasource_type"
-    end
-    
-    setting(setting_key(REPL_SERVICES, service, key))
-  end
-  
-  def datasource(service, use_direct_extractor = false)
-    type = datasource_type(service, use_direct_extractor)
-    
-    case type
-    when "mysql"
-      require "#{File.dirname(__FILE__)}/datasources/mysql.rb"
-      return TungstenScriptMySQLDatasource.new(self, service, use_direct_extractor)
-    else
-      raise "Unable to create a TungstenDatasource for #{service} because it uses #{type}"
-    end
-  end
-  
-  def can_sql?(service, use_direct_extractor = false)
-    case datasource_type(service, use_direct_extractor)
-    when "mysql"
-      return true
-    when "redshift"
-      return true
-    else
-      return false
-    end
-  end
-  
-  def sql_results(service, sql, use_direct_extractor = false)
-    unless can_sql?(service, use_direct_extractor)
-      raise "Unable to run SQL command for the #{service} dataservice. The datasource type does not support SQL commands."
-    end
-    
-    cfg = nil
-    command = nil
-    begin
-      # Disable logging of command results so the password doesn't end up in a log file
-      TU.log_cmd_results?(false)
-      if use_direct_extractor == true
-        url= setting(setting_key(REPL_SERVICES, service, "repl_direct_datasource_jdbcqueryurl"))
-        user = setting(setting_key(REPL_SERVICES, service, "repl_direct_datasource_user"))
-        password = setting(setting_key(REPL_SERVICES, service, "repl_direct_datasource_password"))
-      else
-        url = setting(setting_key(REPL_SERVICES, service, "repl_datasource_jdbcqueryurl"))
-        user = setting(setting_key(REPL_SERVICES, service, "repl_datasource_user"))
-        password = setting(setting_key(REPL_SERVICES, service, "repl_datasource_password"))
-      end
-      TU.log_cmd_results?(true)
-      
-      cfg = Tempfile.new("cnf")
-      cfg.puts("url=#{url}")
-      cfg.puts("user=#{user}")
-      cfg.puts("password=#{password}")
-      cfg.close()
-      
-      command = Tempfile.new("query")
-      if sql.is_a?(Array)
-        command.puts(sql.join("\n"))
-      else
-        command.puts(sql)
-      end
-      command.close()
-      
-      output = TU.cmd_result("#{self.base_path()}/tungsten-replicator/bin/query -conf #{cfg.path} -file #{command.path}")
-    rescue CommandError => ce
-      TU.debug(ce)
-      raise "There was an error processing the query: #{ce.result}"
-    ensure
-      if cfg != nil
-        cfg.close()
-        cfg.unlink()
-      end
-      
-      if command != nil
-        command.close()
-        command.unlink()
-      end
-    end
-    
-    results = JSON.parse(output)
-    results.each {
-      |result|
-      if result["rc"] == 0
-        result["error"] = nil
-      else
-        obj = CommandError.new(result["statement"], result["rc"], result["results"], result["error"])
-        result["error"] = obj
-      end
-    }
-    results
-  end
-  
-  def sql_result(service, sql, use_direct_extractor = false)
-    results = sql_results(service, sql, use_direct_extractor)
-    
-    if results.size() == 0
-      raise "No results were returned by #{sql}"
-    end
-    
-    if results[0]["error"] == nil
-      return results[0]["results"][0]
-    else
-      raise results[0]["error"]
-    end
-  end
-  
-  def check_sql_results(results)
-    results.each{
-      |r|
-      if r["error"] != nil
-        raise r["error"]
-      end
-    }
   end
   
   def self.get(path)

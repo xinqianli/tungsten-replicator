@@ -196,7 +196,7 @@ public class Directory extends ResourceTree
     /**
      * Creates an instance of Directory with some base-level resources.
      * 
-     * @param memberName 
+     * @param memberName TODO
      * @throws ResourceException
      */
     private Directory(String clusterName, String memberName)
@@ -934,17 +934,17 @@ public class Directory extends ResourceTree
      * @return
      * @throws DirectoryNotFoundException
      */
-//    private ResourceNode getLast(Map<String, ResourceNode> map)
-//            throws DirectoryNotFoundException
-//    {
-//        ResourceNode lastNode = null;
-//        for (ResourceNode node : map.values())
-//        {
-//            lastNode = node;
-//        }
-//
-//        return lastNode;
-//    }
+    private ResourceNode getLast(Map<String, ResourceNode> map)
+            throws DirectoryNotFoundException
+    {
+        ResourceNode lastNode = null;
+        for (ResourceNode node : map.values())
+        {
+            lastNode = node;
+        }
+
+        return lastNode;
+    }
 
     /**
      * @param path
@@ -1923,7 +1923,7 @@ public class Directory extends ResourceTree
 
     public void run()
     {
-        
+        // TODO Auto-generated method stub
     }
 
     public synchronized void flush()
@@ -1996,12 +1996,12 @@ public class Directory extends ResourceTree
 
     public void prepare() throws Exception
     {
-        
+        // TODO Auto-generated method stub
 
     }
 
     /**
-     * @param siteName 
+     * @param siteName TODO
      * @param clusterName
      * @param host
      * @param beanServiceName

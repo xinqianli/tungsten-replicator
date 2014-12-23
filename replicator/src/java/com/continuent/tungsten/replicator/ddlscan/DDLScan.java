@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Linas Virbalas
- * Contributor(s): Robert Hodges
+ * Contributor(s): 
  */
 
 package com.continuent.tungsten.replicator.ddlscan;
@@ -28,12 +28,12 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Hashtable;
 
-import org.apache.velocity.Template;
 import org.apache.velocity.VelocityContext;
+import org.apache.velocity.Template;
 import org.apache.velocity.app.VelocityEngine;
-import org.apache.velocity.exception.MethodInvocationException;
-import org.apache.velocity.exception.ParseErrorException;
 import org.apache.velocity.exception.ResourceNotFoundException;
+import org.apache.velocity.exception.ParseErrorException;
+import org.apache.velocity.exception.MethodInvocationException;
 import org.apache.velocity.runtime.RuntimeConstants;
 import org.apache.velocity.runtime.log.Log4JLogChute;
 
@@ -45,6 +45,7 @@ import com.continuent.tungsten.replicator.database.DatabaseFactory;
 import com.continuent.tungsten.replicator.database.MySQLDatabase;
 import com.continuent.tungsten.replicator.database.OracleDatabase;
 import com.continuent.tungsten.replicator.database.Table;
+import com.continuent.tungsten.replicator.database.TableMatcher;
 import com.continuent.tungsten.replicator.filter.EnumToStringFilter;
 import com.continuent.tungsten.replicator.filter.RenameDefinitions;
 
@@ -127,6 +128,22 @@ public class DDLScan
     }
 
     /**
+     * Prepares table regex matcher.
+     * 
+     * @param filter Regex enabled list of tables.
+     */
+    private TableMatcher extractFilter(String filter)
+    {
+        // If empty, we do nothing.
+        if (filter == null || filter.length() == 0)
+            return null;
+
+        TableMatcher tableMatcher = new TableMatcher();
+        tableMatcher.prepare(filter);
+        return tableMatcher;
+    }
+
+    /**
      * Compiles the given Velocity template file.
      */
     public void parseTemplate(String templateFile) throws ReplicatorException
@@ -177,9 +194,8 @@ public class DDLScan
      * Scans and extracts metadata from the database of requested tables. Calls
      * merge(...) against each found table.
      * 
-     * @param tablesToFind Comma-separated list of tables to find (don't specify
-     *            schema name), null for all tables in schema. Regular
-     *            expressions are *not* supported.
+     * @param tablesToFind Regular expression enable list of tables to find or
+     *            null for all tables.
      * @param templateOptions Options (option->value) to pass to the template.
      * @param writer Writer object to use for appending rendered template. Make
      *            sure to initialize it before and flush/close it after
@@ -194,24 +210,13 @@ public class DDLScan
         // How many tables were actually matched?
         int tablesRendered = 0;
 
-        ArrayList<Table> tables = null;
-        if (tablesToFind == null)
-        {
-            // Retrieve all tables available with unique index information.
-            tables = db.getTables(dbName, true, true);
-        }
-        else
-        {
-            // Retrieve only requested tables.
-            tables = new ArrayList<Table>();
-            String[] tableNames = tablesToFind.split(",");
-            for (String tableName : tableNames)
-            {
-                Table table = db.findTable(dbName, tableName, true);
-                if (table != null)
-                    tables.add(table);
-            }
-        }
+        // Regular expression matcher for tables.
+        TableMatcher tableMatcher = null;
+        if (tablesToFind != null)
+            tableMatcher = extractFilter(tablesToFind);
+
+        // Retrieve all tables available with unique index information.
+        ArrayList<Table> tables = db.getTables(dbName, true, true);
 
         // Make a context object and populate with the data. This is where
         // the Velocity engine gets the data to resolve the references in
@@ -241,32 +246,22 @@ public class DDLScan
         context.put("reservedWordsOracle", reservedWordsOracle);
         context.put("reservedWordsMySQL", reservedWordsMySQL);
         context.put("velocity", velocity);
-        
+
         // Iterate through all available tables in the database.
-        int size = tables.size();
-        for (int i = 0; i < size; i++)
+        for (Table table : tables)
         {
-            Table table = tables.get(i);
+            // Is this table requested by the user?
+            if (tableMatcher == null
+                    || tableMatcher.match(table.getSchema(), table.getName()))
+            {
+                // If requested, do the renaming.
+                rename(table);
 
-            // If this is the first table, mark the context appropriately.
-            if (i == 0)
-                context.put("first", true);
-            else
-                context.put("first", false);
+                // Velocity merge.
+                merge(context, table, writer);
 
-            // Similarly for the last table mark the context accordingly.
-            if (i >= size - 1)
-                context.put("last", true);
-            else
-                context.put("last", false);
-
-            // If requested, do the renaming.
-            rename(table);
-
-            // Velocity merge.
-            merge(context, table, writer);
-
-            tablesRendered++;
+                tablesRendered++;
+            }
         }
 
         // No tables have been found and/or matched.

@@ -22,16 +22,7 @@
 package com.continuent.tungsten.common.security;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.security.KeyStore;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
 import java.text.MessageFormat;
-import java.util.Enumeration;
-import java.util.HashMap;
 
 import org.apache.log4j.Logger;
 
@@ -39,7 +30,6 @@ import com.continuent.tungsten.common.config.TungstenProperties;
 import com.continuent.tungsten.common.config.cluster.ClusterConfiguration;
 import com.continuent.tungsten.common.config.cluster.ConfigurationException;
 import com.continuent.tungsten.common.jmx.ServerRuntimeException;
-import com.continuent.tungsten.common.security.SecurityHelper.TUNGSTEN_APPLICATION_NAME;
 import com.continuent.tungsten.common.utils.CLLogLevel;
 import com.continuent.tungsten.common.utils.CLUtils;
 
@@ -52,44 +42,43 @@ import com.continuent.tungsten.common.utils.CLUtils;
  */
 public final class AuthenticationInfo
 {
-    private static final Logger     logger                                   = Logger.getLogger(AuthenticationInfo.class);
-    /** Location of the file from which this was built **/
-    private String                  parentPropertiesFileLocation             = null;
-    /** Properties from the files from which this was built **/
-    private TungstenProperties      parentProperties                         = null;
+    private static final Logger logger                         = Logger.getLogger(AuthenticationInfo.class);
+    private String              parentPropertiesFileLocation   = null;                                      // Location
+                                                                                                             // of
+                                                                                                             // the
+                                                                                                             // file
+                                                                                                             // from
+                                                                                                             // which
+                                                                                                             // this
+                                                                                                             // was
+                                                                                                             // built
 
-    private boolean                 authenticationNeeded                     = false;
-    private boolean                 encryptionNeeded                         = false;
-    private boolean                 useTungstenAuthenticationRealm           = true;
-    private boolean                 useEncryptedPasswords                    = false;
-    /** Set to true if the connector should be using SSL **/
-    private boolean                 connectorUseSSL                          = false;
+    private boolean             authenticationNeeded           = false;
+    private boolean             encryptionNeeded               = false;
+    private boolean             useTungstenAuthenticationRealm = true;
+    private boolean             useEncryptedPasswords          = false;
 
     // Authentication parameters
-    private String                  username                                 = null;
-    private String                  password                                 = null;
-    private String                  passwordFileLocation                     = null;
-    private String                  accessFileLocation                       = null;
+    private String              username                       = null;
+    private String              password                       = null;
+    private String              passwordFileLocation           = null;
+    private String              accessFileLocation             = null;
     // Encryption parameters
-    private String                  keystoreLocation                         = null;
-    private String                  keystorePassword                         = null;
-    private String                  truststoreLocation                       = null;
-    private String                  truststorePassword                       = null;
-    // Alias for entries in keystore
-    // key=identifier as defined in SecurityConf value=alias for this
-    // application
-    private HashMap<String, String> mapKeystoreAliasesForTungstenApplication = new HashMap<String, String>();
+    private String              keystoreLocation               = null;
+    private String              keystorePassword               = null;
+    private String              truststoreLocation             = null;
+    private String              truststorePassword             = null;
 
-    public final static String      AUTHENTICATION_INFO_PROPERTY             = "authenticationInfo";
-    public final static String      TUNGSTEN_AUTHENTICATION_REALM            = "tungstenAutenthicationRealm";
+    public final static String  AUTHENTICATION_INFO_PROPERTY   = "authenticationInfo";
+    public final static String  TUNGSTEN_AUTHENTICATION_REALM  = "tungstenAutenthicationRealm";
     // Possible command line parameters
-    public final static String      USERNAME                                 = "-username";
-    public final static String      PASSWORD                                 = "-password";
-    public final static String      KEYSTORE_LOCATION                        = "-keystoreLocation";
-    public final static String      KEYSTORE_PASSWORD                        = "-keystorePassword";
-    public final static String      TRUSTSTORE_LOCATION                      = "-truststoreLocation";
-    public final static String      TRUSTSTORE_PASSWORD                      = "-truststorePassword";
-    public final static String      SECURITY_CONFIG_FILE_LOCATION            = "-securityProperties";
+    public final static String  USERNAME                       = "-username";
+    public final static String  PASSWORD                       = "-password";
+    public final static String  KEYSTORE_LOCATION              = "-keystoreLocation";
+    public final static String  KEYSTORE_PASSWORD              = "-keystorePassword";
+    public final static String  TRUSTSTORE_LOCATION            = "-truststoreLocation";
+    public final static String  TRUSTSTORE_PASSWORD            = "-truststorePassword";
+    public final static String  SECURITY_CONFIG_FILE_LOCATION  = "-securityProperties";
 
     /**
      * Creates a new <code>AuthenticationInfo</code> object
@@ -109,15 +98,8 @@ public final class AuthenticationInfo
      * 
      * @throws ConfigurationException
      */
-    public void checkAndCleanAuthenticationInfo()
-            throws ServerRuntimeException, ConfigurationException
-    {
-        checkAndCleanAuthenticationInfo(TUNGSTEN_APPLICATION_NAME.ANY);
-    }
-
-    public void checkAndCleanAuthenticationInfo(
-            TUNGSTEN_APPLICATION_NAME tungstenApplicationName)
-            throws ServerRuntimeException, ConfigurationException
+    public void checkAuthenticationInfo() throws ServerRuntimeException,
+            ConfigurationException
     {
         // --- Check security.properties location ---
         if (this.parentPropertiesFileLocation != null)
@@ -141,35 +123,9 @@ public final class AuthenticationInfo
                         "File must exist"));
             }
         }
-        // --- Clean up ---
-        if (tungstenApplicationName == TUNGSTEN_APPLICATION_NAME.CONNECTOR
-                && !this.isConnectorUseSSL())
+        // --- Check Keystore location ---
+        if (this.isEncryptionNeeded() && this.keystoreLocation != null)
         {
-            // The Connector does not use SSL, delete unnecessary information.
-            this.keystoreLocation = null;
-            this.keystorePassword = null;
-            this.truststoreLocation = null;
-            this.truststorePassword = null;
-        }
-
-        // ---------------------- Check Keystore ----------------------------
-        if ((this.isEncryptionNeeded() && this.keystoreLocation != null)
-                || (tungstenApplicationName == TUNGSTEN_APPLICATION_NAME.CONNECTOR && this
-                        .isConnectorUseSSL()))
-        {
-            // --- Check file location is specified ---
-            if (this.keystoreLocation == null)
-            {
-                String msg = MessageFormat.format(
-                        "Configuration error: {0}={1} but: {2}={3}",
-                        SecurityConf.CONNECTOR_USE_SSL,
-                        this.isConnectorUseSSL(),
-                        SecurityConf.CONNECTOR_SECURITY_KEYSTORE_LOCATION,
-                        this.keystoreLocation);
-                CLUtils.println(msg, CLLogLevel.detailed);
-                throw new ServerRuntimeException(msg, new AssertionError(
-                        "File must exist"));
-            }
             File f = new File(this.keystoreLocation);
             // --- Find absolute path if needed
             if (!f.isFile())
@@ -187,156 +143,11 @@ public final class AuthenticationInfo
                 throw new ServerRuntimeException(msg, new AssertionError(
                         "File must exist"));
             }
-
-            // --- Check password is defined
-            if (this.keystorePassword == null)
-            {
-                throw new ConfigurationException(
-                        SecurityConf.CONNECTOR_SECURITY_KEYSTORE_PASSWORD);
-            }
-        }
-
-        // --- Check Aliases are defined in the keystore ---
-        if ((this.isEncryptionNeeded() && this.keystoreLocation != null)
-                || (tungstenApplicationName == TUNGSTEN_APPLICATION_NAME.CONNECTOR && this
-                        .isConnectorUseSSL()))
-        {
-            FileInputStream is = null;
-            try
-            {
-                // Aliases to check
-                HashMap<String, String> mapAliases = this
-                        .getMapKeystoreAliasesForTungstenApplication();
-
-                boolean connector_alias_client_to_connector_isFound = false;
-                boolean connector_alias_connector_to_db_isFound = false;
-
-                String connector_alias_client_to_connector = mapAliases
-                        .get(SecurityConf.KEYSTORE_ALIAS_CONNECTOR_CLIENT_TO_CONNECTOR);
-                String connector_alias_connector_to_db = mapAliases
-                        .get(SecurityConf.KEYSTORE_ALIAS_CONNECTOR_CONNECTOR_TO_DB);
-
-                // If an aliase is not defined, do not look for it...obviously
-                connector_alias_client_to_connector_isFound = (connector_alias_client_to_connector == null)
-                        ? true
-                        : false;
-                connector_alias_connector_to_db_isFound = (connector_alias_connector_to_db == null)
-                        ? true
-                        : false;
-
-                // Load the keystore in the user's home directory
-                // Check only if there are aliases to find
-                if (!connector_alias_client_to_connector_isFound
-                        || !connector_alias_connector_to_db_isFound)
-                {
-                    is = new FileInputStream(this.getKeystoreLocation());
-                    KeyStore keystore = KeyStore.getInstance(KeyStore
-                            .getDefaultType());
-                    String password = this.getKeystorePassword();
-                    keystore.load(is, password.toCharArray());
-
-                    // List the aliases
-                    Enumeration<String> enumAliases = keystore.aliases();
-                    while (enumAliases.hasMoreElements())
-                    {
-                        String alias = enumAliases.nextElement();
-
-                        // Does alias refer to a private key?
-                        // boolean b = keystore.isKeyEntry(alias);
-
-                        // Does alias refer to a trusted certificate?
-                        // b = keystore.isCertificateEntry(alias);
-
-                        connector_alias_client_to_connector_isFound = connector_alias_client_to_connector_isFound == true
-                                || (connector_alias_client_to_connector != null && connector_alias_client_to_connector
-                                        .equals(alias));
-
-                        connector_alias_connector_to_db_isFound = connector_alias_connector_to_db_isFound == true
-                                || (connector_alias_connector_to_db != null && connector_alias_connector_to_db
-                                        .equals(alias));
-                    }
-                    // --- Throw Exception when an alias is defined but not
-                    // found
-                    String _aliasErrorMessage = "Keystore alias is defined as {0}={1} but cannot be found in {2}";
-                    // client to connector
-                    if (connector_alias_client_to_connector != null
-                            && connector_alias_client_to_connector_isFound == false)
-                    {
-                        this.closeInputStream(is);
-
-                        String aliasErrorMessage = MessageFormat
-                                .format(_aliasErrorMessage,
-                                        SecurityConf.KEYSTORE_ALIAS_CONNECTOR_CLIENT_TO_CONNECTOR,
-                                        connector_alias_client_to_connector,
-                                        this.getKeystoreLocation());
-                        throw new ServerRuntimeException(aliasErrorMessage,
-                                new AssertionError(
-                                        "Alias must exist in keystore"));
-                    }
-                    // Connector to DB
-                    if (connector_alias_connector_to_db != null
-                            && connector_alias_connector_to_db_isFound == false)
-                    {
-                        this.closeInputStream(is);
-
-                        String aliasErrorMessage = MessageFormat
-                                .format(_aliasErrorMessage,
-                                        SecurityConf.KEYSTORE_ALIAS_CONNECTOR_CONNECTOR_TO_DB,
-                                        connector_alias_connector_to_db,
-                                        this.getKeystoreLocation());
-                        throw new ServerRuntimeException(aliasErrorMessage,
-                                new AssertionError(
-                                        "Alias must exist in keystore"));
-                    }
-                }
-
-            }
-            catch (java.security.cert.CertificateException e)
-            {
-                this.closeInputStream(is);
-                throw new ConfigurationException(e.getMessage());
-            }
-            catch (NoSuchAlgorithmException e)
-            {
-                this.closeInputStream(is);
-                throw new ConfigurationException(e.getMessage());
-            }
-            catch (FileNotFoundException e)
-            {
-                this.closeInputStream(is);
-                // Noting to do: this has already been checked
-            }
-            catch (KeyStoreException e)
-            {
-                this.closeInputStream(is);
-                throw new ConfigurationException(e.getMessage());
-            }
-            catch (IOException e)
-            {
-                this.closeInputStream(is);
-                throw new ConfigurationException(e.getMessage());
-            }
-            this.closeInputStream(is); // Close inputStream if not already done
         }
 
         // --- Check Truststore location ---
-        if ((this.isEncryptionNeeded() && this.truststoreLocation != null)
-                || (tungstenApplicationName == TUNGSTEN_APPLICATION_NAME.CONNECTOR && this
-                        .isConnectorUseSSL()))
+        if (this.isEncryptionNeeded() && this.truststoreLocation != null)
         {
-            // --- Check file location is specified ---
-            if (this.truststoreLocation == null)
-            {
-                String msg = MessageFormat.format(
-                        "Configuration error: {0}={1} but: {2}={3}",
-                        SecurityConf.CONNECTOR_USE_SSL,
-                        this.isConnectorUseSSL(),
-                        SecurityConf.CONNECTOR_SECURITY_TRUSTSTORE_LOCATION,
-                        this.truststoreLocation);
-                CLUtils.println(msg, CLLogLevel.detailed);
-                throw new ServerRuntimeException(msg, new AssertionError(
-                        "File must exist"));
-            }
             File f = new File(this.truststoreLocation);
             // --- Find absolute path if needed
             if (!f.isFile())
@@ -411,7 +222,6 @@ public final class AuthenticationInfo
                         "File must exist"));
             }
         }
-
     }
 
     /**
@@ -469,6 +279,8 @@ public final class AuthenticationInfo
     }
 
     /**
+     * TODO: getEncryptedPassword definition.
+     * 
      * @return the encrypted password if useEncryptedPasswords==true or the
      *         clear text password otherwise
      */
@@ -619,84 +431,6 @@ public final class AuthenticationInfo
     }
 
     /**
-     * Returns the connectorUseSSL value.
-     * 
-     * @return Returns the connectorUseSSL.
-     */
-    public boolean isConnectorUseSSL()
-    {
-        return connectorUseSSL;
-    }
-
-    /**
-     * Sets the connectorUseSSL value.
-     * 
-     * @param connectorUseSSL The connectorUseSSL to set.
-     */
-    public void setConnectorUseSSL(boolean connectorUseSSL)
-    {
-        this.connectorUseSSL = connectorUseSSL;
-    }
-
-    /**
-     * Returns the parentProperties value.
-     * 
-     * @return Returns the parentProperties.
-     */
-    public TungstenProperties getParentProperties()
-    {
-        return parentProperties;
-    }
-
-    /**
-     * Sets the parentProperties value.
-     * 
-     * @param parentProperties The parentProperties to set.
-     */
-    public void setParentProperties(TungstenProperties parentProperties)
-    {
-        this.parentProperties = parentProperties;
-    }
-
-    /**
-     * Returns the mapKeystoreAliasesForTungstenApplication value.
-     * 
-     * @return Returns the mapKeystoreAliasesForTungstenApplication.
-     */
-    public HashMap<String, String> getMapKeystoreAliasesForTungstenApplication()
-    {
-        return mapKeystoreAliasesForTungstenApplication;
-    }
-
-    /**
-     * Sets the mapKeystoreAliasesForTungstenApplication value.
-     * 
-     * @param mapKeystoreAliasesForTungstenApplication The
-     *            mapKeystoreAliasesForTungstenApplication to set.
-     */
-    public void setMapKeystoreAliasesForTungstenApplication(
-            HashMap<String, String> mapKeystoreAliasesForTungstenApplication)
-    {
-        this.mapKeystoreAliasesForTungstenApplication = mapKeystoreAliasesForTungstenApplication;
-    }
-
-    /**
-     * Get the alias defined for the corresponding Tungsten application
-     * 
-     * @param tungestenApplicationName
-     * @return the alias defined in security.properties if it exists. null
-     *         otherwise
-     */
-    public String getKeystoreAliasForTungstenApplication(
-            TUNGSTEN_APPLICATION_NAME tungestenApplicationName)
-    {
-        String alias = this.mapKeystoreAliasesForTungstenApplication
-                .get(tungestenApplicationName);
-
-        return null;
-    }
-
-    /**
      * Try to find a file absolute path from a series of default location
      * 
      * @param fileToFind the file for which to look for an absolute path
@@ -711,9 +445,9 @@ public final class AuthenticationInfo
         {
             String clusterHome = ClusterConfiguration.getClusterHome();
 
-            if (fileToFind.getPath() == fileToFind.getName()) // No absolute or
-            // relative path
-            // was given
+            if (fileToFind.getPath() == fileToFind.getName())                   // No absolute or
+                                                              // relative path
+                                                              // was given
             {
                 // --- Try to find find in: cluster-home/conf
                 File candidateFile = new File(clusterHome + File.separator
@@ -740,23 +474,6 @@ public final class AuthenticationInfo
         }
 
         return foundFile;
-    }
-
-    /**
-     * Silently tries to close an InputStream.
-     * 
-     * @param in
-     */
-    private void closeInputStream(InputStream in)
-    {
-        try
-        {
-            in.close();
-        }
-        catch (Exception e)
-        {
-            // Nothing to do, it's a last chance close
-        }
     }
 
 }

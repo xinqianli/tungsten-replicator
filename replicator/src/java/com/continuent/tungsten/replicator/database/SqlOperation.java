@@ -1,6 +1,6 @@
 /**
  * Tungsten: An Application Server for uni/cluster.
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2011 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -16,14 +16,11 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
- * Initial developer(s): Robert Hodges
- * Contributor(s): Stephane Giron, Scott Martin
+ * Initial developer(s): Scott Martin
+ * Contributor(s): Stephane Giron
  */
 
 package com.continuent.tungsten.replicator.database;
-
-import java.util.LinkedList;
-import java.util.List;
 
 /**
  * Summarizes an operation on a named SQL object.
@@ -34,50 +31,45 @@ import java.util.List;
 public class SqlOperation
 {
     // Unrecognized object or operation.
-    public static int UNRECOGNIZED        = 0;
+    public static int UNRECOGNIZED = 0;
 
     // Object types.
-    public static int SCHEMA              = 1;
-    public static int TABLE               = 2;
-    public static int SESSION             = 3;
-    public static int PROCEDURE           = 4;
-    public static int FUNCTION            = 5;
-    public static int TRANSACTION         = 6;
-    public static int BLOCK               = 7;
-    public static int VIEW                = 8;
-    public static int INDEX               = 9;
-    public static int DBMS                = 10;
-    public static int TRIGGER             = 11;
+    public static int SCHEMA       = 1;
+    public static int TABLE        = 2;
+    public static int SESSION      = 3;
+    public static int PROCEDURE    = 4;
+    public static int FUNCTION     = 5;
+    public static int TRANSACTION  = 6;
+    public static int BLOCK        = 7;
+    public static int VIEW         = 8;
+    public static int INDEX        = 9;
+    public static int DBMS         = 10;
 
     // Operation types.
-    public static int CREATE              = 1;
-    public static int DROP                = 2;
-    public static int INSERT              = 3;
-    public static int UPDATE              = 4;
-    public static int DELETE              = 5;
-    public static int REPLACE             = 6;
-    public static int TRUNCATE            = 7;
-    public static int LOAD_DATA           = 8;
-    public static int SET                 = 9;
-    public static int BEGIN               = 10;
-    public static int COMMIT              = 11;
-    public static int BEGIN_END           = 12;
-    public static int SELECT              = 13;
-    public static int ALTER               = 14;
-    public static int ROLLBACK            = 15;
-    public static int RENAME              = 16;
+    public static int CREATE       = 1;
+    public static int DROP         = 2;
+    public static int INSERT       = 3;
+    public static int UPDATE       = 4;
+    public static int DELETE       = 5;
+    public static int REPLACE      = 6;
+    public static int TRUNCATE     = 7;
+    public static int LOAD_DATA    = 8;
+    public static int SET          = 9;
+    public static int BEGIN        = 10;
+    public static int COMMIT       = 11;
+    public static int BEGIN_END    = 12;
+    public static int SELECT       = 13;
+    public static int ALTER        = 14;
+    public static int ROLLBACK     = 15;
 
     // Specialized operation types for MySQL.
-    public static int FLUSH_TABLES        = 101;
+    public static int FLUSH_TABLES = 101;
 
     int               objectType;
     int               operation;
     String            schema;
     String            name;
-
-    List<SqlObject>   moreDatabaseObjects = new LinkedList<SqlObject>();
-
-    boolean           autoCommit          = true;
+    boolean           autoCommit   = true;
     boolean           bidiUnsafe;
     private String    sqlCommand;
 
@@ -112,8 +104,8 @@ public class SqlOperation
         this.sqlCommand = command;
         this.objectType = object;
         this.operation = operation;
-        this.schema = extractObjectName(schema);
-        this.name = extractObjectName(name);
+        this.schema = schema;
+        this.name = name;
         this.autoCommit = autoCommit;
     }
 
@@ -174,7 +166,7 @@ public class SqlOperation
 
     public void setName(String name)
     {
-        this.name = extractObjectName(name);
+        this.name = name;
     }
 
     public void setAutoCommit(boolean autoCommit)
@@ -219,33 +211,5 @@ public class SqlOperation
     public boolean dropTable()
     {
         return operation == DROP && objectType == TABLE;
-    }
-
-    private String extractObjectName(String name)
-    {
-        if (name == null)
-        {
-            return null;
-        }
-        if (name.startsWith("`"))
-            return name.substring(1, name.length() - 1);
-        if (name.startsWith("\""))
-            return name.substring(1, name.length() - 1);
-        return name;
-    }
-
-    public void addDatabaseObject(String schema, String table)
-    {
-        moreDatabaseObjects.add(new SqlObject(schema, table));
-    }
-
-    public List<SqlObject> getMoreDatabaseObjects()
-    {
-        return moreDatabaseObjects;
-    }
-
-    public boolean hasMoreDatabaseObjects()
-    {
-        return !moreDatabaseObjects.isEmpty();
     }
 }

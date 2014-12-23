@@ -7,15 +7,6 @@ CNF_FILE="setupCDC.conf"
 [ ! -f "${CNF_FILE}" ] && echo "ERROR: Configuration file '${CNF_FILE}' was not found" && exit 1
 . ${CNF_FILE}
 
-# Issue 1014 - normalizing CDC type names for setupCDC and tpm
-if [ "$cdc_type" = "CDCASYNC" ]
-then
-   cdc_type="HOTLOG_SOURCE"
-elif [ "$cdc_type" = "CDCSYNC" ]
-then
-   cdc_type="SYNC_SOURCE"
-fi
-
 DEFAULT_CHANGE_SET="TUNGSTEN_CHANGE_SET"
 CHANGE_SET=${DEFAULT_CHANGE_SET}
 [ ! -z "${service}" ] && CHANGE_SET="TUNGSTEN_CS_${service}"
@@ -64,8 +55,6 @@ RC=$?
 [ ${RC} -ne 0 ] && echo "ERROR: [$RC] sqlplus statement failed" && exit 1
 echo "Done."
 
-[ -z "$pub_tablespace" ] && pub_tablespace=1
-[ $pub_tablespace -eq 0 ] && echo "WARNING: using default system tablespace (pub_tablespace=0), which is not recommended for production-like deployments"
 
 # 1) disable change set if needed (if async change set)
 # 2) if change table already exists-> drop change table ?
@@ -91,7 +80,7 @@ fi
 sqlplus -S -L ${SYSDBA} @prepare_tables.sql $source_user $tungsten_user $cdc_type ${TABLE_NAME}
 
 # 4) create change table
-sqlplus -S -L $pub_user/$pub_password @add_change_table.sql $source_user $cdc_type $tungsten_user $pub_user ${CHANGE_SET} ${TABLE_NAME} $pub_tablespace
+sqlplus -S -L $pub_user/$pub_password @add_change_table.sql $source_user $cdc_type $tungsten_user $pub_user ${CHANGE_SET} ${TABLE_NAME}
 
 # 5) enable change set if needed (if async change set)
 if [ "$cdc_type" = "HOTLOG_SOURCE" ]

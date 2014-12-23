@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2010-2014 Continuent Inc.
+ * Copyright (C) 2010-2011 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -75,21 +75,6 @@ public class ReplOptionParams
     public static String       JAVA_CHARSET_NAME       = "##charset";
 
     /**
-     * Schema name. This is a statement option.
-     */
-    public static String       SCHEMA_NAME             = "##schema";
-
-    /**
-     * Table name. This is a statement option.
-     */
-    public static String       TABLE_NAME              = "##table";
-
-    /**
-     * DDL operation name. This is a statement option.
-     */
-    public static String       OPERATION_NAME          = "##operation";
-
-    /**
      * ServerId. This is a statement option.
      */
     public static String       SERVER_ID               = "mysql_server_id";
@@ -118,33 +103,6 @@ public class ReplOptionParams
      * is unsafe. If not defined, it is safe for block commit.
      */
     public static final String UNSAFE_FOR_BLOCK_COMMIT = "unsafe_for_block_commit";
-
-    /**
-     * Indicates that this transaction should force a commit regardless of any
-     * other rules regarding block commit.
-     */
-    public static final String FORCE_COMMIT            = "force_commit";
-
-    /**
-     * Indicates that this transaction contains a schema change.
-     */
-    public static final String SCHEMA_CHANGE           = "schema_change";
-
-    /**
-     * Indicates that this transaction contains a table truncate command.
-     */
-    public static final String TRUNCATE                = "truncate";
-
-    /**
-     * This is the domain id from the GTID (if any). GTID is composed of domain
-     * id, server id and seqno.
-     */
-    public static final String GTID_DOMAIN_ID          = "gtid_domain_id";
-
-    /**
-     * This is the seqno from the GTID (if any)
-     */
-    public static final String GTID_SEQNO              = "gtid_seqno";
 
     /**
      * If set, the event is time zone aware, which means it marks source time

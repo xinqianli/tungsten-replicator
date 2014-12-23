@@ -86,14 +86,6 @@ module UninstallClusterDeploymentStep
     end
     
     if is_replicator?()
-      # Start the replicator in OFFLINE mode so we can reset services
-      replicator_started = false
-      begin
-        cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/bin/replicator start offline")
-        replicator_started = true
-      rescue CommandError
-      end
-      
       Configurator.instance.command.build_topologies(@config)
       @config.getPropertyOr([REPL_SERVICES], {}).each_key{
         |rs_alias|
@@ -101,30 +93,9 @@ module UninstallClusterDeploymentStep
           next
         end
         
-        rs_name = @config.getProperty([REPL_SERVICES, rs_alias, DEPLOYMENT_SERVICE])
         ds = get_applier_datasource(rs_alias)
         if ds.is_a?(MySQLDatabasePlatform)
-          mysql_result = ds.get_value("select @@read_only")
-          if mysql_result == nil
-            mysql_start_command = @config.getProperty([REPL_SERVICES, rs_alias, REPL_BOOT_SCRIPT])
-            mysql_result = start_mysql_server(mysql_start_command, ds)
-            if mysql_result == "1"
-              warning("MySQL is configured to start in read_only mode, this can cause problems with Tungsten installation - please check for 'read_only' in the MySQL configuration file and startup command")
-            end
-          end
-          if mysql_result == "1"
-            ds.run("set global read_only=0")
-          end
-        end
-        
-        if replicator_started == true
-          begin
-            cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/bin/trepctl -service #{rs_name} reset -all -y")
-          rescue CommandError
-            warning("There was a problem resetting the #{rs_name} replication service")
-          end
-        else
-          warning("Unable to reset the #{rs_name} replication service")
+          ds.run("drop schema if exists #{@config.getProperty([REPL_SERVICES, rs_alias, REPL_SVC_SCHEMA])}")
         end
         
         [
@@ -141,10 +112,6 @@ module UninstallClusterDeploymentStep
           end
         }
       }
-      
-      if replicator_started == true
-        cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/bin/replicator stop")
-      end
     end
     
     # Only remove the files in the share directory that we put in place
@@ -170,41 +137,10 @@ module UninstallClusterDeploymentStep
     end
 
     FileUtils.rmtree("#{@config.getProperty(HOME_DIRECTORY)}/#{LOGS_DIRECTORY_NAME}")
-    FileUtils.rmtree("#{@config.getProperty(HOME_DIRECTORY)}/#{METADATA_DIRECTORY_NAME}")
     FileUtils.rmtree(@config.getProperty(CONFIG_DIRECTORY))
     FileUtils.rmtree(@config.getProperty(LOGS_DIRECTORY))
-    FileUtils.rmtree(@config.getProperty(REPL_METADATA_DIRECTORY))
-    FileUtils.rmtree(@config.getProperty(METADATA_DIRECTORY))
     FileUtils.rmtree(@config.getProperty(RELEASES_DIRECTORY))
     FileUtils.rmtree(@config.getProperty(CURRENT_RELEASE_DIRECTORY))
-  end
-  
-  def start_mysql_server(mysql_start_command, ds)
-    notice("Start the MySQL service")
-    begin
-      cmd_result("sudo -n #{mysql_start_command} start")
-    rescue CommandError
-    end
-
-    # Wait 30 seconds for the MySQL service to be responsive
-    begin
-      Timeout.timeout(30) {
-        while true
-          begin
-            mysql_result = ds.get_value("select @@read_only")
-            if mysql_result != nil
-              return mysql_result
-            end
-
-            # Pause for a second before running again
-            sleep 1
-          rescue
-          end
-        end
-      }
-    rescue Timeout::Error
-      raise "The MySQL server has taken too long to start"
-    end
   end
 end
 

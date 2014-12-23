@@ -122,7 +122,7 @@ class OracleDatabasePlatform < ConfigureDatabasePlatform
   end
 
   def get_allowed_table_engines
-    ["CDC", "CDCASYNC", "CDCSYNC"]
+    ["CDC", "CDCSYNC"]
   end
   
 	def get_applier_filters()

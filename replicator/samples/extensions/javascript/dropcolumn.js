@@ -62,7 +62,6 @@ function prepare()
 function filter(event)
 {
   data = event.getData();
-  var dataToDrop = new Array();
   if(data != null)
   {
     for (i = 0; i < data.size(); i++)
@@ -71,29 +70,8 @@ function filter(event)
       if (d != null && d instanceof com.continuent.tungsten.replicator.dbms.RowChangeData)
       {
         filterRowChangeData(d);
-        
-        // No more OneRowChange instances? Queue removal of this DBMSData.
-        if (d.getRowChanges().isEmpty() && dataToDrop.indexOf(i) < 0)
-          dataToDrop[dataToDrop.length] = i;
       }
     }
-    
-    // Drop DBMSData objects if needed.
-    if (dataToDrop.length > 0)
-    {
-      // Looping from the end to avoid shifting element positions.
-      for (i = dataToDrop.length - 1; i >= 0; i--)
-      {
-        data.remove(dataToDrop[i]);
-      }
-    }
-  }
-  
-  // No more data in this event? Remove event, but don't drop when dealing
-  // with fragmented events (this could drop the commit part).
-  if (event.getFragno() == 0 && event.getLastFrag() && data.isEmpty())
-  {
-      return null;
   }
 }
 
@@ -133,7 +111,6 @@ function isDrop(schema, table, col)
 function filterRowChangeData(d)
 {
   rowChanges = d.getRowChanges();
-  var rowToDrop = new Array();
   for(var j = 0; j < rowChanges.size(); j++)
   {
     oneRowChange = rowChanges.get(j);
@@ -164,10 +141,6 @@ function filterRowChangeData(d)
       {
         columns.remove(specToDrop[i]);
       }
-      
-      // Queue drop of the row change if we removed all columns (Issue 985).
-      if (columns.size() == 0 && rowToDrop.indexOf(j) < 0)
-        rowToDrop[rowToDrop.length] = j;
     }
     
     // Drop key values.
@@ -194,16 +167,6 @@ function filterRowChangeData(d)
       {
         keys.remove(specToDrop[i]);
       }
-    }
-  }
-  
-  // Drop the row changes if needed.
-  if (rowToDrop.length > 0)
-  {
-    // Looping from the end to avoid shifting element positions.
-    for (r = rowToDrop.length - 1; r >= 0; r--)
-    {
-      rowChanges.remove(rowToDrop[r]);
     }
   }
 }

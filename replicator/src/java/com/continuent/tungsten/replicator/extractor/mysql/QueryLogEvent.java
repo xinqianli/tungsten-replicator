@@ -229,6 +229,7 @@ public class QueryLogEvent extends LogEvent
             databaseNameLength = LittleEndianConversion.convert1ByteToInt(
                     buffer, commonHeaderLength + MysqlBinlog.Q_DB_LEN_OFFSET);
 
+            // TODO: add a check of all *_len vars
             errorCode = LittleEndianConversion.convert2BytesToInt(buffer,
                     commonHeaderLength + MysqlBinlog.Q_ERR_CODE_OFFSET);
 
@@ -398,9 +399,53 @@ public class QueryLogEvent extends LogEvent
                         break;
                     case MysqlBinlog.Q_SQL_MODE_CODE :
                     {
-                        // SQL_MODE is an 8 byte bit field. See the definition
-                        // of SQL modes in the MySQL manual as well
-                        // MySQLBinlog.sql_modes.
+                        /**
+                         * 8 byte bitfield
+                         * <p>
+                         * The sql_mode variable. See the section "SQL Modes" in
+                         * the MySQL manual, and see mysql_priv.h for a list of
+                         * the possible flags. Currently (2007-10-04), the
+                         * following flags are available:
+                         * <ul>
+                         * <li>MODE_REAL_AS_FLOAT==0x1</li>
+                         * <li>MODE_PIPES_AS_CONCAT==0x2</li>
+                         * <li>MODE_ANSI_QUOTES==0x4</li>
+                         * <li>MODE_IGNORE_SPACE==0x8</li>
+                         * <li>MODE_NOT_USED==0x10</li>
+                         * <li>MODE_ONLY_FULL_GROUP_BY==0x20</li>
+                         * <li>MODE_NO_UNSIGNED_SUBTRACTION==0x40</li>
+                         * <li>MODE_NO_DIR_IN_CREATE==0x80</li>
+                         * <li>MODE_POSTGRESQL==0x100</li>
+                         * <li>MODE_ORACLE==0x200</li>
+                         * <li>MODE_MSSQL==0x400</li>
+                         * <li>MODE_DB2==0x800</li>
+                         * <li>MODE_MAXDB==0x1000</li>
+                         * <li>MODE_NO_KEY_OPTIONS==0x2000</li>
+                         * <li>MODE_NO_TABLE_OPTIONS==0x4000</li>
+                         * <li>MODE_NO_FIELD_OPTIONS==0x8000</li>
+                         * <li>MODE_MYSQL323==0x10000</li>
+                         * <li>MODE_MYSQL40==0x20000</li>
+                         * <li>MODE_ANSI==0x40000</li>
+                         * <li>MODE_NO_AUTO_VALUE_ON_ZERO==0x80000</li>
+                         * <li>MODE_NO_BACKSLASH_ESCAPES==0x100000</li>
+                         * <li>MODE_STRICT_TRANS_TABLES==0x200000</li>
+                         * <li>MODE_STRICT_ALL_TABLES==0x400000</li>
+                         * <li>MODE_NO_ZERO_IN_DATE==0x800000</li>
+                         * <li>MODE_NO_ZERO_DATE==0x1000000</li>
+                         * <li>MODE_INVALID_DATES==0x2000000</li>
+                         * <li>MODE_ERROR_FOR_DIVISION_BY_ZERO==0x4000000</li>
+                         * <li>MODE_TRADITIONAL==0x8000000</li>
+                         * <li>MODE_NO_AUTO_CREATE_USER==0x10000000</li>
+                         * <li>MODE_HIGH_NOT_PRECEDENCE==0x20000000</li>
+                         * <li>MODE_NO_ENGINE_SUBSTITUTION=0x40000000</li>
+                         * <li>MODE_PAD_CHAR_TO_FULL_LENGTH==0x80000000</li>
+                         * </ul>
+                         * All these flags are replicated from the server.
+                         * However, all flags except MODE_NO_DIR_IN_CREATE are
+                         * honored by the slave; the slave always preserves its
+                         * old value of MODE_NO_DIR_IN_CREATE. This field is
+                         * always written to the binlog.
+                         */
                         sql_mode = LittleEndianConversion.convert8BytesToLong(
                                 buffer, pos);
                         StringBuffer sqlMode = new StringBuffer("");
@@ -428,9 +473,15 @@ public class QueryLogEvent extends LogEvent
                         break;
                     }
                     case MysqlBinlog.Q_CATALOG_NZ_CODE :
-                        /*
-                         * Variable-length string of up to 255 bytes that stores
-                         * the client's current catalog.
+                        /**
+                         * Variable-length string: the length in bytes (1 byte)
+                         * followed by the characters (at most 255 bytes)
+                         * <p>
+                         * Stores the client's current catalog. Every database
+                         * belongs to a catalog, the same way that every table
+                         * belongs to a database. Currently, there is only one
+                         * catalog, "std". This field is written if the length
+                         * of the catalog is > 0; otherwise it is not written.
                          */
                         catalogLength = LittleEndianConversion
                                 .convert1ByteToInt(buffer, pos);
@@ -443,10 +494,14 @@ public class QueryLogEvent extends LogEvent
                         }
                         break;
                     case MysqlBinlog.Q_AUTO_INCREMENT :
-                        /*
-                         * two 2 byte unsigned integers that store
-                         * auto_increment_increment and auto_increment_offset.
-                         * Written if auto_increment > 1, otherwise not written.
+                        /**
+                         * two 2 byte unsigned integers, totally 2+2=4 bytes
+                         * <p>
+                         * The two variables auto_increment_increment and
+                         * auto_increment_offset, in that order. For more
+                         * information, see "System variables" in the MySQL
+                         * manual. This field is written if auto_increment > 1.
+                         * Otherwise, it is not written.
                          */
                         autoIncrementIncrement = LittleEndianConversion
                                 .convert2BytesToInt(buffer, pos);
@@ -457,11 +512,6 @@ public class QueryLogEvent extends LogEvent
                         break;
                     case MysqlBinlog.Q_CHARSET_CODE :
                     {
-                        /*
-                         * 3 2-byte unsigned ints containing values of
-                         * character_set_client, collection_connection, and
-                         * collection_server values.
-                         */
                         charset_inited = true;
                         charset = new byte[6];
                         System.arraycopy(buffer, pos, charset, 0, 6);
@@ -470,10 +520,13 @@ public class QueryLogEvent extends LogEvent
                     }
                     case MysqlBinlog.Q_TIME_ZONE_CODE :
                     {
-                        /*
-                         * Variable length string of up to 255 bytes contining
-                         * the time zone of the master. Written only if the time
-                         * zone string is defined on the master.
+                        /**
+                         * Variable-length string: the length in bytes (1 byte)
+                         * followed by the characters (at most 255 bytes).
+                         * <p>
+                         * The time_zone of the master. This field is written if
+                         * the length of the time zone string is > 0; otherwise,
+                         * it is not written.
                          */
                         timeZoneLength = LittleEndianConversion
                                 .convert1ByteToInt(buffer, pos);
@@ -491,15 +544,18 @@ public class QueryLogEvent extends LogEvent
                         break;
                     }
                     case MysqlBinlog.Q_CATALOG_CODE :
-                        /**
-                         * Obsolete code used in MySQL 5.0.0-5.0.3.
+                        /*
+                         * TODO for 5.0.x where 0<=x<=3 masters ==> Unsupported
+                         * ?
                          */
                         break;
                     case MysqlBinlog.Q_LC_TIME_NAMES_CODE :
-                        /*
-                         * 2 byte unsigned int containing the lc_time_names
-                         * value. Only present for values other than 0, i.e.,
-                         * en_US.
+                        /**
+                         * 2 byte integer
+                         * <p>
+                         * A code identifying a table of month and day names.
+                         * This field is written if it is not 0, i.e., if the
+                         * locale is not en_US.
                          */
                         // Stopping extracting unused fields
                         // localeTimeNamesCode = LittleEndianConversion
@@ -508,10 +564,6 @@ public class QueryLogEvent extends LogEvent
                         pos += 2;
                         break;
                     case MysqlBinlog.Q_CHARSET_DATABASE_CODE :
-                        /*
-                         * 2 byte unsigned int containing collation_database
-                         * system variable value.
-                         */
                         // Stopping extracting unused fields
                         // charset_database_number = LittleEndianConversion
                         // .convert2BytesToInt_2(buffer,
@@ -630,7 +682,7 @@ public class QueryLogEvent extends LogEvent
     {
         return (flagUniqueChecks ? "1" : "0");
     }
-
+    
     public String getTimeZoneName()
     {
         return timeZoneName;

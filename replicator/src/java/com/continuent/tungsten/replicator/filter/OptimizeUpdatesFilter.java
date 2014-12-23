@@ -28,7 +28,6 @@ import java.util.Iterator;
 import org.apache.log4j.Logger;
 
 import com.continuent.tungsten.replicator.ReplicatorException;
-import com.continuent.tungsten.replicator.conf.ReplicatorConf;
 import com.continuent.tungsten.replicator.dbms.DBMSData;
 import com.continuent.tungsten.replicator.dbms.OneRowChange;
 import com.continuent.tungsten.replicator.dbms.OneRowChange.ColumnSpec;
@@ -79,33 +78,12 @@ public class OptimizeUpdatesFilter implements Filter
     private static Logger logger = Logger.getLogger(OptimizeUpdatesFilter.class);
 
     /**
-     * Name of current replication service's internal tungsten schema.
-     */
-    private String        tungstenSchema;
-
-    /**
-     * Sets the Tungsten schema, which we ignore to prevent problems with the
-     * replicator. This is mostly used for filter testing, which runs without a
-     * pipeline.
-     */
-    public void setTungstenSchema(String tungstenSchema)
-    {
-        this.tungstenSchema = tungstenSchema;
-    }
-
-    /**
      * {@inheritDoc}
      * 
      * @see com.continuent.tungsten.replicator.plugin.ReplicatorPlugin#configure(com.continuent.tungsten.replicator.plugin.PluginContext)
      */
     public void configure(PluginContext context) throws ReplicatorException
     {
-        if (tungstenSchema == null)
-        {
-            tungstenSchema = context.getReplicatorProperties().getString(
-                    ReplicatorConf.METADATA_SCHEMA);
-        }
-
         logger.info("OptimizeUpdatesFilter configured");
     }
 
@@ -144,11 +122,18 @@ public class OptimizeUpdatesFilter implements Filter
             {
                 RowChangeData rdata = (RowChangeData) dataElem;
                 for (OneRowChange orc : rdata.getRowChanges())
-                {
-                    if (filterStaticColumns(orc))
-                        logger.debug("Event " + event.getEventId()
-                                + " transformed");
-                }
+                    try
+                    {
+                        if (filterStaticColumns(orc))
+                            logger.debug("Event " + event.getEventId()
+                                    + " transformed");
+                    }
+                    catch (Exception e)
+                    {
+                        throw new ReplicatorException(
+                                "Filter failed processing primary key information",
+                                e);
+                    }
             }
         }
         return event;
@@ -164,21 +149,12 @@ public class OptimizeUpdatesFilter implements Filter
      * @param orc OneRowChange event to filter and possibly transform.
      * @throws Exception
      */
-    private boolean filterStaticColumns(OneRowChange orc) throws ReplicatorException
+    private boolean filterStaticColumns(OneRowChange orc) throws Exception
     {
         boolean transformed = false;
 
         if (orc.getAction() != ActionType.UPDATE)
             return transformed;
-
-        // Don't analyze tables from Tungsten schema.
-        if (tungstenSchema != null
-                && orc.getSchemaName().compareToIgnoreCase(tungstenSchema) == 0)
-        {
-            if (logger.isDebugEnabled())
-                logger.debug("Ignoring " + tungstenSchema + " schema");
-            return transformed;
-        }
 
         ArrayList<ColumnSpec> keys = orc.getKeySpec();
         ArrayList<ColumnSpec> columns = orc.getColumnSpec();
@@ -188,10 +164,9 @@ public class OptimizeUpdatesFilter implements Filter
         // Holds the list of columns that didn't change their values.
         ArrayList<ColumnSpec> columnsToRemove = new ArrayList<ColumnSpec>();
 
-        if (columns.size() != keys.size())
-            throw new ReplicatorException(
-                    "OptimizeUpdatesFilter cannot filter, because column and key count is different. "
-                            + "Make sure that it is defined before filters which remove keys (eg. PrimaryKeyFilter).");
+        if (columns.size() != keys.size() && keys.size() != 1)
+            throw new Exception(
+                    "Column and key count is different in this event! Cannot filter");
 
         // Iterate key values (column value count is the same or more).
         for (int k = 0; k < keys.size(); k++)

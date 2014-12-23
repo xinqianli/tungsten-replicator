@@ -45,7 +45,6 @@ import java.util.TreeSet;
 import javax.management.remote.JMXConnector;
 
 import org.apache.log4j.Logger;
-import org.json.simple.JSONValue;
 
 import com.continuent.tungsten.common.cluster.resource.OpenReplicatorParams;
 import com.continuent.tungsten.common.cluster.resource.physical.Replicator;
@@ -145,6 +144,7 @@ public class OpenReplicatorManagerCtrl
         println("Replicator-Wide Commands:");
         println("  version                      - Show replicator version and build");
         println("  services [-json] [-full]     - List replication services");
+        println("  shutdown [-y]                - (Deprecated) shut down replication services cleanly and exit");
         println("  kill [-y]                    - Exit immediately without shutting down services");
         println("Service-Specific Commands (Require -service option)");
         println("  backup [-backup agent] [-storage agent] [-limit s]");
@@ -453,7 +453,7 @@ public class OpenReplicatorManagerCtrl
             {
                 // Add Authentication and Encryption parameters if needed
                 if (authenticationInfo != null)
-                    authenticationInfo.checkAndCleanAuthenticationInfo();
+                    authenticationInfo.checkAuthenticationInfo();
 
                 TungstenProperties securityProperties = (authenticationInfo != null)
                         ? authenticationInfo.getAsTungstenProperties()
@@ -865,8 +865,13 @@ public class OpenReplicatorManagerCtrl
     // Shuts down the replicator nicely.
     private void doShutdown() throws Exception
     {
-        fatal("This command was DEPRECATED as of version 3.0.0. Use `replicator stop` instead.",
-                null);
+        boolean yes = confirm("This command is DEPRECATED and will be removed! Use `replicator stop` instead."
+                + "\r\nDo you really want to shutdown the replicator?");
+        if (yes)
+        {
+            expectLostConnection = true;
+            this.serviceManagerMBean.stop();
+        }
     }
 
     // Terminate the replicator process with prejudice.
@@ -960,15 +965,13 @@ public class OpenReplicatorManagerCtrl
                     doChecksum = false;
                 else if ("-provision".equals(curArg))
                 {
-                    // Take the next, if any, non-option argument as the
-                    // provision position.
+                    // Take the next non-option argument as the provision
+                    // position.
                     fromEvent = argvIterator.peek();
-                    if (fromEvent == null || fromEvent.startsWith("-"))
+                    if (fromEvent.startsWith("-"))
                         fromEvent = null;
-                    else
-                        argvIterator.next();
-
                     doProvision = true;
+                    argvIterator.next();
                 }
                 else
                     fatal("Unrecognized option: " + curArg, null);
@@ -978,11 +981,6 @@ public class OpenReplicatorManagerCtrl
                 fatal("Missing or invalid argument to flag: " + curArg, null);
             }
         }
-
-        // Validation.
-        if (fromEvent != null && baseSeqno != -1)
-            fatal("Parameters -from-event and -base-seqno cannot be used together",
-                    null);
 
         // Split params object into a Tungsten properties object.
         TungstenProperties paramProps = new TungstenProperties();
@@ -995,13 +993,7 @@ public class OpenReplicatorManagerCtrl
         if (fromEvent != null)
             paramProps.setString(OpenReplicatorParams.INIT_EVENT_ID, fromEvent);
         if (baseSeqno > -1)
-        {
-            // Validation.
-            if (getOpenReplicator().getRole().equals("slave"))
-                fatal("-base-seqno is not supported on a slave, use tungsten_set_position script instead",
-                        null);
             paramProps.setLong(OpenReplicatorParams.BASE_SEQNO, baseSeqno);
-        }
         if (toEvent != null)
             paramProps.setString(OpenReplicatorParams.ONLINE_TO_EVENT_ID,
                     toEvent);
@@ -1655,9 +1647,29 @@ public class OpenReplicatorManagerCtrl
     private static void printPropertiesJSON(Map<String, String> props,
             int propIdx)
     {
-        // Using a JSON library to escape various special characters.
-        String jsonText = JSONValue.toJSONString(props);
-        println(jsonText);
+        // Construct formating strings.
+        String format = "\"%s\": \"%s\"";
+
+        println("{");
+
+        Object[] keys = props.keySet().toArray();
+        for (int i = 0; i < keys.length; i++)
+        {
+            String key = (String) keys[i];
+            String value = props.get(key);
+            if (value != null)
+                printf(format, key, value);
+            else
+                printf(format, key, "");
+            if (i < (keys.length - 1))
+                println(",");
+            else
+                println("");
+        }
+
+        print("}");
+        if (propIdx < 0)
+            println("");
     }
 
     /**
@@ -2021,7 +2033,7 @@ public class OpenReplicatorManagerCtrl
                 {
                     CsvWriter csvWriter = new CsvWriter(new OutputStreamWriter(
                             System.out));
-                    csvWriter.setFieldSeparator("\t");
+                    csvWriter.setSeparator('\t');
                     csvWriter.addColumnName(ShardTable.SHARD_ID_COL);
                     csvWriter.addColumnName(ShardTable.SHARD_MASTER_COL);
                     csvWriter.addColumnName(ShardTable.SHARD_CRIT_COL);

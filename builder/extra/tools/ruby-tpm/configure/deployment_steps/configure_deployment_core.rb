@@ -8,6 +8,7 @@ module ConfigureDeploymentCore
     @additional_properties = Properties.new()
     @additional_properties.use_prompt_handler = false
     @services = []
+    @watchfiles = []
     @methods = nil
   end
   
@@ -181,21 +182,21 @@ module ConfigureDeploymentCore
   
   # Update the RUN_AS_USER in a service script.
   def set_run_as_user(script)
-    host_transformer(script) {
-      |t|
-      t.timestamp?(false)
-      t.set_template(script)
+    transformer = Transformer.new(script, script, nil)
+    transformer.set_fixed_properties(@config.getTemplateValue(get_host_key(FIXED_PROPERTY_STRINGS)))
 
-      # Have to be careful to set first RUN_AS_USER= only or it
-      # corrupts the start script.
-      t.transform_lines { |line|
-        if line =~ /^#RUN_AS_USER=/ then
-          "RUN_AS_USER=" + @config.getProperty(USERID)
-        else
-          line
-        end
-      }
+    # Have to be careful to set first RUN_AS_USER= only or it
+    # corrupts the start script.
+    already_set = false
+    transformer.transform { |line|
+      if line =~ /RUN_AS_USER=/ && ! already_set then
+        already_set = true
+        "RUN_AS_USER=" + @config.getProperty(USERID)
+      else
+        line
+      end
     }
+    watch_file(transformer.get_filename())
   end
   
   def get_svc_command(boot_script)
@@ -230,12 +231,20 @@ module ConfigureDeploymentCore
     out.chmod(0755)
     out.close
     info "GENERATED FILE: " + svc_properties
-    WatchFiles.watch_file(svc_properties, @config)
+    watch_file(svc_properties)
   end
   
   # Add an OS service that needs to be started and/or deployed.
   def add_service(start_script)
     @services.insert(-1, start_script)
+  end
+  
+  def watch_file(path)
+    @watchfiles << path
+  end
+  
+  def get_original_watch_file(file)
+    File.dirname(file) + "/." + File.basename(file) + ".orig"
   end
   
   def add_log_file(log_file)
@@ -254,7 +263,7 @@ module ConfigureDeploymentCore
   end
   
   def get_additional_property_key(key)
-    [@config.getProperty(DEPLOYMENT_CONFIGURATION_KEY), key]
+    [@config.getProperty(DEPLOYMENT_HOST), key]
   end
   
   def get_additional_property(key)
@@ -266,38 +275,18 @@ module ConfigureDeploymentCore
   end
   
   def get_message_host_key
-    @config.getProperty([DEPLOYMENT_CONFIGURATION_KEY])
+    @config.getProperty(DEPLOYMENT_HOST)
   end
-	
-	def transform_host_values(matches)
+  
+  def transform_values(matches)
 	  case matches.at(0)
     when "HOST"
-      v = @config.getTemplateValue(get_host_key(Kernel.const_get(matches[1])))
+      v = @config.getTemplateValue(get_host_key(Kernel.const_get(matches[1])), method(:transform_values))
     else
       v = @config.getTemplateValue(matches.map{
         |match|
         Kernel.const_get(match)
-      })
-    end
-    
-    return v
-	end
-	
-	def transform_service_values(matches)
-	  case matches.at(0)
-    when "APPLIER"
-      v = @config.getTemplateValue(get_service_key(Kernel.const_get(matches[1])))
-    when "EXTRACTOR"
-      v = @config.getTemplateValue(get_service_key(Kernel.const_get("EXTRACTOR_" + matches[1])))
-    when "SERVICE"
-      v = @config.getTemplateValue(get_service_key(Kernel.const_get(matches[1])))
-    when "HOST"
-      v = @config.getTemplateValue(get_host_key(Kernel.const_get(matches[1])))
-    else
-      v = @config.getTemplateValue(matches.map{
-        |match|
-        Kernel.const_get(match)
-      })
+      }, method(:transform_values))
     end
     
     return v
@@ -447,13 +436,6 @@ module ConfigureDeploymentCore
     end
   end
   
-  def start_manager
-    if is_manager?() && get_additional_property(MANAGER_IS_RUNNING) == "true" && manager_is_running?() != true
-      info("Starting the manager")
-      info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-manager/bin/manager start"))
-    end
-  end
-  
   def start_replication_services(offline = false)
     if is_manager?() && get_additional_property(MANAGER_IS_RUNNING) == "true" && manager_is_running?() != true
       info("Starting the manager")
@@ -513,13 +495,6 @@ module ConfigureDeploymentCore
           cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-replicator/bin/trepctl -service #{svc} online")
         end
       }
-    end
-  end
-  
-  def stop_manager
-    if is_manager?() && get_additional_property(MANAGER_IS_RUNNING) == "true" && get_additional_property(RESTART_MANAGERS) != false
-      info("Stopping the manager")
-      info(cmd_result("#{@config.getProperty(CURRENT_RELEASE_DIRECTORY)}/tungsten-manager/bin/manager stop"))
     end
   end
   
@@ -610,32 +585,19 @@ module ConfigureDeploymentCore
   end
   
   def get_extractor_datasource(rs_alias = nil)
-    if rs_alias == nil
-	    rs_alias = @config.getProperty(DEPLOYMENT_SERVICE)
-	  end
-	  
-	  if @config.getProperty([REPL_SERVICES, rs_alias, REPL_ROLE]) == REPL_ROLE_DI
-	    ConfigureDatabasePlatform.build([REPL_SERVICES, rs_alias], @config, true)
-	  else
-      get_applier_datasource(rs_alias)
-    end
+    get_applier_datasource(rs_alias)
   end
   
   def get_service_key(key)
-    svc = @config.getProperty(DEPLOYMENT_SERVICE)
-    if svc == nil
-      raise MessageError.new("Unable to find a service key for #{Configurator.instance.get_constant_symbol(key)}")
-    end
-    
-    [REPL_SERVICES, svc, key]
+    [REPL_SERVICES, @config.getProperty(DEPLOYMENT_SERVICE), key]
   end
   
   def get_applier_key(key)
-    get_service_key(key)
+    [REPL_SERVICES, @config.getProperty(DEPLOYMENT_SERVICE), key]
   end
   
   def get_extractor_key(key)
-    get_service_key(key)
+    [REPL_SERVICES, @config.getProperty(DEPLOYMENT_SERVICE), key]
   end
   
   def get_trepctl_cmd
@@ -644,108 +606,5 @@ module ConfigureDeploymentCore
   
   def get_thl_cmd
     "#{get_deployment_basedir()}/tungsten-replicator/bin/thl"
-  end
-  
-  def transform_host_template(path, template)
-    host_transformer(path) {
-      |t|
-      t.set_template(template)
-    }
-  end
-  
-  def host_transformer(path = nil, &block)
-    if path != nil
-      path = File.expand_path(path, get_deployment_basedir())
-    end
-    t = Transformer.new(@config, path)
-    t.set_transform_values_method(method(:transform_host_values))
-    t.set_fixed_properties(@config.getProperty(get_host_key(FIXED_PROPERTY_STRINGS)))
-    
-    if block
-      block.call(t)
-      t.output()
-    else
-      return t
-    end
-  end
-  
-  def transform_service_template(path, template)
-    service_transformer(path) {
-      |t|
-      t.set_template(template)
-    }
-  end
-  
-  def service_transformer(path = nil, &block)
-    if path != nil
-      path = File.expand_path(path, get_deployment_basedir())
-    end
-    t = Transformer.new(@config, path)
-    t.set_transform_values_method(method(:transform_service_values))
-    t.set_fixed_properties(@config.getProperty(get_service_key(FIXED_PROPERTY_STRINGS)))
-    
-    if block
-      block.call(t)
-      t.output()
-    else
-      return t
-    end
-  end
-  
-  def initiate_composite_dataservices
-    prepare_dir = get_deployment_basedir()
-    
-    @config.getPropertyOr(DATASERVICES, {}).keys().each{
-      |comp_ds_alias|
-
-      if comp_ds_alias == DEFAULTS
-        next
-      end
-
-      if @config.getProperty([DATASERVICES, comp_ds_alias, DATASERVICE_IS_COMPOSITE]) == "false"
-        next
-      end
-
-      unless include_dataservice?(comp_ds_alias)
-        next
-      end
-
-      mkdir_if_absent("#{prepare_dir}/cluster-home/conf/cluster/#{comp_ds_alias}/service")
-      mkdir_if_absent("#{prepare_dir}/cluster-home/conf/cluster/#{comp_ds_alias}/datasource")
-      mkdir_if_absent("#{prepare_dir}/cluster-home/conf/cluster/#{comp_ds_alias}/extension")
-
-      @config.getProperty([DATASERVICES, comp_ds_alias, DATASERVICE_COMPOSITE_DATASOURCES]).to_s().split(",").each{
-        |ds_alias|
-        
-        path = "#{prepare_dir}/cluster-home/conf/cluster/#{comp_ds_alias}/datasource/#{ds_alias}.properties"
-        unless File.exist?(path)
-          if @config.getProperty([DATASERVICES, ds_alias, DATASERVICE_RELAY_SOURCE]).to_s() != ""
-            ds_role = "slave"
-          else
-            ds_role = "master"
-          end
-          
-          File.open(path, "w") {
-            |f|
-            f.puts "
-appliedLatency=-1.0
-precedence=1
-name=#{ds_alias}
-state=OFFLINE
-url=jdbc\:t-router\://#{ds_alias}/${DBNAME}
-alertMessage=
-isAvailable=true
-role=#{ds_role}
-isComposite=true
-alertStatus=OK
-alertTime=#{Time.now().strftime("%s000")}
-dataServiceName=#{comp_ds_alias}
-vendor=continuent
-driver=com.continuent.tungsten.router.jdbc.TSRDriver
-host=#{ds_alias}"
-          }
-        end
-      }
-    }
   end
 end

@@ -28,8 +28,6 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-import com.continuent.tungsten.replicator.scripting.SqlWrapper;
-
 /**
  * This class defines a table
  * 
@@ -412,11 +410,5 @@ public class Table
             newTable.AddKey(key);
         }
         return newTable;
-    }
-
-    public String fullyQualifiedName(SqlWrapper connection)
-    {
-        return connection.getDatabaseObjectName(schema) + "."
-                + connection.getDatabaseObjectName(name);
     }
 }

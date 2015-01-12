@@ -77,6 +77,14 @@ public class EchoPingTest extends TestCase
                 result.getObject(Echo.STATUS_KEY));
     }
 
+    public void testEchotoNonExistentDomain() throws Exception
+    {
+        TungstenProperties result = Echo.isReachable("nonexistent.domain.com",
+                PORT, TIMEOUT);
+        assertEquals("Cannot ping unknown address", EchoStatus.UNKNOWN_HOST,
+                result.getObject(Echo.STATUS_KEY));
+    }
+
     // TODO implement a special echo server where the connect, send, receive
     // timeout, message received, message send is configurable and test
     // different scenarios

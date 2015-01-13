@@ -149,8 +149,12 @@ function fixUpStrings(schema, table, columns, columnValues, charset)
         value = values.get(c);
         raw_v = value.getValue();
         if (raw_v == null || colDesc == null) {
+          // Do nothing; we have a null value or are missing column data. 
           logger.debug('value: NULL');
-          // Do nothing
+        }
+        else if (raw_v instanceof java.lang.String) {
+          // It's already a string, so we cannot convert it...
+          logger.debug('value: ' + raw_v);
         } else {
           if (colDesc.startsWith("BINARY") || colDesc.startsWith("VARBINARY")) {
             // Convert to a hexadecimal string. 

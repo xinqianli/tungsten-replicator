@@ -68,39 +68,26 @@ BEGIN
       END IF;
       
       IF LENGTH(v_column_list) > 0 THEN
-        IF v_column_type = 'NUMBER' AND column_prec IS NOT NULL THEN
-          v_column_list := v_column_list || ', ' || v_column_name || ' ' ||v_column_type || '('||column_prec||','||column_scale || ')';
-        ELSIF i_version > 10 OR instr(v_column_type, 'NCLOB') < 1 THEN
-          v_column_list := v_column_list || ', ' || v_column_name || ' ' ||v_column_type;
-          IF v_column_type != 'DATE'
-            AND v_column_type != 'NUMBER'
-            AND instr(v_column_type, 'NCLOB') < 1
-            AND instr(v_column_type, 'BLOB') < 1
-            AND instr(v_column_type, 'TIMESTAMP') < 1 then
-              v_column_list := v_column_list || '('||column_type_len||')';
-          END IF;
-        ELSE
-          /* NCLOB not supported by Oracle 10G */
-          DBMS_OUTPUT.PUT_LINE ('WARNING : NCLOB unsupported datatype for column ' || v_table_name || '.' || v_column_name || ' : skipping.' );
-          warn_found := true;
+        v_column_list := v_column_list || ', ';
+      END IF;
+      
+      IF v_column_type = 'NUMBER' AND column_prec IS NOT NULL THEN
+        v_column_list := v_column_list || v_column_name || ' ' ||v_column_type || '('||column_prec||','||column_scale || ')';
+      ELSIF instr(v_column_type, 'INTERVAL')>=1 THEN
+        v_column_list := v_column_list || v_column_name || ' ' ||v_column_type;
+      ELSIF i_version > 10 OR instr(v_column_type, 'NCLOB') < 1 THEN
+        v_column_list := v_column_list ||  v_column_name || ' ' ||v_column_type;
+        IF v_column_type != 'DATE'
+          AND v_column_type != 'NUMBER'
+          AND instr(v_column_type, 'NCLOB') < 1
+          AND instr(v_column_type, 'BLOB') < 1
+          AND instr(v_column_type, 'TIMESTAMP') < 1 then
+            v_column_list := v_column_list || '('||column_type_len||')';
         END IF;
       ELSE
-        IF v_column_type = 'NUMBER' AND column_prec IS NOT NULL THEN
-          v_column_list := v_column_name || ' ' ||v_column_type || '('||column_prec||','||column_scale || ')';
-        ELSIF i_version > 10 OR instr(v_column_type, 'NCLOB') < 1 THEN
-          v_column_list := v_column_name || ' ' ||v_column_type;
-          IF v_column_type != 'DATE'
-            AND v_column_type != 'NUMBER'
-            AND instr(v_column_type, 'NCLOB') < 1
-            AND instr(v_column_type, 'BLOB') < 1
-            AND instr(v_column_type, 'TIMESTAMP') < 1 then
-              v_column_list := v_column_list || '('||column_type_len||')';
-          END IF;
-        ELSE
-          /* NCLOB not supported by Oracle 10G */
-          DBMS_OUTPUT.PUT_LINE ('WARNING : NCLOB unsupported datatype for column ' || v_table_name || '.' || v_column_name || ' : skipping.' );
-          warn_found := true;
-        END IF;
+        /* NCLOB not supported by Oracle 10G */
+        DBMS_OUTPUT.PUT_LINE ('WARNING : NCLOB unsupported datatype for column ' || v_table_name || '.' || v_column_name || ' : skipping.' );
+        warn_found := true;
       END IF;
     END LOOP;
     CLOSE CUR;

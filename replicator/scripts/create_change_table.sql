@@ -1,11 +1,9 @@
 DECLARE
 
 DEBUG_LVL number := 1; -- 1 : INFO (default) , 2 : DEBUG (more verbose)
-
 /* 
 This script is intended to be called by another script (nested scripts).
 The calling script should have all the following variables defined.
-
 v_user varchar2(30);
 v_pub_user varchar2(100);
 v_tungsten_user varchar2(30);
@@ -14,7 +12,6 @@ v_table_name varchar2(40);
 v_column_list varchar(10000);
 i_pub_tablespace number;
 */
-
 v_ct_name varchar2(100);
 v_quoted_ct_name varchar2(100);
 v_quoted_table varchar2(100);

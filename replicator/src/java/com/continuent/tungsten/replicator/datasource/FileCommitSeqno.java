@@ -214,7 +214,7 @@ public class FileCommitSeqno implements CommitSeqno
         else
         {
             throw new ReplicatorException(
-                    "Cannot set position, because tasks already exist - clear position first");
+                    "Cannot set position unless existing position data is removed - reset first");
         }
     }
 

@@ -16,8 +16,8 @@ BRI_SVN_URL=http://bristlecone.googlecode.com/svn/trunk/bristlecone
 COOK_SVN_URL=https://tungsten-toolbox.googlecode.com/svn/trunk/cookbook
 
 # Version name of the release to build
-VERSION_MAJOR=3
-VERSION_MINOR=1
+VERSION_MAJOR=4
+VERSION_MINOR=0
 VERSION_REVISION=0
 VERSION=$VERSION_MAJOR.$VERSION_MINOR.$VERSION_REVISION
 

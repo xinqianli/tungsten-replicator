@@ -361,6 +361,7 @@ class ClusterMasterHost < ConfigurePrompt
     self.extend(TargetDataservice::TargetDataserviceDefaultValue)
     override_command_line_argument("master")
     add_command_line_alias("masters")
+    add_command_line_alias("relay")
   end
     
   def enabled?
@@ -397,7 +398,11 @@ class ClusterMasterHost < ConfigurePrompt
   end
   
   def build_command_line_argument(member, v, public_argument = false)
-    if v.to_s().split(",").size() > 1
+    relay_source = @config.getProperty([DATASERVICES, member, DATASERVICE_RELAY_SOURCE])
+    
+    if relay_source.to_s() != ""
+      ["--relay=#{v}"]
+    elsif v.to_s().split(",").size() > 1
       ["--masters=#{v}"]
     else
       ["--master=#{v}"]

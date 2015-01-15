@@ -204,8 +204,10 @@ public class FileCommitSeqno implements CommitSeqno
             String fname = prefix + ".0";
             logger.info("Initializing file-based seqno tracking: directory="
                     + serviceDir.toString() + " file=" + fname);
+            // Set last frag to true, so the pipeline would start from the
+            // *next* available event, as opposed to given one.
             ReplDBMSHeaderData header = new ReplDBMSHeaderData(seqno,
-                    (short) -1, false, sourceId, epoch, eventId, "", null, 0);
+                    (short) -1, true, sourceId, epoch, eventId, "", null, 0);
             store(fname, header, -1, false);
         }
         else

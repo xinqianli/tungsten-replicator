@@ -302,6 +302,9 @@ public class SqlCommitSeqno implements CommitSeqno
                 commitSeqnoTableTaskId.setValue(0);
                 commitSeqnoTableSeqno.setValue(seqno);
                 commitSeqnoTableFragno.setValue(-1);
+                // Set last frag to true, so the pipeline would start from the
+                // *next* available event, as opposed to given one.
+                commitSeqnoTableLastFrag.setValue(1);
                 commitSeqnoTableSourceId.setValue(sourceId);
                 commitSeqnoTableEpochNumber.setValue(epoch);
                 commitSeqnoTableEventId.setValue(eventId);

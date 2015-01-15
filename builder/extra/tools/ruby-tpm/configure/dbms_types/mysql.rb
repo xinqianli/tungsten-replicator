@@ -264,6 +264,18 @@ class MySQLDatabasePlatform < ConfigureDatabasePlatform
     return "mysql-bin"
   end
   
+  def get_default_binlog_format
+    begin
+      h_alias = to_identifier(@host)
+      binlog_format = ssh_result("my_print_defaults --config-file=#{@config.getProperty(@prefix + [REPL_MYSQL_CONF])} mysqld | grep '^--binlog_format'", @host, @config.getProperty([HOSTS, h_alias, USERID])).split("=")[-1].strip()
+      if binlog_format.to_s() != ""
+        return binlog_format
+      end
+    rescue CommandError
+    end
+    return ""
+  end
+
   def get_default_port
     begin
       h_alias = to_identifier(@host)

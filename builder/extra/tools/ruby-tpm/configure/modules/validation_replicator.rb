@@ -303,7 +303,9 @@ class RowBasedBinaryLoggingCheck < ConfigureValidationCheck
   end
   
   def validate
-    if get_extractor_datasource.get_value("show variables like 'binlog_format'", "Value") !="ROW"
+    if get_extractor_datasource.get_default_binlog_format().upcase !="ROW"
+      error("The MySQL datasource binlog_format must be set to 'ROW' for heterogenous replication. The MySQL configuration file does not include binlog_format=row")
+    elsif get_extractor_datasource.get_value("show variables like 'binlog_format'", "Value") !="ROW"
       error("The MySQL datasource binlog_format must be set to 'ROW' for heterogenous replication.")
     end
   end

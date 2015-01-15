@@ -917,7 +917,6 @@ public class Directory extends ResourceTree
 
     /**
      * @param map
-     * @return
      * @throws DirectoryNotFoundException
      */
     private ResourceNode getFirst(Map<String, ResourceNode> map)
@@ -948,7 +947,6 @@ public class Directory extends ResourceTree
 
     /**
      * @param path
-     * @return
      * @throws DirectoryNotFoundException
      */
     private ResourceNode getStartNode(String sessionID, String path)
@@ -1685,7 +1683,6 @@ public class Directory extends ResourceTree
      * paramStart
      * 
      * @param args
-     * @return
      */
     String[] getParams(String[] args, boolean parseFlags)
             throws DirectoryException

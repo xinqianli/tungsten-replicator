@@ -1211,8 +1211,6 @@ public class MySQLIOs
     /**
      * Utility method that will allow us to simulate a wide variety of
      * conditions being passed up from monitoring into rules etc.
-     * 
-     * @return
      */
     private TungstenProperties testConditionWithResults()
     {
@@ -1343,7 +1341,6 @@ public class MySQLIOs
      * human-friendly output
      * 
      * @param execStatus
-     * @return
      */
     static private String formatExecStatus(TungstenProperties execStatus)
     {

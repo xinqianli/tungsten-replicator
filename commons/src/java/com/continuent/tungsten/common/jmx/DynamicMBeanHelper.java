@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
  *
  * Initial developer(s): Edward Archibald
- * Contributor(s): ______________________.
+ * Contributor(s): Linas Virbalas
  */
 
 package com.continuent.tungsten.common.jmx;
@@ -33,14 +33,13 @@ import javax.management.MBeanOperationInfo;
 import javax.management.ObjectName;
 
 /**
+ * Dynamic access to MBean enabled class.
+ * 
  * @author <a href="mailto:edward.archibald@continuent.com">Edward Archibald</a>
  * @version 1.0
  */
 public class DynamicMBeanHelper implements Serializable
 {
-    /**
-     * 
-     */
     private static final long                  serialVersionUID = 1L;
 
     private ObjectName                         objName;
@@ -90,7 +89,6 @@ public class DynamicMBeanHelper implements Serializable
 
     /**
      * @param mbeanClass
-     * @return
      */
     private Map<String, Method> getClassMethods(Class<?> mbeanClass)
     {

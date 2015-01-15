@@ -39,7 +39,7 @@ public class EchoPing implements PingMethod
     /**
      * {@inheritDoc}
      * 
-     * @see com.continuent.tungsten.common.network.PingMethod#ping()
+     * @see com.continuent.tungsten.common.network.PingMethod#ping(HostAddress, int)
      */
     @Override
     public boolean ping(HostAddress address, int timeout)

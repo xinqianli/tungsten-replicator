@@ -332,7 +332,6 @@ public class Echo
      * Formats a TungstenProperties for human-friendly output
      * 
      * @param props The tungsten properties to format
-     * @return
      */
     private static String formatExecStatus(TungstenProperties props)
     {
@@ -347,7 +346,6 @@ public class Echo
      * Log the given TungstenProperties
      * 
      * @param props The tungsten properties to log
-     * @return
      */
 
     private static TungstenProperties logAndReturnProperties(

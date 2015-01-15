@@ -154,7 +154,6 @@ public class DynamicMBeanParam implements Serializable
 
     /**
      * @param className
-     * @return
      */
     private String classNameOnly(String className)
     {

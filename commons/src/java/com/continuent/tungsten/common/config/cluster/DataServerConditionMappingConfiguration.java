@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2011 Continuent Inc.
+ * Copyright (C) 2011-2015 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,16 +22,12 @@
 
 package com.continuent.tungsten.common.config.cluster;
 
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.log4j.Logger;
 
-import com.continuent.tungsten.common.cluster.resource.ResourceState;
 import com.continuent.tungsten.common.config.TungstenProperties;
 import com.continuent.tungsten.common.mysql.MySQLIOs.ExecuteQueryStatus;
 import com.continuent.tungsten.common.utils.CLLogLevel;
@@ -177,8 +173,6 @@ public class DataServerConditionMappingConfiguration
     /**
      * 
      * Prints out current state mapping.
-     * 
-     * @return
      */
     public static String showStateMapping()
     {
@@ -232,7 +226,6 @@ public class DataServerConditionMappingConfiguration
      * 
      * @param configFileName
      * @param timeLastModified
-     * @return
      */
     private static long configFileLastModified(String configFileName,
             long timeLastModified)

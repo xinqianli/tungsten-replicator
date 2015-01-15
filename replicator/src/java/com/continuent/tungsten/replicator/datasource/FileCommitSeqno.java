@@ -193,9 +193,6 @@ public class FileCommitSeqno implements CommitSeqno
     
     /**
      * {@inheritDoc}
-     * 
-     * @see com.continuent.tungsten.replicator.datasource.CommitSeqno#setPosition(long,
-     *      long, String, String)
      */
     public void initPosition(long seqno, String sourceId, long epoch,
             String eventId) throws ReplicatorException, InterruptedException

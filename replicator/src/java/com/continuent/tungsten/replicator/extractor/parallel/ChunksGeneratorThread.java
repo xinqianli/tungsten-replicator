@@ -129,7 +129,6 @@ public class ChunksGeneratorThread extends Thread
     /**
      * Creates a new <code>ChunksGeneratorThread</code> object
      * 
-     * @param user
      * @param extractChannels
      * @param chunks
      * @param chunkDefinitionFile

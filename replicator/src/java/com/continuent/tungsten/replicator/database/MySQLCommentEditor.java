@@ -136,7 +136,6 @@ public class MySQLCommentEditor implements SqlCommentEditor
      * @param statement Create Procedure statement that requires a comment to be
      *            inserted.
      * @param comment Comment string to be added.
-     * @return
      */
     @SuppressWarnings("fallthrough")
     private String processCreateProcedure(String statement, String comment)
@@ -233,7 +232,6 @@ public class MySQLCommentEditor implements SqlCommentEditor
      * @param statement DROP TABLE statement that requires a comment to be
      *            inserted.
      * @param comment Comment string to be added.
-     * @return
      */
     private String processDropTable(String statement, String comment)
     {

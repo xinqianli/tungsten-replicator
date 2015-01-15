@@ -444,7 +444,6 @@ public class ParallelExtractorThread extends Thread
      * TODO: buildDBMSEvent definition.
      * 
      * @param dataArray
-     * @return
      */
     private DBMSEvent buildDBMSEvent(ArrayList<DBMSData> dataArray)
     {

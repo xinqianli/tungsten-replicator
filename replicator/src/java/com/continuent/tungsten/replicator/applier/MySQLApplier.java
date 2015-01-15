@@ -405,7 +405,6 @@ public class MySQLApplier extends JdbcApplier
      * INSERT INTO table1 VALUES (...), (...), ...
      * 
      * @param oneRowChange row event being processed
-     * @return
      */
     private StringBuffer prepareOptimizedInsertStatement(
             OneRowChange oneRowChange)

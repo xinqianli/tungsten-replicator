@@ -752,7 +752,6 @@ public class ReplicationServiceManager
      * ReplicationServiceManager.
      * 
      * @param serviceName
-     * @return
      * @throws ReplicatorException
      */
     private OpenReplicatorManagerMBean createInternalService(String serviceName)
@@ -952,7 +951,6 @@ public class ReplicationServiceManager
      * 
      * @param directory - directory to start at
      * @param progress - initialized map to be used to track progress.
-     * @return
      */
     private boolean removeDirectory(File directory, Map<String, String> progress)
     {

@@ -924,7 +924,6 @@ public class JdbcPrefetcher implements RawApplier
      * 
      * @see #maxSQLLogLength
      * @param stmt SQL template for PreparedStatement
-     * @return
      */
     private String logFailedRowChangeSQL(StringBuffer stmt,
             OneRowChange oneRowChange)

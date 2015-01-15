@@ -589,7 +589,6 @@ public class OpenReplicatorManager extends NotificationBroadcasterSupport
      * 
      * @param e
      * @param msg
-     * @return
      */
     private ReplicatorStateException getStateMachineException(
             FiniteStateException e, String msg)

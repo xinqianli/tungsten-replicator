@@ -12,9 +12,9 @@ CNF_FILE="setupCDC.conf"
 [ ! -f "${CNF_FILE}" ] && echo "ERROR: Configuration file '${CNF_FILE}' was not found" && exit 1
 . ${CNF_FILE}
 
-source_user=${source_user^^}
-pub_user=${pub_user^^}
-tungsten_user=${tungsten_user^^}
+source_user=`echo $source_user | awk '{print toupper($0)}'`
+pub_user=`echo $pub_user | awk '{print toupper($0)}'`
+tungsten_user=`echo $tungsten_user | awk '{print toupper($0)}'`
 
 # Issue 1014 - normalizing CDC type names for setupCDC and tpm
 if [ "$cdc_type" = "CDCASYNC" ]

@@ -308,6 +308,10 @@ public class SqlCommitSeqno implements CommitSeqno
                 commitSeqnoTableSourceId.setValue(sourceId);
                 commitSeqnoTableEpochNumber.setValue(epoch);
                 commitSeqnoTableEventId.setValue(eventId);
+                commitSeqnoTableUpdateTimestamp.setValue(new Timestamp(System
+                        .currentTimeMillis()));
+                commitSeqnoTableExtractTimestamp.setValue(new Timestamp(System
+                        .currentTimeMillis()));
 
                 database.insert(commitSeqnoTable);
             }

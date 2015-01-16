@@ -207,7 +207,8 @@ public class FileCommitSeqno implements CommitSeqno
             // Set last frag to true, so the pipeline would start from the
             // *next* available event, as opposed to given one.
             ReplDBMSHeaderData header = new ReplDBMSHeaderData(seqno,
-                    (short) -1, true, sourceId, epoch, eventId, "", null, 0);
+                    (short) -1, true, sourceId, epoch, eventId, "",
+                    new Timestamp(System.currentTimeMillis()), 0);
             store(fname, header, -1, false);
         }
         else

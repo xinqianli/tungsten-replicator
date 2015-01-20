@@ -664,9 +664,6 @@ public class MySQLExtractor implements RawExtractor
                                 String.valueOf(event.getClientCollationId())));
                         savedOptions.add(new ReplOption("collation_server",
                                 String.valueOf(event.getServerCollationId())));
-                        if (event.getTimeZoneName() != null)
-                            savedOptions.add(new ReplOption("time_zone", event
-                                    .getTimeZoneName()));
 
                         if (event.getAutoIncrementIncrement() >= 0)
                             savedOptions.add(new ReplOption(

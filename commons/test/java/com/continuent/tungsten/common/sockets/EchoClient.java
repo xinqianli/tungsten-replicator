@@ -140,12 +140,15 @@ public class EchoClient implements Runnable
         SocketHelper helper = new SocketHelper();
         while (shutdownRequested == false)
         {
-            String echoValue = helper.echo(socket.getSocket(), clientName);
-            if (!clientName.equals(echoValue))
-                throw new RuntimeException(
-                        "Echo returned unexpected value: client=" + clientName
-                                + " echoValue=" + echoValue);
-            echoCount++;
+            synchronized (this)
+            {
+                String echoValue = helper.echo(socket.getSocket(), clientName);
+                if (!clientName.equals(echoValue))
+                    throw new RuntimeException(
+                            "Echo returned unexpected value: client="
+                                    + clientName + " echoValue=" + echoValue);
+                echoCount++;
+            }
             Thread.sleep(sleepMillis);
         }
     }

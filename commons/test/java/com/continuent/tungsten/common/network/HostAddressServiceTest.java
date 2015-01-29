@@ -253,10 +253,10 @@ public class HostAddressServiceTest extends TestCase
         HostAddress address = HostAddressService.getByName(InetAddress
                 .getLocalHost().getHostName());
 
-        // Test with one task and 1000 pings.
+        // Test with one task and 200 pings.
         doConcurrentPing(has, address, 1, 200, true);
 
-        // Test with 10 tasks with 100 pings each. This fails on Mac OS X, so
+        // Test with 10 tasks with 20 pings each. This fails on Mac OS X, so
         // skip it on that platform.
         String os = System.getProperty("os.name");
         if ("Mac OS X".equals(os))
@@ -277,7 +277,7 @@ public class HostAddressServiceTest extends TestCase
         has.setTimeout(2000);
         HostAddress address = HostAddressService.getByName(UNKNOWN_IP);
 
-        // Test 10 tasks with 4 pings each. This should take about 4
+        // Test 10 tasks with 2 pings each. This should take about 4
         // seconds per thread with full concurrency.
         this.doConcurrentPing(has, address, 10, 2, false);
     }
@@ -416,7 +416,7 @@ class HostPingTask implements Runnable
     }
 
     // Execute ping operations count times, then exit.
-    public void run()
+    public synchronized void run()
     {
         iterations = 0;
         for (int i = 0; i < count; i++)

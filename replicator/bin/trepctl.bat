@@ -17,7 +17,7 @@ rem   REPLICATOR_RMI_PORT - Replicator RMI port
 rem   REPLICATOR_CONF_DIR - Location of replicator conf directory
 rem
 
-set REPLICATOR_HOME=%~dp0\..
+set REPLICATOR_HOME=%~dp0..
 
 rem Replicator manager class.
 set RP_MGR_NAME=com.continuent.tungsten.replicator.management.OpenReplicatorManagerCtrl

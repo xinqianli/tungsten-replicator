@@ -34,8 +34,10 @@ import org.junit.Test;
 
 /**
  * Implements a test of client and server socket wrappers using SSL and non-SSL
- * connections. </p> IMPORTANT NOTE! To run this test in Eclipse set the working
- * directory to commons/build/work. Otherwise you won't be able to find the
+ * connections.
+ * <p/>
+ * IMPORTANT NOTE! To run this test in Eclipse set the working directory to
+ * commons/build/work. Otherwise you won't be able to find the
  * sample.security.properties file.
  * 
  * @author <a href="mailto:robert.hodges@continuent.com">Robert Hodges</a>
@@ -88,6 +90,8 @@ public class SocketWrapperTest
     public void testSSLConnectionIncompatibility() throws Exception
     {
         // Start an SSL server.
+        logger.info("### testSSLConnectionIncompatibility");
+        helper.loadSecurityProperties();
         server = new EchoServer("127.0.0.1", 2115, true);
         server.start();
 
@@ -125,9 +129,6 @@ public class SocketWrapperTest
     @Test
     public void testNonSSLClientsBasic() throws Exception
     {
-        // Do not run this test unless requested. It is breaking builds.
-        if (System.getProperty("testNonSSLClientsBasic") == null)
-            return;
         logger.info("### testNonSSLClientsBasic");
         verifyClients(2116, 5, false);
     }
@@ -174,7 +175,7 @@ public class SocketWrapperTest
             throws Exception
     {
         // Start a server.
-        server = new EchoServer("127.0.0.1", port, true);
+        server = new EchoServer("127.0.0.1", port, useSSL);
         server.start();
 
         // Launch echo clients with 100ms think time between
@@ -182,7 +183,7 @@ public class SocketWrapperTest
         EchoClient[] clients = new EchoClient[numberOfClients];
         for (int i = 0; i < clients.length; i++)
         {
-            EchoClient client = new EchoClient("127.0.0.1", port, true, 100);
+            EchoClient client = new EchoClient("127.0.0.1", port, useSSL, 100);
             client.start();
             clients[i] = client;
         }

@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2013 Continuent Inc.
+ * Copyright (C) 2013-2015 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -44,6 +44,10 @@ public class EchoServer implements Runnable
     private final int                    port;
     private final boolean                useSSL;
 
+    // Latch to signal server is ready. This prevents race conditions around
+    // start-up so that clients do not connect too quickly.
+    private volatile boolean             ready             = false;
+
     // Operational variables. These are volatile to permit concurrent access.
     private final ExecutorService        pool              = Executors
                                                                    .newFixedThreadPool(5);
@@ -68,9 +72,12 @@ public class EchoServer implements Runnable
     }
 
     /**
-     * Starts the server.
+     * Starts the server, returning when it is ready to receive clients.
+     * 
+     * @throws InterruptedException Thrown if wait is interrupted.
      */
-    public void start() throws IOException, ConfigurationException
+    public void start() throws IOException, ConfigurationException,
+            InterruptedException
     {
         // Configure and connect.
         logger.info("Binding server: host=" + host + " port=" + port
@@ -84,6 +91,14 @@ public class EchoServer implements Runnable
         logger.info("Spawning server thread");
         serverThread = new Thread(this);
         serverThread.start();
+
+        // Wait until we are ready to handle connections, failing if we don't
+        // ready that point in a reasonable interval.
+        boolean ready = awaitReady(3000);
+        if (!ready)
+        {
+            throw new IOException("Server did not become ready!");
+        }
     }
 
     /**
@@ -123,12 +138,30 @@ public class EchoServer implements Runnable
     private void doRun() throws IOException, InterruptedException
     {
         SocketWrapper client;
+        ready = true;
         while ((shutdownRequested == false)
                 && (client = socketService.accept()) != null)
         {
             EchoSocketHandler handler = new EchoSocketHandler(this, client);
             pool.execute(handler);
         }
+    }
+
+    /**
+     * Wait for the server to enter the ready state.
+     * 
+     * @param howLongMillis How many milliseconds to wait for the server to
+     *            become ready.
+     * @throws InterruptedException Thrown if thread is interrupted
+     */
+    private boolean awaitReady(long howLongMillis) throws InterruptedException
+    {
+        long untilMillis = System.currentTimeMillis() + howLongMillis;
+        while (!ready && System.currentTimeMillis() < untilMillis)
+        {
+            Thread.sleep(1);
+        }
+        return ready;
     }
 
     /** Shut down a running server nicely. */

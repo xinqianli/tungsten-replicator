@@ -7,6 +7,7 @@ class CCTRL
   MASTER = "master"
   DATASERVER = "dataserver"
   STATUS = "status"
+  STATE = "state"
   HOSTNAME = "hostname"
   ROLE = "role"
   SEQNO = "seqno"
@@ -94,7 +95,7 @@ class CCTRL
         datasource[0].scan(/
           \|(\S*)
           \(
-          (\S*):(\S*)                # Role:Status
+          ([a-zA-Z]*):([a-zA-Z]*)(:([a-zA-Z]*))?    # Role:Status[:State]
           /xm){
           |m|
           
@@ -103,6 +104,10 @@ class CCTRL
             ROLE => m[1],
             STATUS => m[2]
           }
+          
+          if m[4].to_s() != ""
+            ds_props[STATE] = m[4]
+          end
         }
         datasource[0].scan(/
           STATUS[\s]?

@@ -367,13 +367,10 @@ class TempDirectoryPrompt < ConfigurePrompt
     
     ["TMPDIR", "TMP", "TEMP"].each{|var|      
       begin
-        Timeout.timeout(5){
-          val = ssh_result("echo $#{var}", @config.getProperty(get_member_key(HOST)), @config.getProperty(get_member_key(USERID)))
-          if val != ""
-            @default = val
-          end
-        }
-      rescue Timeout::Error
+        val = ssh_result("echo $#{var}", @config.getProperty(get_member_key(HOST)), @config.getProperty(get_member_key(USERID)))
+        if val != ""
+          @default = val
+        end
       rescue RemoteCommandError
       rescue CommandError
       rescue MessageError

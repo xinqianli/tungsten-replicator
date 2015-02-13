@@ -260,8 +260,7 @@
         </copy>
         <!-- 
         Do not copy Vertica or other non-distributable proprietary JARs into 
-        build.  Oracle JDBC driver is OK, since EULA allows distribution with 
-        applications
+        build.
         -->
         <copy todir="${dist.dir}/lib">
              <fileset dir="lib/">
@@ -269,6 +268,7 @@
              	<include name="${library.compile.files}" if="library.compile.files"/>
              	<include name="ruby/*" />
                 <exclude name="vertica*.jar"/>
+             	<exclude name="ojdbc*.jar"/>
              </fileset>
         </copy>
         <mkdir dir="${dist.dir}/lib-ext"/>

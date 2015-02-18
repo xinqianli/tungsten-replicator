@@ -64,6 +64,27 @@ function initCleanUpS3Files()
   }
 }
 
+/** Parses and validates "gzipFiles" parameter. */
+function initGzipS3Files()
+{
+  if (gzipS3Files == null)
+    gzipS3Files = false;
+  else if (gzipS3Files == "true")
+  {
+    logger
+        .info("Will compress files uploaded to S3 with gzip");
+    gzipS3Files = true;
+  }
+  else if (gzipS3Files == "false")
+    gzipS3Files = false;
+  else
+  {
+    throw new com.continuent.tungsten.replicator.ReplicatorException(
+        "Parameter value for \"gzipS3Files\" must be a quoted string \"true\" or \"false\", currently: "
+            + gzipS3Files);
+  }
+}
+
 /** Called once when applier goes online. */
 function prepare()
 {
@@ -76,6 +97,7 @@ function prepare()
   awsS3Path = awsConfig["awsS3Path"];
   awsAccessKey = awsConfig["awsAccessKey"];
   awsSecretKey = awsConfig["awsSecretKey"];
+  gzipS3Files = awsConfig["gzipS3Files"];
   cleanUpS3Files = awsConfig["cleanUpS3Files"];
   storeCDCIn = awsConfig["storeCDCIn"];
   
@@ -87,6 +109,8 @@ function prepare()
   }
   
   logger.info("AWS S3 CSV staging path: " + awsS3Path);
+
+  initGzipS3Files();
   
   initCleanUpS3Files();
   logger.info("Remove CSV files after upload: " + cleanUpS3Files);
@@ -110,6 +134,8 @@ function apply(csvinfo)
   // Fill in variables required to create SQL to merge data for current table.
   csv_file = csvinfo.file.getAbsolutePath();
   csv_filename = csvinfo.file.getName();
+  csv_extension = "";
+  gzip_option = "";
   schema = csvinfo.schema;
   table = csvinfo.table;
   seqno = csvinfo.startSeqno;
@@ -119,10 +145,23 @@ function apply(csvinfo)
   base_columns = csvinfo.getBaseColumnList(sql);
   pkey_columns = csvinfo.getPKColumnList(sql);
   where_clause = csvinfo.getPKColumnJoinList(sql, stage_table_fqn, base_table_fqn);
+  
+  // Compress file if needed.
+  if (gzipS3Files)
+  {
+    gzipCmd = runtime.sprintf("gzip --keep %s", csv_file);
+    runtime.exec(gzipCmd);
+    csv_extension = ".gz";
+    gzip_option = "GZIP";
+    if (logger.isDebugEnabled())
+    {
+      logger.debug(gzipCmd);
+    }
+  }
 
   // Upload CSV to S3.
-  s3PutCmd = runtime.sprintf("s3cmd put %s %s/%s/", csv_file, awsS3Path,
-      serviceName);
+  s3PutCmd = runtime.sprintf("s3cmd put %s%s %s/%s/", csv_file, csv_extension,
+      awsS3Path, serviceName);
   runtime.exec(s3PutCmd);
   if (logger.isDebugEnabled())
   {
@@ -137,9 +176,9 @@ function apply(csvinfo)
 
   // Create and execute copy command.
   copy_sql = runtime.sprintf(
-          "COPY %s FROM '%s/%s/%s' CSV NULL AS 'null' CREDENTIALS 'aws_access_key_id=%s;aws_secret_access_key=%s'",
-          stage_table_fqn, awsS3Path, serviceName, csv_filename, awsAccessKey,
-          awsSecretKey);
+          "COPY %s FROM '%s/%s/%s%s' CSV NULL AS 'null' %s CREDENTIALS 'aws_access_key_id=%s;aws_secret_access_key=%s'",
+          stage_table_fqn, awsS3Path, serviceName, csv_filename, csv_extension,
+          gzip_option, awsAccessKey, awsSecretKey);
   if (logger.isDebugEnabled())
     logger.debug("COPY: "
         + copy_sql.substring(0, copy_sql.indexOf("CREDENTIALS") + 12) + "...");
@@ -208,8 +247,8 @@ function apply(csvinfo)
   // Clean-up CSV file from S3 if desired.
   if (cleanUpS3Files)
   {
-    s3DelCmd = runtime.sprintf("s3cmd del %s/%s/%s", awsS3Path, serviceName,
-        csv_filename);
+    s3DelCmd = runtime.sprintf("s3cmd del %s/%s/%s%s", awsS3Path, serviceName,
+        csv_filename, csv_extension);
     if (logger.isDebugEnabled())
     {
       logger.debug(s3DelCmd);

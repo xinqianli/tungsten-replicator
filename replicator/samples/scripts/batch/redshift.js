@@ -149,10 +149,11 @@ function apply(csvinfo)
   // Compress file if needed.
   if (gzipS3Files)
   {
-    gzipCmd = runtime.sprintf("gzip --keep %s", csv_file);
-    runtime.exec(gzipCmd);
     csv_extension = ".gz";
     gzip_option = "GZIP";
+    gzipCmd = runtime.sprintf("gzip -c %s > %s%s", csv_file, csv_file,
+        csv_extension);
+    runtime.exec(gzipCmd);
     if (logger.isDebugEnabled())
     {
       logger.debug(gzipCmd);

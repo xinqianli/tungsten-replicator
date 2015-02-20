@@ -9,6 +9,6 @@ replicator.applier.dbms.getColumnMetadataFromDB=true
 
 # If true, similate time-zone unaware operation to process events from older
 # Tungsten masters that do not extract events in a time zone-aware manner. 
-# This option is only required when there is a chance of processing an older
-# replicator log. 
-replicator.applier.dbms.supportNonTzAwareMode=true
+# This option should only be enabled for upgrades if there is a chance of 
+# processing an older replicator log. 
+replicator.applier.dbms.supportNonTzAwareMode=false

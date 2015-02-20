@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2015 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -1059,9 +1059,6 @@ public class MySQLExtractor implements RawExtractor
                         dbmsEvent.addMetadataOption(
                                 ReplOptionParams.UNSAFE_FOR_BLOCK_COMMIT, "");
  
-                    // MySQL event extraction is time zone-aware.
-                    dbmsEvent.addMetadataOption(
-                            ReplOptionParams.TIME_ZONE_AWARE, "true");
                     return dbmsEvent;
                 }
             }
@@ -1120,8 +1117,13 @@ public class MySQLExtractor implements RawExtractor
 
         // Extract the next event.
         DBMSEvent event = extractEvent(binlogPosition);
+
+        // Mark the event as coming from MySQL and that it is time-zone aware.
         if (event != null)
-            event.setMetaDataOption(ReplOptionParams.DBMS_TYPE, Database.MYSQL);
+        {
+            event.addMetadataOption(ReplOptionParams.DBMS_TYPE, Database.MYSQL);
+            event.addMetadataOption(ReplOptionParams.TIME_ZONE_AWARE, "true");
+        }
         return event;
     }
 

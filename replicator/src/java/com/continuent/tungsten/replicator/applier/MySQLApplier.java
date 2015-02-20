@@ -1,6 +1,6 @@
 /**
  * Tungsten Scale-Out Stack
- * Copyright (C) 2007-2014 Continuent Inc.
+ * Copyright (C) 2007-2015 Continuent Inc.
  * Contact: tungsten@continuent.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -192,7 +192,7 @@ public class MySQLApplier extends JdbcApplier
             {
                 // We are now processing a time zone-aware event.
                 logger.info("Found a time zone-aware event while in non-TZ-aware mode: seqno="
-                        + header.getSeqno());
+                        + header.getSeqno() + " fragno=" + header.getFragno());
                 enableTzAwareMode();
             }
         }
@@ -204,7 +204,7 @@ public class MySQLApplier extends JdbcApplier
             {
                 // We are now processing a time zone-unaware event.
                 logger.info("Found a non-time zone-aware event while in TZ-aware mode: seqno="
-                        + header.getSeqno());
+                        + header.getSeqno() + " fragno=" + header.getFragno());
                 enableNonTzAwareMode();
             }
         }

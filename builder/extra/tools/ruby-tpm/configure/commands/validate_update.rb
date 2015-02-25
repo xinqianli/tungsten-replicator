@@ -35,6 +35,10 @@ class ValidateUpdateCommand
     'validate-update'
   end
   
+  def allow_multiple_tpm_commands?
+    true
+  end
+
   def self.get_command_description
     "Validate before updating an existing Tungsten installation"
   end

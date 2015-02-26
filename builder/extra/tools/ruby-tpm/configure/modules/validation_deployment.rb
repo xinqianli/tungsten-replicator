@@ -1539,3 +1539,21 @@ class EncryptionKeystoreCheck < ConfigureValidationCheck
     end
   end
 end
+
+class NtpdRunningCheck < ConfigureValidationCheck
+  include ClusterHostCheck
+
+  def set_vars
+    @title = "ntpd running check"
+  end
+
+  def validate
+    if cmd_result("pgrep ntpd", true).to_s == ""
+       warning("ntpd is not running. It is important that configured hosts have time synchronised.")
+    end
+  end
+
+  def enabled?
+    super()
+  end
+end

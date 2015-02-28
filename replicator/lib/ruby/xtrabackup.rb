@@ -89,12 +89,15 @@ class TungstenXtrabackupScript < TungstenBackupScript
   end
   
   def backup_dir
+    most_recent_dir = nil
+    lineage = nil
+    
     begin
       cleanup_xtrabackup_storage()
-
-      if @options[:incremental] == "false"
-        execute_backup()
-      else
+      
+      # Validate the incremental backup before starting in case the  
+      # lineage is not complete
+      if @options[:incremental] == "true"
         begin
           # Find the most recent xtrabackup directory which we will start from
           most_recent_dir = get_last_backup()
@@ -103,7 +106,22 @@ class TungstenXtrabackupScript < TungstenBackupScript
           # If it cannot find the full backup that the most recent snapshot is
           # based on, we need to do a full backup instead.
           lineage = get_snapshot_lineage(most_recent_dir)
-
+          
+          retention = TI.setting(TI.setting_key(REPL_SERVICES, opt(:service), "repl_backup_retention")).to_i()
+          if lineage.size() == retention
+            TU.debug("The incremental lineage takes up the full backup retention. Forcing a full backup since the base backup will be deleted.")
+            @options[:incremental] = "false"
+          end
+        rescue
+          TU.debug("Forcing a full backup because the incremental backup lineage is not complete")
+          @options[:incremental] = "false"
+        end
+      end
+      
+      if @options[:incremental] == "false"
+        execute_backup()
+      else
+        begin
           execute_backup(most_recent_dir)
         rescue BrokenLineageError => ble
           TU.warning(ble.message)

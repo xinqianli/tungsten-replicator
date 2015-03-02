@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 
 /**
@@ -172,7 +173,9 @@ public class DirectoryCommands
 
         String dir = directoryPath.substring(0,
                 directoryPath.lastIndexOf(File.separator));
-
+        String pattern = StringUtils.substringAfterLast(directoryPath, File.separator);
+        
+        
         File directory = new File(dir);
 
         if (directory.isDirectory())
@@ -186,7 +189,9 @@ public class DirectoryCommands
                     String fileName = f.getName();
                     String fullPath = dir + File.separator + fileName;
 
-                    if (fullPath.matches(convertGlobToRegEx(directoryPath)))
+                    // CONT-93
+                    // The list of files is coming from the directoryPath, we only need to check the pattern against the filename.
+                    if (fileName.matches(convertGlobToRegEx(pattern)))
                     {
                         if (includeFullPath)
                         {

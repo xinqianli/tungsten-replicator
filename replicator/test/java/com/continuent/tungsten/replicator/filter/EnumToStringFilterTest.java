@@ -124,4 +124,15 @@ public class EnumToStringFilterTest extends TestCase
                 + enumValues[parsedLargestPos] + ")", largest.length(),
                 parsedLargestLen);
     }
+
+    public void testParseEnumWithParenthesis() throws Exception
+    {
+        String enumDefinition = "ENUM('test (1)','test (2)','test (3)')";
+        String[] enumValues = EnumToStringFilter
+                .parseEnumeration(enumDefinition);
+        Assert.assertEquals("Failed to extract correct number of enum values",
+                3, enumValues.length);
+
+    }
+
 }

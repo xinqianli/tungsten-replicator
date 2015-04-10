@@ -169,7 +169,7 @@ function fixUpStrings(schema, table, columns, columnValues, charset)
           if (colDesc.startsWith("BINARY") || colDesc.startsWith("VARBINARY")) {
             // Convert to a hexadecimal string. 
             hex = javax.xml.bind.DatatypeConverter.printHexBinary(raw_v);
-            logger.info(hex);
+            //logger.info(hex);
             if (colDesc.startsWith("B")) {
               // Conversion cuts off trailing x'00' bytes in BINARY strings. 
               // We compute the proper length from the type name and append
